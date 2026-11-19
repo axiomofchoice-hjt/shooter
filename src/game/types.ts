@@ -14,6 +14,8 @@ export interface HudSnapshot {
   comboTime: number;
   kills: number;
   muted: boolean;
+  secondaryCooldown: number;
+  dodgeCooldown: number;
 }
 
 export interface GameStats {
@@ -40,4 +42,6 @@ export const INITIAL_HUD: HudSnapshot = {
   comboTime: 0,
   kills: 0,
   muted: false,
+  secondaryCooldown: 0,
+  dodgeCooldown: 0,
 };

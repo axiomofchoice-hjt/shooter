@@ -7,7 +7,9 @@ type SoundName =
   | 'wave'
   | 'clear'
   | 'death'
-  | 'spit';
+  | 'spit'
+  | 'secondary'
+  | 'dash';
 
 const STORAGE_KEY = 'shooter-muted';
 
@@ -90,6 +92,15 @@ export class SoundFX {
         break;
       case 'spit':
         this.tone(430, 140, 0.14, 'square', 0.055, 0);
+        break;
+      case 'secondary':
+        this.tone(210, 58, 0.22, 'sawtooth', 0.16, 0);
+        this.tone(760, 210, 0.16, 'square', 0.07, 0);
+        this.tone(120, 48, 0.28, 'triangle', 0.11, 0.02);
+        break;
+      case 'dash':
+        this.tone(190, 720, 0.16, 'sine', 0.11, 0);
+        this.tone(520, 160, 0.12, 'triangle', 0.05, 0.02);
         break;
     }
   }

@@ -105,6 +105,14 @@ export default function App() {
     gameRef.current?.setTouchFire(active);
   }, []);
 
+  const handleTouchSecondary = useCallback(() => {
+    gameRef.current?.triggerSecondary();
+  }, []);
+
+  const handleTouchDodge = useCallback(() => {
+    gameRef.current?.triggerDodge();
+  }, []);
+
   useEffect(() => {
     const updateOrientation = () => {
       setIsPortrait(
@@ -155,6 +163,15 @@ export default function App() {
 
       if (phaseRef.current === 'playing') {
         game.setKey(event.code, true);
+        if (!event.repeat) {
+          if (event.code === 'KeyK') {
+            event.preventDefault();
+            game.triggerSecondary();
+          } else if (event.code === 'Space') {
+            event.preventDefault();
+            game.triggerDodge();
+          }
+        }
       }
 
       if (event.code === 'KeyP' || event.code === 'Escape') {
@@ -237,7 +254,14 @@ export default function App() {
       )}
 
       {phase === 'playing' && isTouch && (
-        <TouchControls onMove={handleTouchMove} onFire={handleTouchFire} />
+        <TouchControls
+          onMove={handleTouchMove}
+          onFire={handleTouchFire}
+          onSecondary={handleTouchSecondary}
+          onDodge={handleTouchDodge}
+          secondaryCooldown={hud.secondaryCooldown}
+          dodgeCooldown={hud.dodgeCooldown}
+        />
       )}
 
       {phase === 'menu' && <StartScreen isTouch={isTouch} onStart={startGame} />}

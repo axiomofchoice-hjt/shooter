@@ -1,13 +1,25 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { BurstIcon, DashIcon } from './Icons';
 
 interface TouchControlsProps {
   onMove: (x: number, y: number) => void;
   onFire: (active: boolean) => void;
+  onSecondary: () => void;
+  onDodge: () => void;
+  secondaryCooldown: number;
+  dodgeCooldown: number;
 }
 
 const MAX_KNOB_RATIO = 0.31;
 
-export function TouchControls({ onMove, onFire }: TouchControlsProps) {
+export function TouchControls({
+  onMove,
+  onFire,
+  onSecondary,
+  onDodge,
+  secondaryCooldown,
+  dodgeCooldown,
+}: TouchControlsProps) {
   const padRef = useRef<HTMLDivElement>(null);
   const stickPointer = useRef<number | null>(null);
   const firePointer = useRef<number | null>(null);
@@ -117,6 +129,56 @@ export function TouchControls({ onMove, onFire }: TouchControlsProps) {
           <span className="fire-label">FIRE</span>
           <span className="fire-sub">按住连射</span>
         </button>
+
+        <div className="ability-stack">
+          <button
+            type="button"
+            tabIndex={-1}
+            className={`ability-button ability-secondary ${
+              secondaryCooldown > 0 ? 'is-cooling' : ''
+            }`}
+            style={{ '--cool': `${secondaryCooldown * 100}%` } as CSSProperties}
+            aria-label="副武器：散射炮"
+            title="副武器：散射炮"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              if (secondaryCooldown > 0) return;
+              onSecondary();
+              if ('vibrate' in navigator) navigator.vibrate(12);
+            }}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <span className="ability-icon">
+              <BurstIcon />
+            </span>
+            <span className="ability-label">副武器</span>
+            <span className="ability-cool" aria-hidden="true" />
+          </button>
+
+          <button
+            type="button"
+            tabIndex={-1}
+            className={`ability-button ability-dodge ${
+              dodgeCooldown > 0 ? 'is-cooling' : ''
+            }`}
+            style={{ '--cool': `${dodgeCooldown * 100}%` } as CSSProperties}
+            aria-label="闪避：向当前移动方向冲刺"
+            title="闪避：向当前移动方向冲刺"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              if (dodgeCooldown > 0) return;
+              onDodge();
+              if ('vibrate' in navigator) navigator.vibrate(9);
+            }}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <span className="ability-icon">
+              <DashIcon />
+            </span>
+            <span className="ability-label">闪避</span>
+            <span className="ability-cool" aria-hidden="true" />
+          </button>
+        </div>
       </div>
     </div>
   );

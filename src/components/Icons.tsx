@@ -96,6 +96,36 @@ export function KeyboardIcon() {
   );
 }
 
+export function BurstIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="2.2" fill="currentColor" />
+      <path
+        d="M12 6.8V2.8m0 18.4v-4M6.8 12H2.8m18.4 0h-4M8.3 8.3 5.5 5.5m13 13-2.8-2.8m0-7.4 2.8-2.8m-13 13 2.8-2.8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function DashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="m4.5 5 7 7-7 7M12.5 5l7 7-7 7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function TouchIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">

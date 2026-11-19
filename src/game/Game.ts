@@ -11,7 +11,14 @@ const WORLD = 2400;
 const AUTOAIM_RANGE = 760;
 
 const PLAYER_COLOR = '#5ff6ff';
+const SECONDARY_COLOR = '#ffc857';
 const ENEMY_GLOW = 0.16;
+
+const SECONDARY_COOLDOWN = 3.4;
+const SECONDARY_PELLETS = 7;
+const DODGE_COOLDOWN = 1.6;
+const DASH_TIME = 0.16;
+const DASH_SPEED = 1120;
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
@@ -60,7 +67,11 @@ interface Player {
   fireCooldown: number;
   invuln: number;
   muzzle: number;
+  muzzleColor: string;
   trailTimer: number;
+  dashTime: number;
+  dashDirX: number;
+  dashDirY: number;
   dead: boolean;
 }
 
@@ -96,6 +107,7 @@ interface Bullet {
   radius: number;
   damage: number;
   life: number;
+  color: string;
 }
 
 interface EnemyBullet {
@@ -259,6 +271,8 @@ export class ShooterGame {
   private intermissionTimer = 0;
   private nextEnemyId = 1;
   private autoTarget: Enemy | null = null;
+  private secondaryCooldown = 0;
+  private dodgeCooldown = 0;
   private sfx = new SoundFX();
 
   private bgGradient: CanvasGradient | null = null;
@@ -336,6 +350,58 @@ export class ShooterGame {
     this.input.mouseActive = false;
   }
 
+  triggerSecondary() {
+    if (
+      this.phase !== 'playing' ||
+      this.paused ||
+      this.player.dead ||
+      this.secondaryCooldown > 0
+    ) {
+      return;
+    }
+    this.fireSecondary();
+  }
+
+  triggerDodge() {
+    if (
+      this.phase !== 'playing' ||
+      this.paused ||
+      this.player.dead ||
+      this.dodgeCooldown > 0 ||
+      this.player.dashTime > 0
+    ) {
+      return;
+    }
+
+    // Snapshot the stick / keys at the moment the button is pressed.
+    const move = this.readMoveInput();
+    const player = this.player;
+    if (move.magnitude > 0.12) {
+      player.dashDirX = move.x / move.magnitude;
+      player.dashDirY = move.y / move.magnitude;
+    } else {
+      player.dashDirX = Math.cos(player.angle);
+      player.dashDirY = Math.sin(player.angle);
+    }
+
+    player.dashTime = DASH_TIME;
+    player.invuln = Math.max(player.invuln, 0.3);
+    player.vx = player.dashDirX * DASH_SPEED;
+    player.vy = player.dashDirY * DASH_SPEED;
+    this.dodgeCooldown = DODGE_COOLDOWN;
+    this.shake = Math.max(this.shake, 3.5);
+    this.sfx.play('dash');
+    this.spawnBurst(
+      player.x - player.dashDirX * 12,
+      player.y - player.dashDirY * 12,
+      PLAYER_COLOR,
+      14,
+      210,
+      0.4,
+    );
+    this.emitHud(true);
+  }
+
   setMouseScreen(x: number, y: number) {
     this.input.mouseScreenX = x;
     this.input.mouseScreenY = y;
@@ -396,7 +462,11 @@ export class ShooterGame {
       fireCooldown: 0,
       invuln: 0,
       muzzle: 0,
+      muzzleColor: PLAYER_COLOR,
       trailTimer: 0,
+      dashTime: 0,
+      dashDirX: 0,
+      dashDirY: 0,
       dead: false,
     };
     this.camera.x = this.player.x;
@@ -425,6 +495,8 @@ export class ShooterGame {
     this.healFlash = 0;
     this.killFlash = 0;
     this.autoTarget = null;
+    this.secondaryCooldown = 0;
+    this.dodgeCooldown = 0;
     this.hudTimer = 0;
     this.clearInput();
   }
@@ -491,31 +563,63 @@ export class ShooterGame {
     const player = this.player;
     if (player.dead) return;
 
-    let moveX = 0;
-    let moveY = 0;
-    const touchMag = Math.hypot(this.input.touchX, this.input.touchY);
-    if (touchMag > 0.12) {
-      moveX = this.input.touchX;
-      moveY = this.input.touchY;
+    const move = this.readMoveInput();
+    this.secondaryCooldown = Math.max(0, this.secondaryCooldown - dt);
+    this.dodgeCooldown = Math.max(0, this.dodgeCooldown - dt);
+    player.trailTimer -= dt;
+
+    if (player.dashTime > 0) {
+      // Dash locks the launch direction, even if the stick is released mid-dash.
+      player.dashTime = Math.max(0, player.dashTime - dt);
+      player.vx = player.dashDirX * DASH_SPEED;
+      player.vy = player.dashDirY * DASH_SPEED;
+      if (player.trailTimer <= 0) {
+        player.trailTimer = 0.018;
+        this.particles.push({
+          x: player.x + rand(-4, 4),
+          y: player.y + rand(-4, 4),
+          vx: -player.dashDirX * rand(30, 70) + rand(-10, 10),
+          vy: -player.dashDirY * rand(30, 70) + rand(-10, 10),
+          life: rand(0.16, 0.3),
+          maxLife: 0.3,
+          size: rand(2.5, 5),
+          color: PLAYER_COLOR,
+          drag: 3,
+        });
+      }
     } else {
-      const keys = this.input.keys;
-      if (keys.has('KeyW') || keys.has('ArrowUp')) moveY -= 1;
-      if (keys.has('KeyS') || keys.has('ArrowDown')) moveY += 1;
-      if (keys.has('KeyA') || keys.has('ArrowLeft')) moveX -= 1;
-      if (keys.has('KeyD') || keys.has('ArrowRight')) moveX += 1;
+      let moveX = move.x;
+      let moveY = move.y;
+      if (move.magnitude > 1) {
+        moveX /= move.magnitude;
+        moveY /= move.magnitude;
+      }
+
+      const targetVx = moveX * player.speed;
+      const targetVy = moveY * player.speed;
+      const accel = 1 - Math.exp(-14 * dt);
+      player.vx += (targetVx - player.vx) * accel;
+      player.vy += (targetVy - player.vy) * accel;
+
+      if (
+        (Math.abs(player.vx) > 60 || Math.abs(player.vy) > 60) &&
+        player.trailTimer <= 0
+      ) {
+        player.trailTimer = 0.055;
+        this.particles.push({
+          x: player.x - player.vx * 0.03 + rand(-5, 5),
+          y: player.y - player.vy * 0.03 + rand(-5, 5),
+          vx: -player.vx * 0.08 + rand(-12, 12),
+          vy: -player.vy * 0.08 + rand(-12, 12),
+          life: rand(0.18, 0.36),
+          maxLife: 0.36,
+          size: rand(1.5, 3.2),
+          color: PLAYER_COLOR,
+          drag: 2.5,
+        });
+      }
     }
 
-    const magnitude = Math.hypot(moveX, moveY);
-    if (magnitude > 1) {
-      moveX /= magnitude;
-      moveY /= magnitude;
-    }
-
-    const targetVx = moveX * player.speed;
-    const targetVy = moveY * player.speed;
-    const accel = 1 - Math.exp(-14 * dt);
-    player.vx += (targetVx - player.vx) * accel;
-    player.vy += (targetVy - player.vy) * accel;
     player.x += player.vx * dt;
     player.y += player.vy * dt;
     player.x = clamp(player.x, 46, WORLD - 46);
@@ -524,30 +628,14 @@ export class ShooterGame {
     player.fireCooldown -= dt;
     player.invuln = Math.max(0, player.invuln - dt);
     player.muzzle = Math.max(0, player.muzzle - dt);
-    player.trailTimer -= dt;
-
-    if ((Math.abs(player.vx) > 60 || Math.abs(player.vy) > 60) && player.trailTimer <= 0) {
-      player.trailTimer = 0.055;
-      this.particles.push({
-        x: player.x - player.vx * 0.03 + rand(-5, 5),
-        y: player.y - player.vy * 0.03 + rand(-5, 5),
-        vx: -player.vx * 0.08 + rand(-12, 12),
-        vy: -player.vy * 0.08 + rand(-12, 12),
-        life: rand(0.18, 0.36),
-        maxLife: 0.36,
-        size: rand(1.5, 3.2),
-        color: PLAYER_COLOR,
-        drag: 2.5,
-      });
-    }
 
     this.autoTarget = this.findNearestEnemy(player.x, player.y, AUTOAIM_RANGE, true);
     const usingTouchAim = this.input.autoAim && !this.input.mouseActive;
     if (usingTouchAim) {
       if (this.autoTarget) {
         player.angle = Math.atan2(this.autoTarget.y - player.y, this.autoTarget.x - player.x);
-      } else if (touchMag > 0.12) {
-        player.angle = Math.atan2(moveY, moveX);
+      } else if (move.magnitude > 0.12) {
+        player.angle = Math.atan2(move.y, move.x);
       }
     } else if (this.input.mouseActive) {
       const mouseWorld = this.screenToWorld(this.input.mouseScreenX, this.input.mouseScreenY);
@@ -562,10 +650,28 @@ export class ShooterGame {
     }
   }
 
+  private readMoveInput() {
+    let x = 0;
+    let y = 0;
+    const touchMag = Math.hypot(this.input.touchX, this.input.touchY);
+    if (touchMag > 0.12) {
+      x = this.input.touchX;
+      y = this.input.touchY;
+    } else {
+      const keys = this.input.keys;
+      if (keys.has('KeyW') || keys.has('ArrowUp')) y -= 1;
+      if (keys.has('KeyS') || keys.has('ArrowDown')) y += 1;
+      if (keys.has('KeyA') || keys.has('ArrowLeft')) x -= 1;
+      if (keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
+    }
+    return { x, y, magnitude: Math.hypot(x, y) };
+  }
+
   private firePlayerBullet() {
     const player = this.player;
     player.fireCooldown = 0.115;
     player.muzzle = 0.06;
+    player.muzzleColor = PLAYER_COLOR;
     const cos = Math.cos(player.angle);
     const sin = Math.sin(player.angle);
     const offset = 26;
@@ -582,6 +688,7 @@ export class ShooterGame {
       radius: 4,
       damage: 2,
       life: 1.15,
+      color: PLAYER_COLOR,
     });
 
     for (let i = 0; i < 4; i++) {
@@ -601,6 +708,54 @@ export class ShooterGame {
     }
     this.shake = Math.max(this.shake, 0.9);
     this.sfx.play('shoot');
+  }
+
+  private fireSecondary() {
+    const player = this.player;
+    this.secondaryCooldown = SECONDARY_COOLDOWN;
+    player.muzzle = 0.1;
+    player.muzzleColor = SECONDARY_COLOR;
+
+    const offset = 30;
+    const speed = 940;
+    for (let i = 0; i < SECONDARY_PELLETS; i++) {
+      const t = i / (SECONDARY_PELLETS - 1) - 0.5;
+      const angle = player.angle + t * 0.52 + rand(-0.018, 0.018);
+      const x = player.x + Math.cos(angle) * offset;
+      const y = player.y + Math.sin(angle) * offset;
+      this.bullets.push({
+        x,
+        y,
+        prevX: x,
+        prevY: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        radius: 4.5,
+        damage: 2.2,
+        life: 0.95,
+        color: SECONDARY_COLOR,
+      });
+    }
+
+    for (let i = 0; i < 12; i++) {
+      const spread = player.angle + Math.PI + rand(-0.85, 0.85);
+      const velocity = rand(70, 260);
+      this.particles.push({
+        x: player.x + Math.cos(player.angle) * offset + rand(-4, 4),
+        y: player.y + Math.sin(player.angle) * offset + rand(-4, 4),
+        vx: Math.cos(spread) * velocity,
+        vy: Math.sin(spread) * velocity,
+        life: rand(0.1, 0.28),
+        maxLife: 0.28,
+        size: rand(2, 4.5),
+        color: SECONDARY_COLOR,
+        drag: 6,
+      });
+    }
+
+    this.shake = Math.max(this.shake, 5);
+    this.sfx.play('secondary');
+    this.emitHud(true);
   }
 
   private playerHit(damage: number) {
@@ -1222,6 +1377,8 @@ export class ShooterGame {
       comboTime: this.comboTimer,
       kills: this.kills,
       muted: this.sfx.muted,
+      secondaryCooldown: clamp(this.secondaryCooldown / SECONDARY_COOLDOWN, 0, 1),
+      dodgeCooldown: clamp(this.dodgeCooldown / DODGE_COOLDOWN, 0, 1),
     };
     this.callbacks.onHud(hud);
   }
@@ -1564,13 +1721,13 @@ export class ShooterGame {
       const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
       const tailX = bullet.x - (bullet.vx / speed) * 27;
       const tailY = bullet.y - (bullet.vy / speed) * 27;
-      ctx.strokeStyle = 'rgba(95, 246, 255, 0.22)';
+      ctx.strokeStyle = withAlpha(bullet.color, 0.22);
       ctx.lineWidth = 7;
       ctx.beginPath();
       ctx.moveTo(tailX, tailY);
       ctx.lineTo(bullet.x, bullet.y);
       ctx.stroke();
-      ctx.strokeStyle = 'rgba(190, 252, 255, 0.9)';
+      ctx.strokeStyle = withAlpha(bullet.color, 0.9);
       ctx.lineWidth = 2.2;
       ctx.beginPath();
       ctx.moveTo(tailX, tailY);
@@ -1867,7 +2024,7 @@ export class ShooterGame {
 
     // Muzzle flash
     if (player.muzzle > 0) {
-      const flash = player.muzzle / 0.06;
+      const flash = Math.min(1, player.muzzle / 0.06);
       ctx.fillStyle = withAlpha('#ffffff', 0.82 * flash);
       ctx.beginPath();
       ctx.moveTo(29, 0);
@@ -1876,7 +2033,7 @@ export class ShooterGame {
       ctx.lineTo(40 + 8 * flash, 9);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = withAlpha(PLAYER_COLOR, 0.5 * flash);
+      ctx.fillStyle = withAlpha(player.muzzleColor, 0.5 * flash);
       ctx.beginPath();
       ctx.arc(30, 0, 12 * flash, 0, TAU);
       ctx.fill();

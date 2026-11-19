@@ -50,7 +50,7 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
 
             <p className="hero-note">
               <CrosshairIcon />
-              按住开火 · 自动锁定 · 每波结束修复装甲
+              按住开火 · 自动锁定 · 副武器与闪避
             </p>
           </section>
 
@@ -84,6 +84,16 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
                 <kbd className="key-wide accent">J</kbd>
                 <em>按住连射</em>
               </div>
+              <div className="control-row">
+                <span>副武器</span>
+                <kbd>K</kbd>
+                <em>散射炮</em>
+              </div>
+              <div className="control-row">
+                <span>闪避</span>
+                <kbd className="key-wide">SPACE</kbd>
+                <em>朝移动方向冲刺</em>
+              </div>
             </article>
 
             <article className={`control-card mobile-card ${isTouch ? 'is-current' : ''}`}>
@@ -112,6 +122,16 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
                 <span className="virtual-key">自动锁定</span>
                 <em>最近敌人</em>
               </div>
+              <div className="control-row">
+                <span>副武器</span>
+                <span className="virtual-key">右上按钮</span>
+                <em>散射炮</em>
+              </div>
+              <div className="control-row">
+                <span>闪避</span>
+                <span className="virtual-key">右下按钮</span>
+                <em>沿移动方向</em>
+              </div>
             </article>
 
             <div className="feature-tags">
@@ -124,7 +144,7 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
 
         <footer className="menu-footer">
           <span>SECTOR 07 · SIGNAL LOST</span>
-          <span>WASD / 左摇杆移动 &nbsp;·&nbsp; J / 右侧按钮开火</span>
+          <span>WASD / 左摇杆移动 &nbsp;·&nbsp; J / 右侧按钮开火 &nbsp;·&nbsp; K / 右上副武器</span>
         </footer>
       </main>
     </div>
@@ -270,7 +290,7 @@ export function RotateOverlay() {
           请旋转至横屏
         </h2>
         <p className="rotate-copy">
-          把手机横过来，获得完整的左侧摇杆和右侧开火区域。
+          把手机横过来，获得完整的左侧摇杆和右侧开火、技能区域。
         </p>
         <div className="rotate-controls">
           <span>左摇杆移动</span>
