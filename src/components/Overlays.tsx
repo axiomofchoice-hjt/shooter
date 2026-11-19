@@ -82,7 +82,7 @@ export function StartScreen({ isTouch, onStart, onStartBoss }: StartScreenProps)
                   <KeyboardIcon />
                 </span>
                 <div>
-                  <h2>键鼠操作</h2>
+                  <h2>键盘操作</h2>
                   <p>DESKTOP</p>
                 </div>
                 {!isTouch && <span className="control-current">当前</span>}
@@ -98,7 +98,8 @@ export function StartScreen({ isTouch, onStart, onStartBoss }: StartScreenProps)
               </div>
               <div className="control-row">
                 <span>瞄准</span>
-                <kbd className="key-wide">鼠标移动</kbd>
+                <span className="virtual-key">自动锁定</span>
+                <em>最近敌人</em>
               </div>
               <div className="control-row">
                 <span>开火</span>
@@ -112,7 +113,7 @@ export function StartScreen({ isTouch, onStart, onStartBoss }: StartScreenProps)
               </div>
               <div className="control-row">
                 <span>闪避</span>
-                <kbd className="key-wide">SPACE</kbd>
+                <kbd className="key-wide">L</kbd>
                 <em>朝移动方向冲刺</em>
               </div>
             </article>
@@ -165,7 +166,7 @@ export function StartScreen({ isTouch, onStart, onStartBoss }: StartScreenProps)
 
         <footer className="menu-footer">
           <span>SECTOR 07 · SIGNAL LOST</span>
-          <span>WASD / 左摇杆移动 &nbsp;·&nbsp; J / 右侧按钮开火 &nbsp;·&nbsp; B / 直接进入 BOSS 房</span>
+          <span>WASD 移动 &nbsp;·&nbsp; J 开火 &nbsp;·&nbsp; K 副武器 &nbsp;·&nbsp; L 闪避 &nbsp;·&nbsp; B 进入 BOSS 房</span>
         </footer>
       </main>
     </div>

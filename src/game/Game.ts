@@ -222,11 +222,6 @@ interface InputState {
   touchY: number;
   touchFire: boolean;
   fireKey: boolean;
-  mouseDown: boolean;
-  mouseScreenX: number;
-  mouseScreenY: number;
-  mouseActive: boolean;
-  autoAim: boolean;
 }
 
 export class ShooterGame {
@@ -272,11 +267,6 @@ export class ShooterGame {
     touchY: 0,
     touchFire: false,
     fireKey: false,
-    mouseDown: false,
-    mouseScreenX: 0,
-    mouseScreenY: 0,
-    mouseActive: false,
-    autoAim: true,
   };
 
   private camera = { x: WORLD_SURVIVAL / 2, y: WORLD_SURVIVAL / 2 };
@@ -378,14 +368,10 @@ export class ShooterGame {
   setTouchMove(x: number, y: number) {
     this.input.touchX = x;
     this.input.touchY = y;
-    this.input.autoAim = true;
-    this.input.mouseActive = false;
   }
 
   setTouchFire(active: boolean) {
     this.input.touchFire = active;
-    this.input.autoAim = true;
-    this.input.mouseActive = false;
   }
 
   triggerSecondary() {
@@ -440,21 +426,9 @@ export class ShooterGame {
     this.emitHud(true);
   }
 
-  setMouseScreen(x: number, y: number) {
-    this.input.mouseScreenX = x;
-    this.input.mouseScreenY = y;
-    this.input.mouseActive = true;
-    this.input.autoAim = false;
-  }
-
-  setMouseDown(down: boolean) {
-    this.input.mouseDown = down;
-  }
-
   clearInput() {
     this.input.keys.clear();
     this.input.fireKey = false;
-    this.input.mouseDown = false;
     this.input.touchX = 0;
     this.input.touchY = 0;
     this.input.touchFire = false;
@@ -706,21 +680,13 @@ export class ShooterGame {
     player.muzzle = Math.max(0, player.muzzle - dt);
 
     this.autoTarget = this.findNearestEnemy(player.x, player.y, AUTOAIM_RANGE, true);
-    const usingTouchAim = this.input.autoAim && !this.input.mouseActive;
-    if (usingTouchAim) {
-      if (this.autoTarget) {
-        player.angle = Math.atan2(this.autoTarget.y - player.y, this.autoTarget.x - player.x);
-      } else if (move.magnitude > 0.12) {
-        player.angle = Math.atan2(move.y, move.x);
-      }
-    } else if (this.input.mouseActive) {
-      const mouseWorld = this.screenToWorld(this.input.mouseScreenX, this.input.mouseScreenY);
-      player.angle = Math.atan2(mouseWorld.y - player.y, mouseWorld.x - player.x);
-    } else if (this.autoTarget) {
+    if (this.autoTarget) {
       player.angle = Math.atan2(this.autoTarget.y - player.y, this.autoTarget.x - player.x);
+    } else if (move.magnitude > 0.12) {
+      player.angle = Math.atan2(move.y, move.x);
     }
 
-    const firing = this.input.fireKey || this.input.touchFire || this.input.mouseDown;
+    const firing = this.input.fireKey || this.input.touchFire;
     if (firing && player.fireCooldown <= 0) {
       this.firePlayerBullet();
     }
@@ -1630,13 +1596,6 @@ export class ShooterGame {
 
   // ------------------------------------------------------------------ helpers
 
-  private screenToWorld(screenX: number, screenY: number) {
-    return {
-      x: (screenX - this.width / 2) / this.zoom + this.camera.x,
-      y: (screenY - this.height / 2) / this.zoom + this.camera.y,
-    };
-  }
-
   private emitHud(force = false) {
     if (!force && this.hudTimer > 0) return;
     const boss = this.boss;
@@ -1776,7 +1735,6 @@ export class ShooterGame {
     this.drawPickups();
     this.drawEnemyBullets();
     this.drawBullets();
-    this.drawAimGuide();
     this.drawEnemies();
     this.drawPlayer();
     this.drawParticles();
@@ -1789,9 +1747,6 @@ export class ShooterGame {
     if (this.banner) this.drawBanner();
     if (this.phase === 'idle') {
       this.drawMenuAtmosphere();
-    }
-    if (!this.input.autoAim && this.input.mouseActive && this.phase === 'playing') {
-      this.drawCrosshair();
     }
   }
 
@@ -2045,36 +2000,6 @@ export class ShooterGame {
       ctx.fill();
       ctx.restore();
     }
-  }
-
-  private drawAimGuide() {
-    if (
-      this.phase !== 'playing' ||
-      this.input.autoAim ||
-      !this.input.mouseActive
-    ) {
-      return;
-    }
-    const ctx = this.ctx;
-    const mouse = this.screenToWorld(this.input.mouseScreenX, this.input.mouseScreenY);
-    const player = this.player;
-    const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
-    const startX = player.x + Math.cos(angle) * 24;
-    const startY = player.y + Math.sin(angle) * 24;
-    const endX = player.x + Math.cos(angle) * Math.min(1200, dist(startX, startY, mouse.x, mouse.y));
-    const endY = player.y + Math.sin(angle) * Math.min(1200, dist(startX, startY, mouse.x, mouse.y));
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.strokeStyle = 'rgba(95, 246, 255, 0.11)';
-    ctx.lineWidth = 1 / this.zoom;
-    ctx.setLineDash([5 / this.zoom, 9 / this.zoom]);
-    ctx.lineDashOffset = -this.ambientTime * 30;
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.lineTo(endX, endY);
-    ctx.stroke();
-    ctx.restore();
   }
 
   private drawEnemies() {
@@ -2443,7 +2368,7 @@ export class ShooterGame {
   }
 
   private drawAutoTarget() {
-    if (!this.input.autoAim || !this.autoTarget || this.autoTarget.dead) return;
+    if (!this.autoTarget || this.autoTarget.dead) return;
     const ctx = this.ctx;
     const target = this.autoTarget;
     const radius = target.radius + 12;
@@ -2474,33 +2399,6 @@ export class ShooterGame {
       ctx.stroke();
       ctx.restore();
     }
-    ctx.restore();
-  }
-
-  private drawCrosshair() {
-    const ctx = this.ctx;
-    const x = this.input.mouseScreenX;
-    const y = this.input.mouseScreenY;
-    ctx.save();
-    ctx.translate(x, y);
-    const pulse = 1 + Math.sin(this.ambientTime * 5) * 0.06;
-    ctx.strokeStyle = 'rgba(95, 246, 255, 0.9)';
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.arc(0, 0, 11 * pulse, 0, TAU);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(95, 246, 255, 0.55)';
-    ctx.beginPath();
-    for (let i = 0; i < 4; i++) {
-      const angle = (i * Math.PI) / 2;
-      ctx.moveTo(Math.cos(angle) * 16, Math.sin(angle) * 16);
-      ctx.lineTo(Math.cos(angle) * 23, Math.sin(angle) * 23);
-    }
-    ctx.stroke();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(0, 0, 1.8, 0, TAU);
-    ctx.fill();
     ctx.restore();
   }
 

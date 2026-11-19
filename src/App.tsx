@@ -3,7 +3,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { ShooterGame } from './game/Game';
 import { INITIAL_HUD, type GameStats, type HudSnapshot } from './game/types';
@@ -173,7 +172,7 @@ export default function App() {
       if (!game) return;
 
       if (
-        ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)
       ) {
         event.preventDefault();
       }
@@ -184,7 +183,7 @@ export default function App() {
           if (event.code === 'KeyK') {
             event.preventDefault();
             game.triggerSecondary();
-          } else if (event.code === 'Space') {
+          } else if (event.code === 'KeyL') {
             event.preventDefault();
             game.triggerDodge();
           }
@@ -236,9 +235,6 @@ export default function App() {
   }, [retryGame, startBossGame, startGame, togglePause]);
 
   useEffect(() => {
-    const onRelease = () => gameRef.current?.setMouseDown(false);
-    window.addEventListener('pointerup', onRelease);
-    window.addEventListener('pointercancel', onRelease);
     const onVisibility = () => {
       if (document.visibilityState === 'hidden' && phaseRef.current === 'playing') {
         pauseGame();
@@ -246,33 +242,15 @@ export default function App() {
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      window.removeEventListener('pointerup', onRelease);
-      window.removeEventListener('pointercancel', onRelease);
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [pauseGame]);
-
-  const handleCanvasPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (event.pointerType !== 'mouse') return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    gameRef.current?.setMouseScreen(event.clientX - rect.left, event.clientY - rect.top);
-  };
-
-  const handleCanvasPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (event.pointerType !== 'mouse' || event.button !== 0) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    gameRef.current?.setMouseScreen(event.clientX - rect.left, event.clientY - rect.top);
-    gameRef.current?.setMouseDown(true);
-  };
 
   return (
     <div className={`app phase-${phase} ${isTouch ? 'is-touch' : 'is-desktop'}`}>
       <canvas
         ref={canvasRef}
         className="game-canvas"
-        onPointerMove={handleCanvasPointerMove}
-        onPointerDown={handleCanvasPointerDown}
-        onPointerLeave={() => gameRef.current?.setMouseDown(false)}
         onContextMenu={(event) => event.preventDefault()}
       />
       <div className="scanline-overlay" aria-hidden="true" />

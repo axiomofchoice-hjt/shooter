@@ -76,10 +76,6 @@ svg {
   touch-action: none;
 }
 
-.app.is-desktop.phase-playing .game-canvas {
-  cursor: none;
-}
-
 .scanline-overlay {
   position: absolute;
   inset: 0;
