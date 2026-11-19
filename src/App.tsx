@@ -34,6 +34,7 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
   const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
   const [stats, setStats] = useState<GameStats | null>(null);
+  const [victory, setVictory] = useState(false);
   const [isTouch, setIsTouch] = useState(detectTouchDevice);
   const [isPortrait, setIsPortrait] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -51,8 +52,9 @@ export default function App() {
     if (!canvas) return;
     const game = new ShooterGame(canvas, {
       onHud: setHud,
-      onGameOver: (nextStats) => {
+      onGameOver: (nextStats, won) => {
         setStats(nextStats);
+        setVictory(won);
         commitPhase('gameover');
       },
     });
@@ -66,9 +68,23 @@ export default function App() {
   const startGame = useCallback(() => {
     if (phaseRef.current === 'playing' || phaseRef.current === 'paused') return;
     setStats(null);
-    gameRef.current?.start();
+    setVictory(false);
+    gameRef.current?.start('survival');
     commitPhase('playing');
   }, [commitPhase]);
+
+  const startBossGame = useCallback(() => {
+    if (phaseRef.current === 'playing' || phaseRef.current === 'paused') return;
+    setStats(null);
+    setVictory(false);
+    gameRef.current?.start('boss');
+    commitPhase('playing');
+  }, [commitPhase]);
+
+  const retryGame = useCallback(() => {
+    if (stats?.mode === 'boss') startBossGame();
+    else startGame();
+  }, [stats, startBossGame, startGame]);
 
   const resumeGame = useCallback(() => {
     if (phaseRef.current !== 'paused') return;
@@ -90,6 +106,7 @@ export default function App() {
   const returnToMenu = useCallback(() => {
     gameRef.current?.toMenu();
     setStats(null);
+    setVictory(false);
     commitPhase('menu');
   }, [commitPhase]);
 
@@ -180,12 +197,23 @@ export default function App() {
         return;
       }
 
-      if (
-        event.code === 'Enter' &&
-        (phaseRef.current === 'menu' || phaseRef.current === 'gameover')
-      ) {
+      if (event.code === 'KeyB' && phaseRef.current === 'menu') {
         event.preventDefault();
-        startGame();
+        startBossGame();
+        return;
+      }
+
+      if (event.code === 'Enter') {
+        const onBossButton =
+          event.target instanceof Element && event.target.closest('.boss-button');
+        if (phaseRef.current === 'menu') {
+          if (onBossButton) return;
+          event.preventDefault();
+          startGame();
+        } else if (phaseRef.current === 'gameover') {
+          event.preventDefault();
+          retryGame();
+        }
       }
     };
 
@@ -205,7 +233,7 @@ export default function App() {
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
     };
-  }, [startGame, togglePause]);
+  }, [retryGame, startBossGame, startGame, togglePause]);
 
   useEffect(() => {
     const onRelease = () => gameRef.current?.setMouseDown(false);
@@ -264,14 +292,25 @@ export default function App() {
         />
       )}
 
-      {phase === 'menu' && <StartScreen isTouch={isTouch} onStart={startGame} />}
+      {phase === 'menu' && (
+        <StartScreen
+          isTouch={isTouch}
+          onStart={startGame}
+          onStartBoss={startBossGame}
+        />
+      )}
 
       {phase === 'paused' && (
         <PauseOverlay onResume={resumeGame} onMenu={returnToMenu} />
       )}
 
       {phase === 'gameover' && stats && (
-        <GameOverOverlay stats={stats} onRetry={startGame} onMenu={returnToMenu} />
+        <GameOverOverlay
+          stats={stats}
+          victory={victory}
+          onRetry={retryGame}
+          onMenu={returnToMenu}
+        />
       )}
 
       {requiresLandscape && <RotateOverlay />}

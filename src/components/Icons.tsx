@@ -111,6 +111,26 @@ export function BurstIcon() {
   );
 }
 
+export function BossIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 2.6 20 7v10l-8 4.4L4 17V7l8-4.4Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M8.4 12c1.2-2.2 2.4-3.2 3.6-3.2s2.4 1 3.6 3.2c-1.2 2.2-2.4 3.2-3.6 3.2S9.6 14.2 8.4 12Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <circle cx="12" cy="12" r="1.3" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function DashIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">

@@ -2,12 +2,14 @@ import { SoundFX } from './audio';
 import type {
   EnemyKind,
   GameCallbacks,
+  GameMode,
   HudSnapshot,
   WavePhase,
 } from './types';
 
 const TAU = Math.PI * 2;
-const WORLD = 2400;
+const WORLD_SURVIVAL = 2400;
+const WORLD_BOSS = 1000;
 const AUTOAIM_RANGE = 760;
 
 const PLAYER_COLOR = '#5ff6ff';
@@ -19,6 +21,13 @@ const SECONDARY_PELLETS = 7;
 const DODGE_COOLDOWN = 1.6;
 const DASH_TIME = 0.16;
 const DASH_SPEED = 1120;
+
+const BOSS_HP = 320;
+const BOSS_RADIUS = 58;
+const BOSS_COLOR = '#ff3860';
+const BOSS_CONTACT_DAMAGE = 28;
+const BOSS_SCORE = 1600;
+const BOSS_VICTORY_DELAY = 1.6;
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
@@ -52,6 +61,14 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   runner: { radius: 12, hp: 3, speed: 154, damage: 8, score: 15, color: '#ffc857' },
   tank: { radius: 26, hp: 16, speed: 52, damage: 22, score: 35, color: '#b48cff' },
   spitter: { radius: 16, hp: 6, speed: 66, damage: 10, score: 25, color: '#7dff9b' },
+  boss: {
+    radius: BOSS_RADIUS,
+    hp: BOSS_HP,
+    speed: 60,
+    damage: BOSS_CONTACT_DAMAGE,
+    score: BOSS_SCORE,
+    color: BOSS_COLOR,
+  },
 };
 
 interface Player {
@@ -195,6 +212,7 @@ interface Mote {
 }
 
 type Phase = 'idle' | 'playing' | 'gameover';
+type BossAttack = 'radial' | 'aimed' | 'summon';
 
 interface InputState {
   keys: Set<string>;
@@ -219,6 +237,8 @@ export class ShooterGame {
   private resizeObserver: ResizeObserver;
 
   private phase: Phase = 'idle';
+  private mode: GameMode = 'survival';
+  private worldSize = WORLD_SURVIVAL;
   private paused = false;
   private raf = 0;
   private lastTime = 0;
@@ -239,6 +259,10 @@ export class ShooterGame {
   private floorMarks: FloorMark[] = [];
   private motes: Mote[] = [];
   private banner: Banner | null = null;
+  private boss: Enemy | null = null;
+  private bossWindup = 0;
+  private bossAttackKind: BossAttack = 'radial';
+  private victoryTimer = 0;
 
   private input: InputState = {
     keys: new Set(),
@@ -253,7 +277,7 @@ export class ShooterGame {
     autoAim: true,
   };
 
-  private camera = { x: WORLD / 2, y: WORLD / 2 };
+  private camera = { x: WORLD_SURVIVAL / 2, y: WORLD_SURVIVAL / 2 };
   private zoom = 1;
   private shake = 0;
   private hurtFlash = 0;
@@ -296,18 +320,30 @@ export class ShooterGame {
 
   // ---------------------------------------------------------------- public API
 
-  start() {
+  start(mode: GameMode = 'survival') {
+    this.mode = mode;
+    this.worldSize = mode === 'boss' ? WORLD_BOSS : WORLD_SURVIVAL;
+    this.updateZoom();
+    this.buildDecorations();
     this.sfx.unlock();
     this.resetWorld();
     this.phase = 'playing';
     this.paused = false;
-    this.startWave(1);
+    if (mode === 'boss') {
+      this.beginBoss();
+    } else {
+      this.startWave(1);
+    }
     this.emitHud(true);
   }
 
   toMenu() {
     this.phase = 'idle';
     this.paused = false;
+    this.mode = 'survival';
+    this.worldSize = WORLD_SURVIVAL;
+    this.updateZoom();
+    this.buildDecorations();
     this.resetWorld();
     this.emitHud(true);
   }
@@ -450,8 +486,8 @@ export class ShooterGame {
 
   private resetWorld() {
     this.player = {
-      x: WORLD / 2,
-      y: WORLD / 2,
+      x: this.worldSize / 2,
+      y: this.worldSize / 2,
       vx: 0,
       vy: 0,
       radius: 17,
@@ -480,6 +516,10 @@ export class ShooterGame {
     this.pickups = [];
     this.telegraphs = [];
     this.banner = null;
+    this.boss = null;
+    this.bossWindup = 0;
+    this.bossAttackKind = 'radial';
+    this.victoryTimer = 0;
     this.score = 0;
     this.kills = 0;
     this.combo = 0;
@@ -507,9 +547,14 @@ export class ShooterGame {
     this.updateEnemies(dt);
     this.updateEnemyBullets(dt);
     this.updatePickups(dt);
-    this.updateWave(dt);
+    if (this.mode === 'survival') this.updateWave(dt);
     this.updateFx(dt);
     this.updateCamera(dt);
+
+    if (this.victoryTimer > 0) {
+      this.victoryTimer -= dt;
+      if (this.victoryTimer <= 0) this.finishBossFight();
+    }
 
     this.hurtFlash = Math.max(0, this.hurtFlash - dt * 2.6);
     this.healFlash = Math.max(0, this.healFlash - dt * 2.2);
@@ -534,27 +579,44 @@ export class ShooterGame {
     }
     if (this.phase === 'idle') {
       this.player.angle = -Math.PI / 2 + Math.sin(this.ambientTime * 0.55) * 0.25;
-      this.camera.x += (WORLD / 2 - this.camera.x) * Math.min(1, dt * 2);
-      this.camera.y += (WORLD / 2 - this.camera.y) * Math.min(1, dt * 2);
+      this.camera.x += (this.worldSize / 2 - this.camera.x) * Math.min(1, dt * 2);
+      this.camera.y += (this.worldSize / 2 - this.camera.y) * Math.min(1, dt * 2);
     }
   }
 
   private updateCamera(dt: number) {
-    const targetX = this.player.x + this.player.vx * 0.12;
-    const targetY = this.player.y + this.player.vy * 0.12;
+    let targetX = this.player.x + this.player.vx * 0.12;
+    let targetY = this.player.y + this.player.vy * 0.12;
+    if (this.mode === 'boss' && this.boss && !this.boss.dead) {
+      targetX += (this.boss.x - targetX) * 0.28;
+      targetY += (this.boss.y - targetY) * 0.28;
+    }
     const smoothing = 1 - Math.exp(-7 * dt);
     this.camera.x += (targetX - this.camera.x) * smoothing;
     this.camera.y += (targetY - this.camera.y) * smoothing;
     this.clampCamera();
   }
 
+  private updateZoom() {
+    const min = this.mode === 'boss' ? 0.68 : 0.82;
+    const max = this.mode === 'boss' ? 1.06 : 1.18;
+    this.zoom = clamp(Math.min(this.width / 860, this.height / 640), min, max);
+    this.clampCamera();
+  }
+
   private clampCamera() {
     const halfW = this.width / (2 * this.zoom);
     const halfH = this.height / (2 * this.zoom);
-    if (halfW * 2 < WORLD) this.camera.x = clamp(this.camera.x, halfW, WORLD - halfW);
-    else this.camera.x = WORLD / 2;
-    if (halfH * 2 < WORLD) this.camera.y = clamp(this.camera.y, halfH, WORLD - halfH);
-    else this.camera.y = WORLD / 2;
+    if (halfW * 2 < this.worldSize) {
+      this.camera.x = clamp(this.camera.x, halfW, this.worldSize - halfW);
+    } else {
+      this.camera.x = this.worldSize / 2;
+    }
+    if (halfH * 2 < this.worldSize) {
+      this.camera.y = clamp(this.camera.y, halfH, this.worldSize - halfH);
+    } else {
+      this.camera.y = this.worldSize / 2;
+    }
   }
 
   // ------------------------------------------------------------------- player
@@ -622,8 +684,8 @@ export class ShooterGame {
 
     player.x += player.vx * dt;
     player.y += player.vy * dt;
-    player.x = clamp(player.x, 46, WORLD - 46);
-    player.y = clamp(player.y, 46, WORLD - 46);
+    player.x = clamp(player.x, 46, this.worldSize - 46);
+    player.y = clamp(player.y, 46, this.worldSize - 46);
 
     player.fireCooldown -= dt;
     player.invuln = Math.max(0, player.invuln - dt);
@@ -790,12 +852,16 @@ export class ShooterGame {
       this.enemyBullets = [];
       this.sfx.play('death');
       this.emitHud(true);
-      this.callbacks.onGameOver({
-        score: this.score,
-        wave: this.wave,
-        kills: this.kills,
-        time: this.elapsed,
-      });
+      this.callbacks.onGameOver(
+        {
+          mode: this.mode,
+          score: this.score,
+          wave: this.wave,
+          kills: this.kills,
+          time: this.elapsed,
+        },
+        false,
+      );
     } else {
       this.emitHud(true);
     }
@@ -837,8 +903,8 @@ export class ShooterGame {
         bullet.life <= 0 ||
         bullet.x < -60 ||
         bullet.y < -60 ||
-        bullet.x > WORLD + 60 ||
-        bullet.y > WORLD + 60
+        bullet.x > this.worldSize + 60 ||
+        bullet.y > this.worldSize + 60
       ) {
         this.bullets.splice(i, 1);
       }
@@ -861,9 +927,19 @@ export class ShooterGame {
       const points = Math.round(enemy.score * multiplier);
       this.score += points;
       this.killFlash = Math.max(this.killFlash, 0.35);
-      this.shake = Math.max(this.shake, enemy.kind === 'tank' ? 7 : 3.2);
+      this.shake = Math.max(
+        this.shake,
+        enemy.kind === 'boss' ? 20 : enemy.kind === 'tank' ? 7 : 3.2,
+      );
       this.sfx.play('kill');
-      this.spawnBurst(enemy.x, enemy.y, enemy.color, enemy.kind === 'tank' ? 34 : 18, 250, 0.65);
+      this.spawnBurst(
+        enemy.x,
+        enemy.y,
+        enemy.color,
+        enemy.kind === 'boss' ? 60 : enemy.kind === 'tank' ? 34 : 18,
+        250,
+        0.65,
+      );
       this.spawnBurst(enemy.x, enemy.y, '#ffffff', 5, 160, 0.35);
       this.floaters.push({
         x: enemy.x,
@@ -874,13 +950,19 @@ export class ShooterGame {
         maxLife: 0.9,
         size: 15,
       });
-      this.maybeDropPickup(enemy);
+      if (enemy.kind === 'boss') {
+        this.bossDefeated(enemy);
+      } else {
+        this.maybeDropPickup(enemy);
+      }
     }
   }
 
   private updateEnemyBullets(dt: number) {
     for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
       const bullet = this.enemyBullets[i];
+      // Player death clears the bullet array mid-loop.
+      if (!bullet) continue;
       bullet.prevX = bullet.x;
       bullet.prevY = bullet.y;
       bullet.x += bullet.vx * dt;
@@ -911,8 +993,8 @@ export class ShooterGame {
         bullet.life <= 0 ||
         bullet.x < -40 ||
         bullet.y < -40 ||
-        bullet.x > WORLD + 40 ||
-        bullet.y > WORLD + 40
+        bullet.x > this.worldSize + 40 ||
+        bullet.y > this.worldSize + 40
       ) {
         this.enemyBullets.splice(i, 1);
       }
@@ -952,18 +1034,33 @@ export class ShooterGame {
         if (distance < 660 && enemy.attackTimer <= 0 && !player.dead) {
           this.spitterFire(enemy);
         }
+      } else if (enemy.kind === 'boss') {
+        if (distance > 300) {
+          desiredX = nx;
+          desiredY = ny;
+        } else if (distance < 185) {
+          desiredX = -nx;
+          desiredY = -ny;
+        } else {
+          const strafe = Math.sin(this.elapsed * 0.9 + enemy.seed) > 0 ? 1 : -1;
+          desiredX = -ny * strafe * 0.85 + nx * 0.1;
+          desiredY = nx * strafe * 0.85 + ny * 0.1;
+        }
+        if (!player.dead) this.updateBossAttack(enemy, dt);
       }
 
+      const phase2 = enemy.kind === 'boss' && enemy.hp <= enemy.maxHp * 0.5;
       const desiredLen = Math.max(0.001, Math.hypot(desiredX, desiredY));
       desiredX /= desiredLen;
       desiredY /= desiredLen;
       const turn = 1 - Math.exp(-(enemy.kind === 'runner' ? 10 : 4) * dt);
-      enemy.vx += (desiredX * enemy.speed - enemy.vx) * turn;
-      enemy.vy += (desiredY * enemy.speed - enemy.vy) * turn;
+      const speed = enemy.speed * (phase2 ? 1.32 : 1);
+      enemy.vx += (desiredX * speed - enemy.vx) * turn;
+      enemy.vy += (desiredY * speed - enemy.vy) * turn;
       enemy.x += enemy.vx * dt;
       enemy.y += enemy.vy * dt;
-      enemy.x = clamp(enemy.x, 30, WORLD - 30);
-      enemy.y = clamp(enemy.y, 30, WORLD - 30);
+      enemy.x = clamp(enemy.x, 30, this.worldSize - 30);
+      enemy.y = clamp(enemy.y, 30, this.worldSize - 30);
 
       if (enemy.age > 0.18 && !player.dead && distance < enemy.radius + player.radius - 2) {
         if (player.invuln <= 0) {
@@ -983,7 +1080,7 @@ export class ShooterGame {
       if (a.dead) continue;
       for (let j = i + 1; j < this.enemies.length; j++) {
         const b = this.enemies[j];
-        if (b.dead) continue;
+        if (b.dead || a.kind === 'boss' || b.kind === 'boss') continue;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const minDist = (a.radius + b.radius) * 0.88;
@@ -1024,6 +1121,168 @@ export class ShooterGame {
     });
     this.spawnBurst(x, y, enemy.color, 4, 80, 0.25);
     this.sfx.play('spit');
+  }
+
+  private updateBossAttack(enemy: Enemy, dt: number) {
+    if (this.bossWindup > 0) {
+      this.bossWindup = Math.max(0, this.bossWindup - dt);
+      if (this.bossWindup <= 0) this.releaseBossAttack(enemy);
+      return;
+    }
+    if (enemy.attackTimer > 0) return;
+
+    const phase2 = enemy.hp <= enemy.maxHp * 0.5;
+    const roll = Math.random();
+    if (phase2 && roll < 0.24) {
+      this.bossAttackKind = 'summon';
+    } else {
+      this.bossAttackKind = roll < 0.62 ? 'radial' : 'aimed';
+    }
+    this.bossWindup = phase2 ? 0.45 : 0.62;
+    this.spawnBurst(enemy.x, enemy.y, BOSS_COLOR, 10, 130, 0.5);
+    this.sfx.play('bossCharge');
+  }
+
+  private releaseBossAttack(enemy: Enemy) {
+    const phase2 = enemy.hp <= enemy.maxHp * 0.5;
+    const player = this.player;
+
+    if (this.bossAttackKind === 'summon') {
+      const minions = this.enemies.filter(
+        (other) => !other.dead && other.kind !== 'boss',
+      ).length;
+      if (minions < 6) {
+        for (let i = 0; i < 3; i++) {
+          const angle = rand(0, TAU);
+          const radius = rand(130, 230);
+          const kind: EnemyKind = i === 1 ? 'runner' : 'grunt';
+          this.spawnEnemy(
+            kind,
+            clamp(enemy.x + Math.cos(angle) * radius, 80, this.worldSize - 80),
+            clamp(enemy.y + Math.sin(angle) * radius, 80, this.worldSize - 80),
+          );
+        }
+      }
+      enemy.attackTimer = rand(1.5, 2);
+    } else if (this.bossAttackKind === 'radial') {
+      const count = phase2 ? 20 : 14;
+      const offset = rand(0, TAU);
+      for (let i = 0; i < count; i++) {
+        const angle = offset + (i / count) * TAU;
+        this.enemyBullets.push({
+          x: enemy.x,
+          y: enemy.y,
+          prevX: enemy.x,
+          prevY: enemy.y,
+          vx: Math.cos(angle) * (phase2 ? 225 : 190),
+          vy: Math.sin(angle) * (phase2 ? 225 : 190),
+          radius: 7,
+          damage: 9,
+          life: 5,
+          color: BOSS_COLOR,
+        });
+      }
+      enemy.attackTimer = phase2 ? rand(1.15, 1.55) : rand(1.8, 2.3);
+      this.shake = Math.max(this.shake, 7);
+    } else {
+      const count = phase2 ? 5 : 3;
+      const base = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+      for (let i = 0; i < count; i++) {
+        const spread = i / (count - 1) - 0.5;
+        const angle = base + spread * 0.32;
+        this.enemyBullets.push({
+          x: enemy.x + Math.cos(angle) * (enemy.radius - 4),
+          y: enemy.y + Math.sin(angle) * (enemy.radius - 4),
+          prevX: enemy.x,
+          prevY: enemy.y,
+          vx: Math.cos(angle) * 350,
+          vy: Math.sin(angle) * 350,
+          radius: 6.5,
+          damage: 12,
+          life: 3.2,
+          color: '#ff8098',
+        });
+      }
+      enemy.attackTimer = phase2 ? rand(1.1, 1.5) : rand(1.6, 2.1);
+      this.shake = Math.max(this.shake, 5);
+    }
+
+    this.spawnBurst(enemy.x, enemy.y, phase2 ? '#ff8098' : BOSS_COLOR, 18, 220, 0.55);
+    this.sfx.play('bossAttack');
+    this.emitHud(true);
+  }
+
+  private beginBoss() {
+    this.wave = 1;
+    this.wavePhase = 'spawning';
+    this.spawnQueue = [];
+    this.spawnTimer = 0;
+    this.intermissionTimer = 0;
+    this.bossWindup = 0;
+    this.bossAttackKind = 'radial';
+
+    const x = this.worldSize / 2 + 250;
+    const y = this.worldSize / 2;
+    this.spawnEnemy('boss', x, y);
+    const boss = this.enemies[this.enemies.length - 1];
+    boss.hp = boss.maxHp = BOSS_HP;
+    boss.attackTimer = 2.2;
+    this.boss = boss;
+
+    this.banner = {
+      title: 'BOSS',
+      sub: '压制核心 · 击破威胁',
+      time: 2.2,
+      duration: 2.2,
+      color: BOSS_COLOR,
+    };
+    this.sfx.play('bossIntro');
+    this.spawnBurst(x, y, BOSS_COLOR, 40, 320, 0.9);
+    this.emitHud(true);
+  }
+
+  private bossDefeated(boss: Enemy) {
+    this.victoryTimer = BOSS_VICTORY_DELAY;
+    this.bossWindup = 0;
+    this.player.invuln = Math.max(this.player.invuln, BOSS_VICTORY_DELAY + 1);
+    this.enemyBullets = [];
+
+    for (const enemy of this.enemies) {
+      if (enemy === boss || enemy.dead) continue;
+      enemy.dead = true;
+      this.spawnBurst(enemy.x, enemy.y, enemy.color, 14, 220, 0.6);
+    }
+
+    this.shake = 26;
+    this.killFlash = 1;
+    this.spawnBurst(boss.x, boss.y, BOSS_COLOR, 86, 460, 1.3);
+    this.spawnBurst(boss.x, boss.y, '#ffffff', 34, 300, 0.9);
+    this.banner = {
+      title: 'BOSS DOWN',
+      sub: '压制核心已沉默',
+      time: 2.2,
+      duration: 2.2,
+      color: '#7dff9b',
+    };
+    this.sfx.play('bossDown');
+    this.emitHud(true);
+  }
+
+  private finishBossFight() {
+    if (this.phase !== 'playing') return;
+    this.phase = 'gameover';
+    this.clearInput();
+    this.emitHud(true);
+    this.callbacks.onGameOver(
+      {
+        mode: 'boss',
+        score: this.score,
+        wave: 1,
+        kills: this.kills,
+        time: this.elapsed,
+      },
+      true,
+    );
   }
 
   private findNearestEnemy(
@@ -1157,8 +1416,8 @@ export class ShooterGame {
     };
     if (this.player.hp < this.player.maxHp * 0.7) {
       this.dropPickup(
-        clamp(this.player.x + rand(-110, 110), 60, WORLD - 60),
-        clamp(this.player.y + rand(-110, 110), 60, WORLD - 60),
+        clamp(this.player.x + rand(-110, 110), 60, this.worldSize - 60),
+        clamp(this.player.y + rand(-110, 110), 60, this.worldSize - 60),
       );
     }
     this.sfx.play('clear');
@@ -1168,7 +1427,7 @@ export class ShooterGame {
   private pickSpawnPoint() {
     const halfW = this.width / (2 * this.zoom);
     const halfH = this.height / (2 * this.zoom);
-    let best = { x: WORLD / 2, y: WORLD / 2 };
+    let best = { x: this.worldSize / 2, y: this.worldSize / 2 };
     let bestScore = -1;
 
     for (let attempt = 0; attempt < 14; attempt++) {
@@ -1189,13 +1448,13 @@ export class ShooterGame {
         y += halfH + margin;
         x += rand(-halfW, halfW);
       }
-      x = clamp(x, 70, WORLD - 70);
-      y = clamp(y, 70, WORLD - 70);
+      x = clamp(x, 70, this.worldSize - 70);
+      y = clamp(y, 70, this.worldSize - 70);
       let playerDistance = dist(x, y, this.player.x, this.player.y);
       if (playerDistance > 680) {
         const pull = 680 / playerDistance;
-        x = clamp(this.player.x + (x - this.player.x) * pull, 70, WORLD - 70);
-        y = clamp(this.player.y + (y - this.player.y) * pull, 70, WORLD - 70);
+        x = clamp(this.player.x + (x - this.player.x) * pull, 70, this.worldSize - 70);
+        y = clamp(this.player.y + (y - this.player.y) * pull, 70, this.worldSize - 70);
         playerDistance = dist(x, y, this.player.x, this.player.y);
       }
       const score = playerDistance < 350 ? playerDistance : 1000 + playerDistance;
@@ -1253,8 +1512,8 @@ export class ShooterGame {
 
   private dropPickup(x: number, y: number) {
     this.pickups.push({
-      x: clamp(x, 50, WORLD - 50),
-      y: clamp(y, 50, WORLD - 50),
+      x: clamp(x, 50, this.worldSize - 50),
+      y: clamp(y, 50, this.worldSize - 50),
       age: 0,
       life: 24,
     });
@@ -1364,7 +1623,10 @@ export class ShooterGame {
 
   private emitHud(force = false) {
     if (!force && this.hudTimer > 0) return;
+    const boss = this.boss;
+    const bossHp = boss ? Math.max(0, Math.ceil(boss.hp)) : 0;
     const hud: HudSnapshot = {
+      mode: this.mode,
       hp: Math.ceil(this.player.hp),
       maxHp: this.player.maxHp,
       score: this.score,
@@ -1379,6 +1641,9 @@ export class ShooterGame {
       muted: this.sfx.muted,
       secondaryCooldown: clamp(this.secondaryCooldown / SECONDARY_COOLDOWN, 0, 1),
       dodgeCooldown: clamp(this.dodgeCooldown / DODGE_COOLDOWN, 0, 1),
+      bossHp,
+      bossMaxHp: boss?.maxHp ?? 0,
+      bossPhase: boss && boss.hp <= boss.maxHp * 0.5 ? 2 : 1,
     };
     this.callbacks.onHud(hud);
   }
@@ -1400,8 +1665,7 @@ export class ShooterGame {
     this.dpr = dpr;
     this.canvas.width = Math.round(width * dpr);
     this.canvas.height = Math.round(height * dpr);
-    this.zoom = clamp(Math.min(width / 860, height / 640), 0.82, 1.18);
-    this.clampCamera();
+    this.updateZoom();
 
     const bg = this.ctx.createRadialGradient(
       width * 0.5,
@@ -1434,8 +1698,8 @@ export class ShooterGame {
     this.decorations = [];
     for (let i = 0; i < 100; i++) {
       this.decorations.push({
-        x: rand(80, WORLD - 80),
-        y: rand(80, WORLD - 80),
+        x: rand(80, this.worldSize - 80),
+        y: rand(80, this.worldSize - 80),
         size: rand(1, 3.4),
         alpha: rand(0.06, 0.28),
         phase: rand(0, TAU),
@@ -1446,8 +1710,8 @@ export class ShooterGame {
     const kinds: FloorMark['kind'][] = ['ring', 'cross', 'diamond'];
     for (let i = 0; i < 34; i++) {
       this.floorMarks.push({
-        x: rand(100, WORLD - 100),
-        y: rand(100, WORLD - 100),
+        x: rand(100, this.worldSize - 100),
+        y: rand(100, this.worldSize - 100),
         radius: rand(28, 130),
         rotation: rand(0, TAU),
         alpha: rand(0.025, 0.085),
@@ -1520,12 +1784,12 @@ export class ShooterGame {
     const halfW = this.width / (2 * this.zoom);
     const halfH = this.height / (2 * this.zoom);
     const left = Math.max(0, this.camera.x - halfW);
-    const right = Math.min(WORLD, this.camera.x + halfW);
+    const right = Math.min(this.worldSize, this.camera.x + halfW);
     const top = Math.max(0, this.camera.y - halfH);
-    const bottom = Math.min(WORLD, this.camera.y + halfH);
+    const bottom = Math.min(this.worldSize, this.camera.y + halfH);
 
     ctx.fillStyle = '#060b14';
-    ctx.fillRect(0, 0, WORLD, WORLD);
+    ctx.fillRect(0, 0, this.worldSize, this.worldSize);
 
     // Grid
     const step = 80;
@@ -1553,17 +1817,17 @@ export class ShooterGame {
     ctx.strokeStyle = 'rgba(95, 246, 255, 0.055)';
     ctx.lineWidth = 2.5 / this.zoom;
     ctx.beginPath();
-    ctx.arc(WORLD / 2, WORLD / 2, 330, 0, TAU);
+    ctx.arc(this.worldSize / 2, this.worldSize / 2, 330, 0, TAU);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(WORLD / 2, WORLD / 2, 360, 0, TAU);
+    ctx.arc(this.worldSize / 2, this.worldSize / 2, 360, 0, TAU);
     ctx.stroke();
     ctx.strokeStyle = 'rgba(95, 246, 255, 0.03)';
     ctx.beginPath();
-    ctx.moveTo(WORLD / 2 - 430, WORLD / 2);
-    ctx.lineTo(WORLD / 2 + 430, WORLD / 2);
-    ctx.moveTo(WORLD / 2, WORLD / 2 - 430);
-    ctx.lineTo(WORLD / 2, WORLD / 2 + 430);
+    ctx.moveTo(this.worldSize / 2 - 430, this.worldSize / 2);
+    ctx.lineTo(this.worldSize / 2 + 430, this.worldSize / 2);
+    ctx.moveTo(this.worldSize / 2, this.worldSize / 2 - 430);
+    ctx.lineTo(this.worldSize / 2, this.worldSize / 2 + 430);
     ctx.stroke();
 
     // Faint survey markings
@@ -1626,18 +1890,18 @@ export class ShooterGame {
     // World border
     ctx.strokeStyle = 'rgba(95, 246, 255, 0.34)';
     ctx.lineWidth = 3 / this.zoom;
-    ctx.strokeRect(24, 24, WORLD - 48, WORLD - 48);
+    ctx.strokeRect(24, 24, this.worldSize - 48, this.worldSize - 48);
     ctx.strokeStyle = 'rgba(95, 246, 255, 0.08)';
     ctx.lineWidth = 12 / this.zoom;
-    ctx.strokeRect(26, 26, WORLD - 52, WORLD - 52);
+    ctx.strokeRect(26, 26, this.worldSize - 52, this.worldSize - 52);
 
     // Corner brackets
     const bracket = 60;
     const corners: Array<[number, number, number, number]> = [
       [24, 24, 1, 1],
-      [WORLD - 24, 24, -1, 1],
-      [24, WORLD - 24, 1, -1],
-      [WORLD - 24, WORLD - 24, -1, -1],
+      [this.worldSize - 24, 24, -1, 1],
+      [24, this.worldSize - 24, 1, -1],
+      [this.worldSize - 24, this.worldSize - 24, -1, -1],
     ];
     ctx.strokeStyle = 'rgba(95, 246, 255, 0.7)';
     ctx.lineWidth = 5 / this.zoom;
@@ -1890,7 +2154,7 @@ export class ShooterGame {
         ctx.beginPath();
         ctx.arc(0, 0, 7, 0, TAU);
         ctx.fill();
-      } else {
+      } else if (enemy.kind === 'spitter') {
         ctx.beginPath();
         ctx.arc(0, 0, enemy.radius, 0, TAU);
         ctx.fill();
@@ -1909,11 +2173,100 @@ export class ShooterGame {
         ctx.beginPath();
         ctx.arc(0, 0, 2.3, 0, TAU);
         ctx.fill();
+      } else if (enemy.kind === 'boss') {
+        const spin = this.elapsed * 0.6;
+        ctx.strokeStyle = withAlpha(enemy.color, 0.36);
+        ctx.lineWidth = 2;
+        ctx.setLineDash([12, 9]);
+        ctx.beginPath();
+        ctx.arc(0, 0, enemy.radius + 16, spin, spin + TAU * 0.8);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.strokeStyle = withAlpha(enemy.color, 0.55);
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const angle = (i * TAU) / 8;
+          ctx.moveTo(
+            Math.cos(angle) * (enemy.radius - 3),
+            Math.sin(angle) * (enemy.radius - 3),
+          );
+          ctx.lineTo(
+            Math.cos(angle) * (enemy.radius + 10),
+            Math.sin(angle) * (enemy.radius + 10),
+          );
+        }
+        ctx.stroke();
+
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const angle = (i * TAU) / 8;
+          const px = Math.cos(angle) * enemy.radius;
+          const py = Math.sin(angle) * enemy.radius;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.rotate(-enemy.angle);
+        ctx.strokeStyle = withAlpha(enemy.color, 0.5);
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, enemy.radius * 0.58, 0, TAU);
+        ctx.stroke();
+
+        ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : 'rgba(38, 3, 13, 0.94)';
+        ctx.beginPath();
+        ctx.arc(0, 0, enemy.radius * 0.34, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = withAlpha(enemy.color, 0.85);
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : '#ffe4ea';
+        ctx.beginPath();
+        ctx.arc(0, 0, 9, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = enemy.color;
+        ctx.beginPath();
+        ctx.arc(0, 0, 5, 0, TAU);
+        ctx.fill();
+
+        ctx.rotate(enemy.angle);
+        ctx.fillStyle = withAlpha(enemy.color, 0.24);
+        ctx.strokeStyle = withAlpha(enemy.color, 0.8);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(enemy.radius * 0.62, -8, enemy.radius * 0.58, 16, 4);
+        ctx.fill();
+        ctx.stroke();
       }
 
       ctx.restore();
 
-      if (enemy.hp < enemy.maxHp && enemy.age > 0.2) {
+      if (enemy.kind === 'boss' && this.bossWindup > 0) {
+        const pulse = 0.5 + Math.sin(this.ambientTime * 24) * 0.28;
+        const color = this.bossAttackKind === 'summon' ? '#ffc857' : BOSS_COLOR;
+        ctx.save();
+        ctx.strokeStyle = withAlpha(color, 0.82);
+        ctx.lineWidth = 3 / this.zoom;
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, enemy.radius + 20 + pulse * 8, 0, TAU);
+        ctx.stroke();
+        ctx.strokeStyle = withAlpha(color, 0.34);
+        ctx.setLineDash([8 / this.zoom, 12 / this.zoom]);
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, enemy.radius + 34 + pulse * 10, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (enemy.kind !== 'boss' && enemy.hp < enemy.maxHp && enemy.age > 0.2) {
         const barWidth = Math.max(30, enemy.radius * 2.1);
         const barY = enemy.y - enemy.radius - 14;
         ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
@@ -2205,7 +2558,15 @@ export class ShooterGame {
     const t = banner.time;
     const progress = 1 - t / banner.duration;
     const alpha = Math.min(1, progress * 6, t * 2.2);
-    const y = this.height * (this.width < 620 ? 0.3 : 0.25);
+    const y =
+      this.height *
+      (this.mode === 'boss'
+        ? this.width < 620
+          ? 0.38
+          : 0.3
+        : this.width < 620
+          ? 0.3
+          : 0.25);
     const titleSize = this.width < 620 ? 30 : 44;
     const subSize = this.width < 620 ? 11 : 13;
 

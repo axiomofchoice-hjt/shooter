@@ -1,8 +1,11 @@
-export type EnemyKind = 'grunt' | 'runner' | 'tank' | 'spitter';
+export type GameMode = 'survival' | 'boss';
+
+export type EnemyKind = 'grunt' | 'runner' | 'tank' | 'spitter' | 'boss';
 
 export type WavePhase = 'spawning' | 'intermission';
 
 export interface HudSnapshot {
+  mode: GameMode;
   hp: number;
   maxHp: number;
   score: number;
@@ -16,9 +19,13 @@ export interface HudSnapshot {
   muted: boolean;
   secondaryCooldown: number;
   dodgeCooldown: number;
+  bossHp: number;
+  bossMaxHp: number;
+  bossPhase: number;
 }
 
 export interface GameStats {
+  mode: GameMode;
   score: number;
   wave: number;
   kills: number;
@@ -27,10 +34,11 @@ export interface GameStats {
 
 export interface GameCallbacks {
   onHud: (hud: HudSnapshot) => void;
-  onGameOver: (stats: GameStats) => void;
+  onGameOver: (stats: GameStats, victory: boolean) => void;
 }
 
 export const INITIAL_HUD: HudSnapshot = {
+  mode: 'survival',
   hp: 100,
   maxHp: 100,
   score: 0,
@@ -44,4 +52,7 @@ export const INITIAL_HUD: HudSnapshot = {
   muted: false,
   secondaryCooldown: 0,
   dodgeCooldown: 0,
+  bossHp: 0,
+  bossMaxHp: 0,
+  bossPhase: 1,
 };

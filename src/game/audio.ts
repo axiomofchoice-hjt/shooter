@@ -9,7 +9,11 @@ type SoundName =
   | 'death'
   | 'spit'
   | 'secondary'
-  | 'dash';
+  | 'dash'
+  | 'bossIntro'
+  | 'bossCharge'
+  | 'bossAttack'
+  | 'bossDown';
 
 const STORAGE_KEY = 'shooter-muted';
 
@@ -101,6 +105,25 @@ export class SoundFX {
       case 'dash':
         this.tone(190, 720, 0.16, 'sine', 0.11, 0);
         this.tone(520, 160, 0.12, 'triangle', 0.05, 0.02);
+        break;
+      case 'bossIntro':
+        this.tone(90, 40, 0.7, 'sawtooth', 0.17, 0);
+        this.tone(180, 90, 0.5, 'square', 0.08, 0.15);
+        this.tone(360, 180, 0.6, 'triangle', 0.06, 0.3);
+        break;
+      case 'bossCharge':
+        this.tone(150, 520, 0.4, 'sine', 0.08, 0);
+        this.tone(300, 900, 0.35, 'triangle', 0.04, 0.08);
+        break;
+      case 'bossAttack':
+        this.tone(130, 42, 0.32, 'sawtooth', 0.15, 0);
+        this.tone(90, 32, 0.4, 'square', 0.08, 0.02);
+        this.tone(620, 180, 0.18, 'triangle', 0.05, 0);
+        break;
+      case 'bossDown':
+        this.tone(320, 40, 1.2, 'sawtooth', 0.2, 0);
+        this.tone(160, 30, 1.5, 'square', 0.11, 0.08);
+        this.tone(880, 220, 0.5, 'triangle', 0.06, 0);
         break;
     }
   }

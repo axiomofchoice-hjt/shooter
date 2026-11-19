@@ -1,6 +1,7 @@
 import type { GameStats } from '../game/types';
 import {
   ArrowIcon,
+  BossIcon,
   CrosshairIcon,
   KeyboardIcon,
   PlayIcon,
@@ -10,9 +11,10 @@ import {
 interface StartScreenProps {
   isTouch: boolean;
   onStart: () => void;
+  onStartBoss: () => void;
 }
 
-export function StartScreen({ isTouch, onStart }: StartScreenProps) {
+export function StartScreen({ isTouch, onStart, onStartBoss }: StartScreenProps) {
   return (
     <div className="overlay menu-overlay">
       <div className="menu-glow menu-glow-a" />
@@ -31,7 +33,7 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
             <p className="hero-kicker">俯视角 · 生存射击</p>
             <h1 className="menu-title">SHOOTER</h1>
             <p className="hero-lead">
-              禁区信号失控。锁定最近的敌人，在无尽波次里活下来。
+              禁区信号失控。锁定最近的敌人活下来，或直接进入 BOSS 房。
             </p>
 
             <button type="button" className="start-button" onClick={onStart} autoFocus>
@@ -44,6 +46,25 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
               </span>
               <span className="start-button-key">
                 {isTouch ? 'TAP' : 'ENTER'}
+                <ArrowIcon />
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className="boss-button"
+              onClick={onStartBoss}
+              title="直接进入 BOSS 房"
+            >
+              <span className="boss-button-icon">
+                <BossIcon />
+              </span>
+              <span className="boss-button-copy">
+                <strong>进入 BOSS 房</strong>
+                <small>BOSS ARENA · 小房间单挑</small>
+              </span>
+              <span className="boss-button-key">
+                {isTouch ? 'TAP' : 'B'}
                 <ArrowIcon />
               </span>
             </button>
@@ -136,7 +157,7 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
 
             <div className="feature-tags">
               <span>无限波次</span>
-              <span>4 种敌人</span>
+              <span>BOSS 房</span>
               <span>粒子视效</span>
             </div>
           </aside>
@@ -144,7 +165,7 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
 
         <footer className="menu-footer">
           <span>SECTOR 07 · SIGNAL LOST</span>
-          <span>WASD / 左摇杆移动 &nbsp;·&nbsp; J / 右侧按钮开火 &nbsp;·&nbsp; K / 右上副武器</span>
+          <span>WASD / 左摇杆移动 &nbsp;·&nbsp; J / 右侧按钮开火 &nbsp;·&nbsp; B / 直接进入 BOSS 房</span>
         </footer>
       </main>
     </div>
@@ -182,6 +203,7 @@ export function PauseOverlay({ onResume, onMenu }: PauseOverlayProps) {
 
 interface GameOverOverlayProps {
   stats: GameStats;
+  victory: boolean;
   onRetry: () => void;
   onMenu: () => void;
 }
@@ -193,7 +215,12 @@ function formatTime(totalSeconds: number) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-export function GameOverOverlay({ stats, onRetry, onMenu }: GameOverOverlayProps) {
+export function GameOverOverlay({
+  stats,
+  victory,
+  onRetry,
+  onMenu,
+}: GameOverOverlayProps) {
   const rank =
     stats.score >= 5000
       ? 'S'
@@ -204,18 +231,30 @@ export function GameOverOverlay({ stats, onRetry, onMenu }: GameOverOverlayProps
           : stats.score >= 500
             ? 'C'
             : 'D';
+  const isBoss = stats.mode === 'boss';
+  const eyebrow = victory ? 'THREAT NEUTRALIZED' : isBoss ? 'CORE ONLINE' : 'SIGNAL LOST';
+  const title = victory ? 'BOSS 已击破' : isBoss ? '挑战失败' : '信号中断';
+  const copy = victory
+    ? '压制核心沉默，小房间里的威胁暂时清空。'
+    : isBoss
+      ? '压制核心仍然在线。闪避它的弹幕，再进一次 BOSS 房。'
+      : '你被敌对信号淹没了。还能再撑一波吗？';
 
   return (
-    <div className="overlay modal-overlay">
+    <div className={`overlay modal-overlay ${victory ? 'is-victory' : ''}`}>
       <section className="modal-panel game-over-panel" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
         <div className="game-over-head">
-          <span className="modal-eyebrow danger">SIGNAL LOST</span>
-          <span className={`rank-badge rank-${rank}`}>RANK {rank}</span>
+          <span className={`modal-eyebrow ${victory ? 'success' : 'danger'}`}>{eyebrow}</span>
+          {victory ? (
+            <span className="rank-badge rank-clear">CLEAR</span>
+          ) : (
+            <span className={`rank-badge rank-${rank}`}>RANK {rank}</span>
+          )}
         </div>
         <h2 id="gameover-title" className="modal-title">
-          信号中断
+          {title}
         </h2>
-        <p className="modal-copy">你被敌对信号淹没了。还能再撑一波吗？</p>
+        <p className="modal-copy">{copy}</p>
 
         <div className="stats-grid">
           <div className="stat-block stat-main">
@@ -223,8 +262,10 @@ export function GameOverOverlay({ stats, onRetry, onMenu }: GameOverOverlayProps
             <strong>{String(stats.score).padStart(6, '0')}</strong>
           </div>
           <div className="stat-block">
-            <span>抵达波次</span>
-            <strong>{String(stats.wave).padStart(2, '0')}</strong>
+            <span>{isBoss ? 'BOSS 战' : '抵达波次'}</span>
+            <strong>
+              {isBoss ? (victory ? '击破' : '失败') : String(stats.wave).padStart(2, '0')}
+            </strong>
           </div>
           <div className="stat-block">
             <span>击杀</span>
@@ -239,7 +280,7 @@ export function GameOverOverlay({ stats, onRetry, onMenu }: GameOverOverlayProps
         <div className="modal-actions row-actions">
           <button type="button" className="primary-button" onClick={onRetry} autoFocus>
             <PlayIcon />
-            再来一局
+            {isBoss ? (victory ? '再战 BOSS' : '重试 BOSS') : '再来一局'}
           </button>
           <button type="button" className="ghost-button" onClick={onMenu}>
             返回主界面
