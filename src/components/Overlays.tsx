@@ -232,3 +232,56 @@ export function GameOverOverlay({ stats, onRetry, onMenu }: GameOverOverlayProps
     </div>
   );
 }
+
+export function RotateOverlay() {
+  return (
+    <div className="rotate-overlay" role="alertdialog" aria-modal="true" aria-labelledby="rotate-title">
+      <div className="rotate-panel">
+        <p className="rotate-eyebrow">
+          <span className="status-dot" />
+          LANDSCAPE REQUIRED
+        </p>
+        <div className="rotate-graphic" aria-hidden="true">
+          <svg viewBox="0 0 160 140" fill="none">
+            <circle cx="80" cy="70" r="53" stroke="rgba(95, 246, 255, 0.16)" strokeDasharray="3 9" />
+            <rect x="62" y="26" width="36" height="66" rx="8" stroke="#5ff6ff" strokeWidth="1.6" />
+            <rect x="72" y="32" width="16" height="2" rx="1" fill="rgba(95, 246, 255, 0.6)" />
+            <circle cx="80" cy="83" r="2" fill="#5ff6ff" />
+            <path
+              d="M31 95a53 53 0 0 1 18-69"
+              stroke="rgba(95, 246, 255, 0.7)"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+            <path
+              d="m43 21 10 6-10 7"
+              stroke="#5ff6ff"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M129 45a53 53 0 0 1-18 69"
+              stroke="rgba(255, 77, 125, 0.45)"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeDasharray="3 6"
+            />
+          </svg>
+        </div>
+        <h2 id="rotate-title" className="rotate-title">
+          请旋转至横屏
+        </h2>
+        <p className="rotate-copy">
+          把手机横过来，获得完整的左侧摇杆和右侧开火区域。
+        </p>
+        <div className="rotate-controls">
+          <span>左摇杆移动</span>
+          <span>右侧开火</span>
+          <span>自动锁定</span>
+        </div>
+        <p className="rotate-hint">横屏后点击继续</p>
+      </div>
+    </div>
+  );
+}

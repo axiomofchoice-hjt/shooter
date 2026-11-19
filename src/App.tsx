@@ -12,6 +12,7 @@ import { TouchControls } from './components/TouchControls';
 import {
   GameOverOverlay,
   PauseOverlay,
+  RotateOverlay,
   StartScreen,
 } from './components/Overlays';
 
@@ -34,6 +35,11 @@ export default function App() {
   const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
   const [stats, setStats] = useState<GameStats | null>(null);
   const [isTouch, setIsTouch] = useState(detectTouchDevice);
+  const [isPortrait, setIsPortrait] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(orientation: portrait)').matches;
+  });
+  const requiresLandscape = isTouch && isPortrait;
 
   const commitPhase = useCallback((next: Phase) => {
     phaseRef.current = next;
@@ -100,7 +106,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const updateOrientation = () => {
+      setIsPortrait(
+        window.matchMedia('(orientation: portrait)').matches ||
+          window.innerHeight > window.innerWidth,
+      );
+    };
     const media = window.matchMedia('(pointer: coarse)');
+    const orientationMedia = window.matchMedia('(orientation: portrait)');
     const update = () => {
       setIsTouch(media.matches || navigator.maxTouchPoints > 0);
     };
@@ -108,15 +121,26 @@ export default function App() {
       if (event.pointerType === 'touch') setIsTouch(true);
     };
     update();
+    updateOrientation();
     media.addEventListener?.('change', update);
-    window.addEventListener('resize', update, { passive: true });
+    orientationMedia.addEventListener?.('change', updateOrientation);
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', updateOrientation);
     window.addEventListener('pointerdown', onPointerDown, { passive: true });
     return () => {
       media.removeEventListener?.('change', update);
+      orientationMedia.removeEventListener?.('change', updateOrientation);
       window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', updateOrientation);
       window.removeEventListener('pointerdown', onPointerDown);
     };
   }, []);
+
+  useEffect(() => {
+    if (requiresLandscape && phaseRef.current === 'playing') {
+      pauseGame();
+    }
+  }, [requiresLandscape, pauseGame]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -225,6 +249,8 @@ export default function App() {
       {phase === 'gameover' && stats && (
         <GameOverOverlay stats={stats} onRetry={startGame} onMenu={returnToMenu} />
       )}
+
+      {requiresLandscape && <RotateOverlay />}
     </div>
   );
 }
