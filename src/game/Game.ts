@@ -76,6 +76,8 @@ interface Player {
   y: number;
   vx: number;
   vy: number;
+  knockX: number;
+  knockY: number;
   radius: number;
   hp: number;
   maxHp: number;
@@ -490,6 +492,8 @@ export class ShooterGame {
       y: this.worldSize / 2,
       vx: 0,
       vy: 0,
+      knockX: 0,
+      knockY: 0,
       radius: 17,
       hp: 100,
       maxHp: 100,
@@ -549,7 +553,7 @@ export class ShooterGame {
     this.updatePickups(dt);
     if (this.mode === 'survival') this.updateWave(dt);
     this.updateFx(dt);
-    this.updateCamera(dt);
+    this.updateCamera();
 
     if (this.victoryTimer > 0) {
       this.victoryTimer -= dt;
@@ -584,16 +588,17 @@ export class ShooterGame {
     }
   }
 
-  private updateCamera(dt: number) {
-    let targetX = this.player.x + this.player.vx * 0.12;
-    let targetY = this.player.y + this.player.vy * 0.12;
+  private updateCamera() {
+    // The camera is locked to the player instead of easing behind them, so the
+    // view never keeps drifting after the stick is released.
+    let targetX = this.player.x;
+    let targetY = this.player.y;
     if (this.mode === 'boss' && this.boss && !this.boss.dead) {
       targetX += (this.boss.x - targetX) * 0.28;
       targetY += (this.boss.y - targetY) * 0.28;
     }
-    const smoothing = 1 - Math.exp(-7 * dt);
-    this.camera.x += (targetX - this.camera.x) * smoothing;
-    this.camera.y += (targetY - this.camera.y) * smoothing;
+    this.camera.x = targetX;
+    this.camera.y = targetY;
     this.clampCamera();
   }
 
@@ -659,9 +664,10 @@ export class ShooterGame {
 
       const targetVx = moveX * player.speed;
       const targetVy = moveY * player.speed;
-      const accel = 1 - Math.exp(-14 * dt);
-      player.vx += (targetVx - player.vx) * accel;
-      player.vy += (targetVy - player.vy) * accel;
+      // No inertia: velocity follows the stick exactly, so releasing it stops
+      // the character in the same frame instead of sliding on.
+      player.vx = targetVx;
+      player.vy = targetVy;
 
       if (
         (Math.abs(player.vx) > 60 || Math.abs(player.vy) > 60) &&
@@ -682,8 +688,16 @@ export class ShooterGame {
       }
     }
 
-    player.x += player.vx * dt;
-    player.y += player.vy * dt;
+    // External impulses (contact hits, blasts) are tracked separately from the
+    // stick velocity so they can shove the player without reintroducing drift.
+    const knockDecay = Math.exp(-7 * dt);
+    player.knockX *= knockDecay;
+    player.knockY *= knockDecay;
+    if (Math.abs(player.knockX) < 0.5) player.knockX = 0;
+    if (Math.abs(player.knockY) < 0.5) player.knockY = 0;
+
+    player.x += (player.vx + player.knockX) * dt;
+    player.y += (player.vy + player.knockY) * dt;
     player.x = clamp(player.x, 46, this.worldSize - 46);
     player.y = clamp(player.y, 46, this.worldSize - 46);
 
@@ -1068,8 +1082,10 @@ export class ShooterGame {
           const push = 140;
           enemy.vx -= nx * push;
           enemy.vy -= ny * push;
-          player.vx += nx * 70;
-          player.vy += ny * 70;
+          // Impact force is an external impulse, so it still shoves the player
+          // even though normal movement has no inertia.
+          player.knockX += nx * 240;
+          player.knockY += ny * 240;
         }
       }
     }
