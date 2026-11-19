@@ -492,20 +492,6 @@ svg {
   white-space: nowrap;
 }
 
-.menu-title em {
-  font-style: normal;
-  color: transparent;
-  -webkit-text-stroke: 1.4px var(--cyan);
-  text-shadow: 0 0 34px rgba(95, 246, 255, 0.16);
-}
-
-.menu-cn {
-  margin: 14px 0 0;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.56em;
-  color: rgba(109, 216, 230, 0.86);
-}
 
 .hero-lead {
   max-width: 31em;
@@ -1360,10 +1346,6 @@ kbd.accent,
     font-size: clamp(52px, 14vw, 78px);
   }
 
-  .menu-cn {
-    margin-top: 10px;
-    font-size: 10px;
-  }
 
   .hero-lead {
     margin-top: 12px;
@@ -1559,9 +1541,6 @@ kbd.accent,
     font-size: clamp(44px, 10vh, 64px);
   }
 
-  .menu-cn {
-    margin-top: 7px;
-  }
 
   .hero-lead {
     display: none;

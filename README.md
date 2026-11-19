@@ -1,4 +1,4 @@
-# NEON RIFT · 霓虹裂隙
+# shooter
 
 一个用 React + Vite + TypeScript 制作的 2D 俯视角射击游戏原型，桌面和手机双端适配。
 

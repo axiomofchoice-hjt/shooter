@@ -9,7 +9,7 @@ type SoundName =
   | 'death'
   | 'spit';
 
-const STORAGE_KEY = 'neon-rift-muted';
+const STORAGE_KEY = 'shooter-muted';
 
 export class SoundFX {
   muted = false;

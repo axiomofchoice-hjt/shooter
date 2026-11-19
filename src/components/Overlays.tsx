@@ -21,7 +21,7 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
         <div className="menu-topline">
           <span className="eyebrow">
             <i className="status-dot" />
-            NEON RIFT / PROTOTYPE 01
+            SHOOTER / PROTOTYPE 01
           </span>
           <span className="build-tag">CANVAS 2D · 双端适配</span>
         </div>
@@ -29,10 +29,7 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
         <div className="menu-content">
           <section className="hero-copy">
             <p className="hero-kicker">俯视角 · 生存射击</p>
-            <h1 className="menu-title">
-              NEON <em>RIFT</em>
-            </h1>
-            <p className="menu-cn">霓虹裂隙</p>
+            <h1 className="menu-title">SHOOTER</h1>
             <p className="hero-lead">
               禁区信号失控。锁定最近的敌人，在无尽波次里活下来。
             </p>
@@ -43,7 +40,7 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
               </span>
               <span className="start-button-copy">
                 <strong>开始战斗</strong>
-                <small>ENTER THE RIFT</small>
+                <small>START MISSION</small>
               </span>
               <span className="start-button-key">
                 {isTouch ? 'TAP' : 'ENTER'}
@@ -120,7 +117,7 @@ export function StartScreen({ isTouch, onStart }: StartScreenProps) {
             <div className="feature-tags">
               <span>无限波次</span>
               <span>4 种敌人</span>
-              <span>霓虹视效</span>
+              <span>粒子视效</span>
             </div>
           </aside>
         </div>
