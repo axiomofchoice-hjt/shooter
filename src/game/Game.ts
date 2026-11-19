@@ -19,8 +19,8 @@ const ENEMY_GLOW = 0.16;
 const SECONDARY_COOLDOWN = 3.4;
 const SECONDARY_PELLETS = 7;
 const DODGE_COOLDOWN = 1.6;
-const DASH_TIME = 0.16;
-const DASH_SPEED = 1120;
+const DASH_TIME = 0.11;
+const DASH_SPEED = 1000;
 
 const BOSS_HP = 320;
 const BOSS_RADIUS = 58;
