@@ -56,10 +56,10 @@ export function StartScreen({
 
         <div className="menu-content">
           <section className="hero-copy">
-            <p className="hero-kicker">俯视角 · 生存射击</p>
+            <p className="hero-kicker">地牢 · 房间推进</p>
             <h1 className="menu-title">SHOOTER</h1>
             <p className="hero-lead">
-              禁区信号失控。锁定最近的敌人活下来，或直接进入 BOSS 房。
+              禁区信号失控。从起始房出发，清空三个战斗房，踏入最右侧的传送门继续下潜。
             </p>
 
             <button type="button" className="start-button" onClick={onStart} autoFocus>
@@ -67,8 +67,8 @@ export function StartScreen({
                 <PlayIcon />
               </span>
               <span className="start-button-copy">
-                <strong>开始战斗</strong>
-                <small>START MISSION</small>
+                <strong>进入地牢</strong>
+                <small>START RUN</small>
               </span>
               <span className="start-button-key">
                 {isTouch ? 'TAP' : 'ENTER'}
@@ -86,8 +86,8 @@ export function StartScreen({
                 <BossIcon />
               </span>
               <span className="boss-button-copy">
-                <strong>进入 BOSS 房</strong>
-                <small>BOSS ARENA · 小房间单挑</small>
+                <strong>直接挑战 BOSS</strong>
+                <small>BOSS ARENA · 单挑压制核心</small>
               </span>
               <span className="boss-button-key">
                 {isTouch ? 'TAP' : 'B'}
@@ -97,7 +97,7 @@ export function StartScreen({
 
             <p className="hero-note">
               <CrosshairIcon />
-              按住开火 · 自动锁定 · 副武器与闪避
+              清空房间 · 闸门开启 · 传送门下层
             </p>
           </section>
 
@@ -183,16 +183,16 @@ export function StartScreen({
             </article>
 
             <div className="feature-tags">
-              <span>无限波次</span>
-              <span>BOSS 房</span>
-              <span>粒子视效</span>
+              <span>地牢楼层</span>
+              <span>3 个战斗房</span>
+              <span>传送门</span>
             </div>
           </aside>
         </div>
 
         <footer className="menu-footer">
           <span>SECTOR 07 · SIGNAL LOST</span>
-          <span>WASD 移动 &nbsp;·&nbsp; J 开火 &nbsp;·&nbsp; K 副武器 &nbsp;·&nbsp; L 闪避 &nbsp;·&nbsp; B 进入 BOSS 房</span>
+          <span>WASD 移动 &nbsp;·&nbsp; J 开火 &nbsp;·&nbsp; K 副武器 &nbsp;·&nbsp; L 闪避 &nbsp;·&nbsp; B BOSS 房</span>
         </footer>
       </main>
     </div>
@@ -259,13 +259,13 @@ export function GameOverOverlay({
             ? 'C'
             : 'D';
   const isBoss = stats.mode === 'boss';
-  const eyebrow = victory ? 'THREAT NEUTRALIZED' : isBoss ? 'CORE ONLINE' : 'SIGNAL LOST';
-  const title = victory ? 'BOSS 已击破' : isBoss ? '挑战失败' : '信号中断';
+  const eyebrow = victory ? 'THREAT NEUTRALIZED' : isBoss ? 'CORE ONLINE' : 'RUN TERMINATED';
+  const title = victory ? 'BOSS 已击破' : isBoss ? '挑战失败' : '探索终止';
   const copy = victory
     ? '压制核心沉默，小房间里的威胁暂时清空。'
     : isBoss
       ? '压制核心仍然在线。闪避它的弹幕，再进一次 BOSS 房。'
-      : '你被敌对信号淹没了。还能再撑一波吗？';
+      : `你倒在了第 ${stats.floor} 层，传送门还在更深处。`;
 
   return (
     <div className={`overlay modal-overlay ${victory ? 'is-victory' : ''}`}>
@@ -289,9 +289,13 @@ export function GameOverOverlay({
             <strong>{String(stats.score).padStart(6, '0')}</strong>
           </div>
           <div className="stat-block">
-            <span>{isBoss ? 'BOSS 战' : '抵达波次'}</span>
+            <span>{isBoss ? 'BOSS 战' : '抵达楼层'}</span>
             <strong>
-              {isBoss ? (victory ? '击破' : '失败') : String(stats.wave).padStart(2, '0')}
+              {isBoss
+                ? victory
+                  ? '击破'
+                  : '失败'
+                : `FLOOR ${String(stats.floor).padStart(2, '0')}`}
             </strong>
           </div>
           <div className="stat-block">
@@ -307,7 +311,7 @@ export function GameOverOverlay({
         <div className="modal-actions row-actions">
           <button type="button" className="primary-button" onClick={onRetry} autoFocus>
             <PlayIcon />
-            {isBoss ? (victory ? '再战 BOSS' : '重试 BOSS') : '再来一局'}
+            {isBoss ? (victory ? '再战 BOSS' : '重试 BOSS') : '再次下潜'}
           </button>
           <button type="button" className="ghost-button" onClick={onMenu}>
             返回主界面

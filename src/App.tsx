@@ -75,7 +75,7 @@ export default function App() {
     if (phaseRef.current === 'playing' || phaseRef.current === 'paused') return;
     setStats(null);
     setVictory(false);
-    gameRef.current?.start('survival');
+    gameRef.current?.start('dungeon');
     commitPhase('playing');
   }, [commitPhase]);
 

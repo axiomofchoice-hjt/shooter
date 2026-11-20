@@ -19,17 +19,15 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
     hud.bossMaxHp > 0
       ? Math.max(0, Math.min(100, (hud.bossHp / hud.bossMaxHp) * 100))
       : 0;
-  const status =
-    hud.wavePhase === 'intermission'
-      ? `NEXT ${Math.max(1, Math.ceil(hud.nextWaveIn))}s`
-      : `敌人 ${hud.enemiesRemaining}`;
-  const waveValue = isBoss
-    ? bossDown
-      ? 'KO'
-      : hud.bossPhase === 2
-        ? 'II'
-        : 'I'
-    : String(hud.wave).padStart(2, '0');
+
+  const status = (() => {
+    if (hud.roomKind === 'start') return '起始房 · 准备';
+    if (hud.roomKind === 'portal') {
+      return hud.portalActive ? '传送门已激活' : '传送门锁定';
+    }
+    if (hud.encounterActive) return `敌人 ${hud.enemiesRemaining}`;
+    return `已清 ${hud.roomsCleared}/3 · 门已开`;
+  })();
 
   return (
     <>
@@ -62,20 +60,48 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
           </div>
         </div>
 
-        <div className={`wave-badge ${isBoss ? 'is-boss' : ''}`}>
-          <span className="wave-label">{isBoss ? 'BOSS' : 'WAVE'}</span>
-          <strong>{waveValue}</strong>
-          <span
-            className={`wave-status ${
-              isBoss ? 'danger' : hud.wavePhase === 'intermission' ? 'waiting' : ''
-            }`}
-          >
+        <div className={`wave-badge ${isBoss ? 'is-boss' : 'is-dungeon'}`}>
+          <span className="wave-label">{isBoss ? 'BOSS' : 'FLOOR'}</span>
+          <strong>
             {isBoss
               ? bossDown
-                ? '目标清除'
-                : `PHASE ${hud.bossPhase}`
-              : status}
+                ? 'KO'
+                : hud.bossPhase === 2
+                  ? 'II'
+                  : 'I'
+              : String(hud.floor).padStart(2, '0')}
+          </strong>
+          <span
+            className={`wave-status ${
+              isBoss
+                ? 'danger'
+                : hud.encounterActive
+                  ? 'danger'
+                  : hud.roomKind === 'portal' && hud.portalActive
+                    ? 'waiting'
+                    : ''
+            }`}
+          >
+            {isBoss ? (bossDown ? '目标清除' : `PHASE ${hud.bossPhase}`) : status}
           </span>
+          {!isBoss && (
+            <span className="room-pips" aria-hidden="true">
+              {[1, 2, 3].map((room) => (
+                <i
+                  key={room}
+                  className={
+                    hud.roomsCleared >= room
+                      ? 'done'
+                      : hud.room === room && hud.encounterActive
+                        ? 'active'
+                        : hud.room === room
+                          ? 'current'
+                          : ''
+                  }
+                />
+              ))}
+            </span>
+          )}
         </div>
 
         <div className="hud-actions">

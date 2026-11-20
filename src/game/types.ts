@@ -1,10 +1,18 @@
-export type GameMode = 'survival' | 'boss';
+export type GameMode = 'dungeon' | 'boss';
 
 export type EnemyKind = 'grunt' | 'runner' | 'tank' | 'spitter' | 'boss';
 
 export type WeaponId = 'pulse' | 'smg' | 'scatter' | 'rail';
 
-export type WavePhase = 'spawning' | 'intermission';
+export type RoomKind = 'start' | 'combat' | 'portal';
+
+export const ROOM_COUNT = 5;
+
+export function roomKindAt(room: number): RoomKind {
+  if (room <= 0) return 'start';
+  if (room >= ROOM_COUNT - 1) return 'portal';
+  return 'combat';
+}
 
 export interface HudSnapshot {
   mode: GameMode;
@@ -12,10 +20,6 @@ export interface HudSnapshot {
   hp: number;
   maxHp: number;
   score: number;
-  wave: number;
-  wavePhase: WavePhase;
-  enemiesRemaining: number;
-  nextWaveIn: number;
   combo: number;
   comboTime: number;
   kills: number;
@@ -25,14 +29,22 @@ export interface HudSnapshot {
   bossHp: number;
   bossMaxHp: number;
   bossPhase: number;
+  floor: number;
+  room: number;
+  roomKind: RoomKind;
+  roomsCleared: number;
+  enemiesRemaining: number;
+  encounterActive: boolean;
+  portalActive: boolean;
 }
 
 export interface GameStats {
   mode: GameMode;
   score: number;
-  wave: number;
   kills: number;
   time: number;
+  floor: number;
+  roomsCleared: number;
 }
 
 export interface GameCallbacks {
@@ -41,15 +53,11 @@ export interface GameCallbacks {
 }
 
 export const INITIAL_HUD: HudSnapshot = {
-  mode: 'survival',
+  mode: 'dungeon',
   weapon: 'pulse',
   hp: 100,
   maxHp: 100,
   score: 0,
-  wave: 1,
-  wavePhase: 'intermission',
-  enemiesRemaining: 0,
-  nextWaveIn: 0,
   combo: 0,
   comboTime: 0,
   kills: 0,
@@ -59,4 +67,11 @@ export const INITIAL_HUD: HudSnapshot = {
   bossHp: 0,
   bossMaxHp: 0,
   bossPhase: 1,
+  floor: 1,
+  room: 0,
+  roomKind: 'start',
+  roomsCleared: 0,
+  enemiesRemaining: 0,
+  encounterActive: false,
+  portalActive: false,
 };

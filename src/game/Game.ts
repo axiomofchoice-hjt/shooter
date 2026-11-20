@@ -1,18 +1,31 @@
 import { SoundFX } from './audio';
-import type {
-  EnemyKind,
-  GameCallbacks,
-  GameMode,
-  HudSnapshot,
-  WavePhase,
-  WeaponId,
+import {
+  roomKindAt,
+  type EnemyKind,
+  type GameCallbacks,
+  type GameMode,
+  type HudSnapshot,
+  type WeaponId,
 } from './types';
 import { WEAPONS, nextWeapon } from './weapons';
 
 const TAU = Math.PI * 2;
-const WORLD_SURVIVAL = 2400;
-const WORLD_BOSS = 1000;
-const AUTOAIM_RANGE = 760;
+
+// Dungeon layout: five 1000x1000 rooms in a straight horizontal line.
+const ROOM_SIZE = 1000;
+const DUNGEON_ROOMS = 5;
+const DUNGEON_WIDTH = ROOM_SIZE * DUNGEON_ROOMS;
+const BOSS_SIZE = 1000;
+const WALL_THICK = 52;
+const WALL_PAD = WALL_THICK / 2;
+const DOOR_HALF = 118;
+const DOOR_Y = ROOM_SIZE / 2;
+const PORTAL_X = (DUNGEON_ROOMS - 1) * ROOM_SIZE + ROOM_SIZE / 2;
+const PORTAL_Y = ROOM_SIZE / 2;
+const PORTAL_RADIUS = 46;
+const CLEAR_HEAL = 12;
+const FLOOR_HEAL = 18;
+const AUTOAIM_RANGE = 1400;
 
 const PLAYER_COLOR = '#5ff6ff';
 const SECONDARY_COLOR = '#ffc857';
@@ -239,8 +252,9 @@ export class ShooterGame {
   private resizeObserver: ResizeObserver;
 
   private phase: Phase = 'idle';
-  private mode: GameMode = 'survival';
-  private worldSize = WORLD_SURVIVAL;
+  private mode: GameMode = 'dungeon';
+  private worldW = DUNGEON_WIDTH;
+  private worldH = ROOM_SIZE;
   private paused = false;
   private raf = 0;
   private lastTime = 0;
@@ -274,7 +288,7 @@ export class ShooterGame {
     fireKey: false,
   };
 
-  private camera = { x: WORLD_SURVIVAL / 2, y: WORLD_SURVIVAL / 2 };
+  private camera = { x: ROOM_SIZE / 2, y: ROOM_SIZE / 2 };
   private zoom = 1;
   private shake = 0;
   private hurtFlash = 0;
@@ -285,11 +299,12 @@ export class ShooterGame {
   private kills = 0;
   private combo = 0;
   private comboTimer = 0;
-  private wave = 1;
-  private wavePhase: WavePhase = 'intermission';
+  private floor = 1;
+  private roomIndex = 0;
+  private roomCleared: boolean[] = [false, false, false, false, false];
+  private encounterActive = false;
   private spawnQueue: EnemyKind[] = [];
   private spawnTimer = 0;
-  private intermissionTimer = 0;
   private nextEnemyId = 1;
   private autoTarget: Enemy | null = null;
   private secondaryCooldown = 0;
@@ -317,9 +332,10 @@ export class ShooterGame {
 
   // ---------------------------------------------------------------- public API
 
-  start(mode: GameMode = 'survival') {
+  start(mode: GameMode = 'dungeon') {
     this.mode = mode;
-    this.worldSize = mode === 'boss' ? WORLD_BOSS : WORLD_SURVIVAL;
+    this.worldW = mode === 'boss' ? BOSS_SIZE : DUNGEON_WIDTH;
+    this.worldH = mode === 'boss' ? BOSS_SIZE : ROOM_SIZE;
     this.updateZoom();
     this.buildDecorations();
     this.sfx.unlock();
@@ -329,7 +345,7 @@ export class ShooterGame {
     if (mode === 'boss') {
       this.beginBoss();
     } else {
-      this.startWave(1);
+      this.beginRun();
     }
     this.emitHud(true);
   }
@@ -337,8 +353,9 @@ export class ShooterGame {
   toMenu() {
     this.phase = 'idle';
     this.paused = false;
-    this.mode = 'survival';
-    this.worldSize = WORLD_SURVIVAL;
+    this.mode = 'dungeon';
+    this.worldW = DUNGEON_WIDTH;
+    this.worldH = ROOM_SIZE;
     this.updateZoom();
     this.buildDecorations();
     this.resetWorld();
@@ -467,8 +484,8 @@ export class ShooterGame {
 
   private resetWorld() {
     this.player = {
-      x: this.worldSize / 2,
-      y: this.worldSize / 2,
+      x: this.mode === 'boss' ? this.worldW / 2 : ROOM_SIZE / 2,
+      y: this.worldH / 2,
       vx: 0,
       vy: 0,
       knockX: 0,
@@ -508,11 +525,12 @@ export class ShooterGame {
     this.kills = 0;
     this.combo = 0;
     this.comboTimer = 0;
-    this.wave = 1;
-    this.wavePhase = 'intermission';
+    this.floor = 1;
+    this.roomIndex = 0;
+    this.roomCleared = [false, false, false, false, false];
+    this.encounterActive = false;
     this.spawnQueue = [];
     this.spawnTimer = 0;
-    this.intermissionTimer = 0;
     this.elapsed = 0;
     this.shake = 0;
     this.hurtFlash = 0;
@@ -531,7 +549,7 @@ export class ShooterGame {
     this.updateEnemies(dt);
     this.updateEnemyBullets(dt);
     this.updatePickups(dt);
-    if (this.mode === 'survival') this.updateWave(dt);
+    if (this.mode === 'dungeon') this.updateDungeon(dt);
     this.updateFx(dt);
     this.updateCamera();
 
@@ -563,8 +581,8 @@ export class ShooterGame {
     }
     if (this.phase === 'idle') {
       this.player.angle = -Math.PI / 2 + Math.sin(this.ambientTime * 0.55) * 0.25;
-      this.camera.x += (this.worldSize / 2 - this.camera.x) * Math.min(1, dt * 2);
-      this.camera.y += (this.worldSize / 2 - this.camera.y) * Math.min(1, dt * 2);
+      this.camera.x += (ROOM_SIZE / 2 - this.camera.x) * Math.min(1, dt * 2);
+      this.camera.y += (this.worldH / 2 - this.camera.y) * Math.min(1, dt * 2);
     }
   }
 
@@ -583,25 +601,102 @@ export class ShooterGame {
   }
 
   private updateZoom() {
-    const min = this.mode === 'boss' ? 0.68 : 0.82;
-    const max = this.mode === 'boss' ? 1.06 : 1.18;
-    this.zoom = clamp(Math.min(this.width / 860, this.height / 640), min, max);
+    if (this.mode === 'boss') {
+      this.zoom = clamp(Math.min(this.width / 860, this.height / 640), 0.66, 1.08);
+    } else {
+      // Fit the 1000-wide room to the viewport width so the dungeon walls
+      // anchor the frame instead of floating over a black void.
+      this.zoom = clamp(this.width / 1120, 0.66, 1.28);
+    }
     this.clampCamera();
+  }
+
+  private roomLeft(index: number) {
+    return index * ROOM_SIZE;
   }
 
   private clampCamera() {
     const halfW = this.width / (2 * this.zoom);
     const halfH = this.height / (2 * this.zoom);
-    if (halfW * 2 < this.worldSize) {
-      this.camera.x = clamp(this.camera.x, halfW, this.worldSize - halfW);
+    // Dungeon rooms are viewed one at a time: the camera never leaves the
+    // current room, which also makes the room transition read as a clean cut.
+    const viewW = this.mode === 'boss' ? this.worldW : ROOM_SIZE;
+    const left = this.mode === 'boss' ? 0 : this.roomLeft(this.roomIndex);
+    if (halfW * 2 < viewW) {
+      this.camera.x = clamp(this.camera.x, left + halfW, left + viewW - halfW);
     } else {
-      this.camera.x = this.worldSize / 2;
+      this.camera.x = left + viewW / 2;
     }
-    if (halfH * 2 < this.worldSize) {
-      this.camera.y = clamp(this.camera.y, halfH, this.worldSize - halfH);
+    if (halfH * 2 < this.worldH) {
+      this.camera.y = clamp(this.camera.y, halfH, this.worldH - halfH);
     } else {
-      this.camera.y = this.worldSize / 2;
+      this.camera.y = this.worldH / 2;
     }
+  }
+
+  private countCleared() {
+    let cleared = 0;
+    for (let room = 1; room <= DUNGEON_ROOMS - 2; room++) {
+      if (this.roomCleared[room]) cleared += 1;
+    }
+    return cleared;
+  }
+
+  private isDoorOpen(boundary: number) {
+    if (boundary <= 0 || boundary >= DUNGEON_ROOMS) return false;
+    // Combat rooms seal both doors until the encounter is cleared.
+    if (this.encounterActive) return false;
+    if (boundary === 1) return true;
+    return this.roomCleared[boundary - 1];
+  }
+
+  private roomBounds() {
+    const left = this.roomLeft(this.roomIndex);
+    return {
+      left: left + WALL_PAD,
+      right: left + ROOM_SIZE - WALL_PAD,
+      top: WALL_PAD,
+      bottom: this.worldH - WALL_PAD,
+    };
+  }
+
+  private outOfRoom(x: number, y: number, pad: number) {
+    const bounds = this.roomBounds();
+    return (
+      x < bounds.left - pad ||
+      x > bounds.right + pad ||
+      y < bounds.top - pad ||
+      y > bounds.bottom + pad
+    );
+  }
+
+  private confinePlayer() {
+    const player = this.player;
+    const bounds = this.roomBounds();
+    player.y = clamp(player.y, bounds.top + 24, bounds.bottom - 24);
+
+    if (this.mode === 'boss') {
+      player.x = clamp(player.x, bounds.left + 24, bounds.right - 24);
+      return;
+    }
+
+    const left = bounds.left + player.radius;
+    const right = bounds.right - player.radius;
+    if (player.x >= left && player.x <= right) return;
+
+    // Allow crossing only through an open doorway, judged at the seam between
+    // the current room and its neighbour.
+    const boundary = player.x < left ? this.roomIndex : this.roomIndex + 1;
+    const inDoorway = Math.abs(player.y - DOOR_Y) <= DOOR_HALF - player.radius;
+    if (inDoorway && this.isDoorOpen(boundary)) {
+      const nextRoom = clamp(Math.floor(player.x / ROOM_SIZE), 0, DUNGEON_ROOMS - 1);
+      if (nextRoom !== this.roomIndex) {
+        this.roomIndex = nextRoom;
+        this.clampCamera();
+      }
+      return;
+    }
+    player.x = clamp(player.x, left, right);
   }
 
   // ------------------------------------------------------------------- player
@@ -678,8 +773,7 @@ export class ShooterGame {
 
     player.x += (player.vx + player.knockX) * dt;
     player.y += (player.vy + player.knockY) * dt;
-    player.x = clamp(player.x, 46, this.worldSize - 46);
-    player.y = clamp(player.y, 46, this.worldSize - 46);
+    this.confinePlayer();
 
     player.fireCooldown -= dt;
     player.invuln = Math.max(0, player.invuln - dt);
@@ -878,9 +972,10 @@ export class ShooterGame {
         {
           mode: this.mode,
           score: this.score,
-          wave: this.wave,
           kills: this.kills,
           time: this.elapsed,
+          floor: this.floor,
+          roomsCleared: this.countCleared(),
         },
         false,
       );
@@ -929,10 +1024,7 @@ export class ShooterGame {
       if (
         consumed ||
         bullet.life <= 0 ||
-        bullet.x < -60 ||
-        bullet.y < -60 ||
-        bullet.x > this.worldSize + 60 ||
-        bullet.y > this.worldSize + 60
+        this.outOfRoom(bullet.x, bullet.y, 24)
       ) {
         this.bullets.splice(i, 1);
       }
@@ -1016,14 +1108,7 @@ export class ShooterGame {
         hit = true;
       }
 
-      if (
-        hit ||
-        bullet.life <= 0 ||
-        bullet.x < -40 ||
-        bullet.y < -40 ||
-        bullet.x > this.worldSize + 40 ||
-        bullet.y > this.worldSize + 40
-      ) {
+      if (hit || bullet.life <= 0 || this.outOfRoom(bullet.x, bullet.y, 18)) {
         this.enemyBullets.splice(i, 1);
       }
     }
@@ -1033,6 +1118,7 @@ export class ShooterGame {
 
   private updateEnemies(dt: number) {
     const player = this.player;
+    const bounds = this.roomBounds();
 
     for (const enemy of this.enemies) {
       if (enemy.dead) continue;
@@ -1087,8 +1173,8 @@ export class ShooterGame {
       enemy.vy += (desiredY * speed - enemy.vy) * turn;
       enemy.x += enemy.vx * dt;
       enemy.y += enemy.vy * dt;
-      enemy.x = clamp(enemy.x, 30, this.worldSize - 30);
-      enemy.y = clamp(enemy.y, 30, this.worldSize - 30);
+      enemy.x = clamp(enemy.x, bounds.left + 18, bounds.right - 18);
+      enemy.y = clamp(enemy.y, bounds.top + 18, bounds.bottom - 18);
 
       if (enemy.age > 0.18 && !player.dead && distance < enemy.radius + player.radius - 2) {
         if (player.invuln <= 0) {
@@ -1188,8 +1274,8 @@ export class ShooterGame {
           const kind: EnemyKind = i === 1 ? 'runner' : 'grunt';
           this.spawnEnemy(
             kind,
-            clamp(enemy.x + Math.cos(angle) * radius, 80, this.worldSize - 80),
-            clamp(enemy.y + Math.sin(angle) * radius, 80, this.worldSize - 80),
+            clamp(enemy.x + Math.cos(angle) * radius, 80, this.worldW - 80),
+            clamp(enemy.y + Math.sin(angle) * radius, 80, this.worldH - 80),
           );
         }
       }
@@ -1243,16 +1329,13 @@ export class ShooterGame {
   }
 
   private beginBoss() {
-    this.wave = 1;
-    this.wavePhase = 'spawning';
     this.spawnQueue = [];
     this.spawnTimer = 0;
-    this.intermissionTimer = 0;
     this.bossWindup = 0;
     this.bossAttackKind = 'radial';
 
-    const x = this.worldSize / 2 + 250;
-    const y = this.worldSize / 2;
+    const x = this.worldW / 2 + 250;
+    const y = this.worldH / 2;
     this.spawnEnemy('boss', x, y);
     const boss = this.enemies[this.enemies.length - 1];
     boss.hp = boss.maxHp = BOSS_HP;
@@ -1307,9 +1390,10 @@ export class ShooterGame {
       {
         mode: 'boss',
         score: this.score,
-        wave: 1,
         kills: this.kills,
         time: this.elapsed,
+        floor: 1,
+        roomsCleared: 0,
       },
       true,
     );
@@ -1343,39 +1427,74 @@ export class ShooterGame {
     return nearest;
   }
 
-  // --------------------------------------------------------------- wave logic
+  // ------------------------------------------------------------- dungeon logic
 
-  private startWave(wave: number) {
-    this.wave = wave;
-    this.wavePhase = 'spawning';
-    this.spawnQueue = this.buildWave(wave);
-    this.spawnTimer = 0.3;
+  private beginRun() {
+    this.floor = 1;
+    this.roomIndex = 0;
+    this.roomCleared = [false, false, false, false, false];
+    this.encounterActive = false;
+    this.spawnQueue = [];
+    this.spawnTimer = 0;
     this.banner = {
-      title: `WAVE ${String(wave).padStart(2, '0')}`,
-      sub: wave === 1 ? '清除所有敌对信号' : `敌对信号增强 · 第 ${wave} 波`,
-      time: 1.9,
-      duration: 1.9,
+      title: 'FLOOR 01',
+      sub: '起始房 · 沿右侧闸门深入',
+      time: 2.4,
+      duration: 2.4,
       color: PLAYER_COLOR,
     };
     this.sfx.play('wave');
     this.emitHud(true);
   }
 
-  private buildWave(wave: number): EnemyKind[] {
-    const count = 5 + Math.round(wave * 1.6);
+  private updateDungeon(dt: number) {
+    if (this.encounterActive) {
+      this.updateEncounter(dt);
+    } else if (
+      this.roomIndex >= 1 &&
+      this.roomIndex <= DUNGEON_ROOMS - 2 &&
+      !this.roomCleared[this.roomIndex]
+    ) {
+      this.startEncounter(this.roomIndex);
+    }
+    this.updatePortal();
+  }
+
+  private startEncounter(room: number) {
+    this.encounterActive = true;
+    this.spawnQueue = this.buildEncounter(this.floor, room);
+    this.spawnTimer = 0.55;
+    this.telegraphs = [];
+    this.banner = {
+      title: `ROOM 0${room}`,
+      sub: room === 1 ? '敌对信号锁定 · 闸门闭合' : `第 ${this.floor} 层 · 战斗房 ${room}/3`,
+      time: 1.9,
+      duration: 1.9,
+      color: '#ff5f7d',
+    };
+    this.sfx.play('wave');
+    this.emitHud(true);
+  }
+
+  private buildEncounter(floor: number, room: number): EnemyKind[] {
+    const count = Math.min(
+      32,
+      6 + (floor - 1) * 3 + room * 2 + Math.floor(Math.random() * 3),
+    );
     const list: EnemyKind[] = [];
+    const spitters = floor >= 2 || room >= 3;
+    const tanks = floor >= 3 || (floor >= 2 && room >= 3);
     for (let i = 0; i < count; i++) {
       let kind: EnemyKind = 'grunt';
-      if (wave >= 5 && i % 6 === 5) kind = 'spitter';
-      else if (wave >= 4 && i % 7 === 3) kind = 'tank';
-      else if (wave >= 2 && i % 4 === 1) kind = 'runner';
+      if (tanks && i % 7 === 3) kind = 'tank';
+      else if (spitters && i % 5 === 2) kind = 'spitter';
+      else if (room >= 2 || floor >= 2 ? i % 3 === 1 : i % 5 === 3) kind = 'runner';
       list.push(kind);
     }
-    if (wave >= 3 && !list.includes('runner')) list[list.length - 1] = 'runner';
-    if (wave >= 5 && !list.includes('spitter')) list[0] = 'spitter';
-    if (wave >= 6 && !list.includes('tank')) list[1] = 'tank';
+    if (spitters && !list.includes('spitter')) list[Math.min(2, list.length - 1)] = 'spitter';
+    if (tanks && !list.includes('tank')) list[Math.min(4, list.length - 1)] = 'tank';
 
-    // Shuffle so every wave opens a little differently.
+    // Shuffle so every room opens a little differently.
     for (let i = list.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [list[i], list[j]] = [list[j], list[i]];
@@ -1383,18 +1502,12 @@ export class ShooterGame {
     return list;
   }
 
-  private updateWave(dt: number) {
-    if (this.wavePhase === 'intermission') {
-      this.intermissionTimer -= dt;
-      if (this.intermissionTimer <= 0) this.startWave(this.wave + 1);
-      return;
-    }
-
+  private updateEncounter(dt: number) {
     this.spawnTimer -= dt;
     if (this.spawnQueue.length > 0 && this.spawnTimer <= 0) {
       const groupSize = Math.min(
         this.spawnQueue.length,
-        1 + Math.floor((this.wave - 1) / 4),
+        1 + Math.floor((this.floor - 1) / 2) + (this.roomIndex >= 3 ? 1 : 0),
       );
       for (let i = 0; i < groupSize; i++) {
         const kind = this.spawnQueue.shift();
@@ -1404,11 +1517,11 @@ export class ShooterGame {
           x: point.x,
           y: point.y,
           kind,
-          timer: 0.7,
-          duration: 0.7,
+          timer: 0.65,
+          duration: 0.65,
         });
       }
-      this.spawnTimer = Math.max(0.34, 0.76 - this.wave * 0.022);
+      this.spawnTimer = Math.max(0.4, 0.86 - this.floor * 0.05);
     }
 
     for (let i = this.telegraphs.length - 1; i >= 0; i--) {
@@ -1421,91 +1534,116 @@ export class ShooterGame {
     }
 
     if (
-      this.wavePhase === 'spawning' &&
       this.spawnQueue.length === 0 &&
       this.telegraphs.length === 0 &&
       this.enemies.length === 0
     ) {
-      this.finishWave();
+      this.clearRoom();
     }
   }
 
-  private finishWave() {
-    this.wavePhase = 'intermission';
-    this.intermissionTimer = 3.2;
-    const bonus = 75 + this.wave * 15;
+  private clearRoom() {
+    this.encounterActive = false;
+    this.roomCleared[this.roomIndex] = true;
+    const cleared = this.countCleared();
+    const bonus = 80 + this.floor * 25 + this.roomIndex * 15;
     this.score += bonus;
-    this.player.hp = Math.min(this.player.maxHp, this.player.hp + 12);
+    this.player.hp = Math.min(this.player.maxHp, this.player.hp + CLEAR_HEAL);
     this.healFlash = Math.max(this.healFlash, 0.45);
+    const allCleared = cleared >= DUNGEON_ROOMS - 2;
     this.banner = {
-      title: 'WAVE CLEAR',
-      sub: `波次奖励 +${bonus} · 装甲修复 +12`,
-      time: 2.8,
-      duration: 2.8,
+      title: allCleared ? 'FLOOR CLEAR' : 'ROOM CLEAR',
+      sub: allCleared
+        ? `传送门已激活 · 房间奖励 +${bonus}`
+        : `战斗房 ${cleared}/3 · 闸门开启 · +${bonus}`,
+      time: 2.7,
+      duration: 2.7,
       color: '#7dff9b',
     };
-    if (this.player.hp < this.player.maxHp * 0.7) {
+    if (this.player.hp < this.player.maxHp * 0.7 && this.pickups.length < 2) {
+      const bounds = this.roomBounds();
       this.dropPickup(
-        clamp(this.player.x + rand(-110, 110), 60, this.worldSize - 60),
-        clamp(this.player.y + rand(-110, 110), 60, this.worldSize - 60),
+        clamp(this.player.x + rand(-110, 110), bounds.left + 40, bounds.right - 40),
+        clamp(this.player.y + rand(-110, 110), bounds.top + 40, bounds.bottom - 40),
       );
     }
     this.sfx.play('clear');
     this.emitHud(true);
   }
 
-  private pickSpawnPoint() {
-    const halfW = this.width / (2 * this.zoom);
-    const halfH = this.height / (2 * this.zoom);
-    let best = { x: this.worldSize / 2, y: this.worldSize / 2 };
-    let bestScore = -1;
+  private updatePortal() {
+    if (this.countCleared() < DUNGEON_ROOMS - 2) return;
+    if (this.roomIndex !== DUNGEON_ROOMS - 1) return;
+    const reach = PORTAL_RADIUS + this.player.radius;
+    if (dist(this.player.x, this.player.y, PORTAL_X, PORTAL_Y) <= reach) {
+      this.nextFloor();
+    }
+  }
 
-    for (let attempt = 0; attempt < 14; attempt++) {
-      const edge = Math.floor(Math.random() * 4);
-      const margin = rand(50, 150);
-      let x = this.camera.x;
-      let y = this.camera.y;
-      if (edge === 0) {
-        x -= halfW + margin;
-        y += rand(-halfH, halfH);
-      } else if (edge === 1) {
-        x += halfW + margin;
-        y += rand(-halfH, halfH);
-      } else if (edge === 2) {
-        y -= halfH + margin;
-        x += rand(-halfW, halfW);
-      } else {
-        y += halfH + margin;
-        x += rand(-halfW, halfW);
-      }
-      x = clamp(x, 70, this.worldSize - 70);
-      y = clamp(y, 70, this.worldSize - 70);
-      let playerDistance = dist(x, y, this.player.x, this.player.y);
-      if (playerDistance > 680) {
-        const pull = 680 / playerDistance;
-        x = clamp(this.player.x + (x - this.player.x) * pull, 70, this.worldSize - 70);
-        y = clamp(this.player.y + (y - this.player.y) * pull, 70, this.worldSize - 70);
-        playerDistance = dist(x, y, this.player.x, this.player.y);
-      }
-      const score = playerDistance < 350 ? playerDistance : 1000 + playerDistance;
+  private nextFloor() {
+    this.floor += 1;
+    this.roomCleared = [false, false, false, false, false];
+    this.roomIndex = 0;
+    this.encounterActive = false;
+    this.spawnQueue = [];
+    this.telegraphs = [];
+    this.enemies = [];
+    this.enemyBullets = [];
+    this.bullets = [];
+    this.pickups = [];
+    this.player.x = ROOM_SIZE / 2;
+    this.player.y = this.worldH / 2;
+    this.player.invuln = 1.2;
+    this.player.hp = Math.min(this.player.maxHp, this.player.hp + FLOOR_HEAL);
+    this.camera.x = this.player.x;
+    this.camera.y = this.player.y;
+    this.clampCamera();
+    this.score += 150 * this.floor;
+    this.healFlash = 1;
+    this.spawnBurst(this.player.x, this.player.y, '#c08bff', 42, 300, 0.9);
+    this.banner = {
+      title: `FLOOR ${String(this.floor).padStart(2, '0')}`,
+      sub: `传送完成 · 装甲修复 +${FLOOR_HEAL}`,
+      time: 2.4,
+      duration: 2.4,
+      color: '#c08bff',
+    };
+    this.buildDecorations();
+    this.sfx.play('clear');
+    this.emitHud(true);
+  }
+
+  private pickSpawnPoint() {
+    const bounds = this.roomBounds();
+    let best = {
+      x: this.player.x + 300,
+      y: this.player.y,
+    };
+    let bestScore = -1;
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const x = rand(bounds.left + 70, bounds.right - 70);
+      const y = rand(bounds.top + 70, bounds.bottom - 70);
+      const d = dist(x, y, this.player.x, this.player.y);
+      const score = d < 300 ? d : 1000 + Math.min(d, 700);
       if (score > bestScore) {
         bestScore = score;
         best = { x, y };
       }
-      if (playerDistance > 380) break;
+      if (d > 360) return best;
     }
     return best;
   }
 
   private spawnEnemy(kind: EnemyKind, x: number, y: number) {
     const def = ENEMY_DEFS[kind];
-    const wave = this.wave;
+    const depth =
+      this.mode === 'dungeon' ? (this.floor - 1) * 3 + this.roomIndex : 1;
     const bonusHp =
       kind === 'tank'
-        ? wave - 1
+        ? depth - 1
         : kind === 'spitter'
-          ? Math.floor((wave - 1) / 2)
-          : Math.floor((wave - 1) / 3);
+          ? Math.floor((depth - 1) / 2)
+          : Math.floor((depth - 1) / 3);
     const hp = def.hp + bonusHp;
     this.enemies.push({
       id: this.nextEnemyId++,
@@ -1517,7 +1655,7 @@ export class ShooterGame {
       radius: def.radius,
       hp,
       maxHp: hp,
-      speed: def.speed * (1 + Math.min(0.28, wave * 0.012)),
+      speed: def.speed * (1 + Math.min(0.3, depth * 0.02)),
       damage: def.damage,
       score: def.score,
       color: def.color,
@@ -1541,9 +1679,10 @@ export class ShooterGame {
   }
 
   private dropPickup(x: number, y: number) {
+    const bounds = this.roomBounds();
     this.pickups.push({
-      x: clamp(x, 50, this.worldSize - 50),
-      y: clamp(y, 50, this.worldSize - 50),
+      x: clamp(x, bounds.left + 24, bounds.right - 24),
+      y: clamp(y, bounds.top + 24, bounds.bottom - 24),
       age: 0,
       life: 24,
     });
@@ -1654,11 +1793,14 @@ export class ShooterGame {
       hp: Math.ceil(this.player.hp),
       maxHp: this.player.maxHp,
       score: this.score,
-      wave: this.wave,
-      wavePhase: this.wavePhase,
+      floor: this.floor,
+      room: this.roomIndex,
+      roomKind: roomKindAt(this.roomIndex),
+      roomsCleared: this.countCleared(),
       enemiesRemaining:
         this.enemies.length + this.telegraphs.length + this.spawnQueue.length,
-      nextWaveIn: Math.max(0, this.intermissionTimer),
+      encounterActive: this.encounterActive,
+      portalActive: this.countCleared() >= DUNGEON_ROOMS - 2,
       combo: this.combo,
       comboTime: this.comboTimer,
       kills: this.kills,
@@ -1720,10 +1862,11 @@ export class ShooterGame {
 
   private buildDecorations() {
     this.decorations = [];
-    for (let i = 0; i < 100; i++) {
+    const debris = this.mode === 'boss' ? 90 : 160;
+    for (let i = 0; i < debris; i++) {
       this.decorations.push({
-        x: rand(80, this.worldSize - 80),
-        y: rand(80, this.worldSize - 80),
+        x: rand(70, this.worldW - 70),
+        y: rand(70, this.worldH - 70),
         size: rand(1, 3.4),
         alpha: rand(0.06, 0.28),
         phase: rand(0, TAU),
@@ -1732,15 +1875,18 @@ export class ShooterGame {
 
     this.floorMarks = [];
     const kinds: FloorMark['kind'][] = ['ring', 'cross', 'diamond'];
-    for (let i = 0; i < 34; i++) {
-      this.floorMarks.push({
-        x: rand(100, this.worldSize - 100),
-        y: rand(100, this.worldSize - 100),
-        radius: rand(28, 130),
-        rotation: rand(0, TAU),
-        alpha: rand(0.025, 0.085),
-        kind: kinds[i % kinds.length],
-      });
+    const rooms = this.mode === 'boss' ? 1 : DUNGEON_ROOMS;
+    for (let room = 0; room < rooms; room++) {
+      for (let i = 0; i < 9; i++) {
+        this.floorMarks.push({
+          x: room * ROOM_SIZE + rand(120, ROOM_SIZE - 120),
+          y: rand(120, this.worldH - 120),
+          radius: rand(28, 120),
+          rotation: rand(0, TAU),
+          alpha: rand(0.025, 0.075),
+          kind: kinds[i % kinds.length],
+        });
+      }
     }
 
     this.motes = [];
@@ -1780,6 +1926,7 @@ export class ShooterGame {
     ctx.translate(-this.camera.x, -this.camera.y);
 
     this.drawFloor();
+    this.drawPortal();
     this.drawTelegraphs();
     this.drawPickups();
     this.drawEnemyBullets();
@@ -1799,132 +1946,240 @@ export class ShooterGame {
     }
   }
 
+  private roomAccent(room: number) {
+    if (this.mode === 'boss') return BOSS_COLOR;
+    if (room === 0) return '#5ff6ff';
+    if (room === DUNGEON_ROOMS - 1) return '#c08bff';
+    return this.roomCleared[room] ? '#7dff9b' : '#ff5f7d';
+  }
+
+  private roomBaseColor(room: number) {
+    if (this.mode === 'boss') return '#12060d';
+    if (room === 0) return '#071119';
+    if (room === DUNGEON_ROOMS - 1) return '#0c0817';
+    return this.roomCleared[room] ? '#08140f' : '#0c0c17';
+  }
+
+  private drawRoomLabel(room: number, accent: string) {
+    if (this.mode === 'boss') return;
+    const ctx = this.ctx;
+    const title =
+      room === 0 ? 'START' : room === DUNGEON_ROOMS - 1 ? 'PORTAL' : `COMBAT 0${room}`;
+    const cn = room === 0 ? '起始房' : room === DUNGEON_ROOMS - 1 ? '传送门' : '战斗房';
+    const x = room * ROOM_SIZE + ROOM_SIZE / 2;
+    const y = WALL_PAD + 34;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '700 12px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillStyle = withAlpha(accent, 0.75);
+    ctx.fillText(`${title} · ${cn}`, x, y);
+    ctx.strokeStyle = withAlpha(accent, 0.28);
+    ctx.lineWidth = 1.2 / this.zoom;
+    const line = 92;
+    ctx.beginPath();
+    ctx.moveTo(x - line, y + 16);
+    ctx.lineTo(x - 14, y + 16);
+    ctx.moveTo(x + 14, y + 16);
+    ctx.lineTo(x + line, y + 16);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   private drawFloor() {
     const ctx = this.ctx;
     const halfW = this.width / (2 * this.zoom);
     const halfH = this.height / (2 * this.zoom);
-    const left = Math.max(0, this.camera.x - halfW);
-    const right = Math.min(this.worldSize, this.camera.x + halfW);
-    const top = Math.max(0, this.camera.y - halfH);
-    const bottom = Math.min(this.worldSize, this.camera.y + halfH);
+    const viewLeft = this.camera.x - halfW;
+    const viewRight = this.camera.x + halfW;
+    const viewTop = this.camera.y - halfH;
+    const viewBottom = this.camera.y + halfH;
 
-    ctx.fillStyle = '#060b14';
-    ctx.fillRect(0, 0, this.worldSize, this.worldSize);
+    ctx.fillStyle = '#03060b';
+    ctx.fillRect(0, 0, this.worldW, this.worldH);
 
-    // Grid
-    const step = 80;
-    const startX = Math.floor(left / step) * step;
-    const startY = Math.floor(top / step) * step;
-    ctx.lineWidth = 1 / this.zoom;
-    for (let x = startX; x <= right; x += step) {
-      const major = Math.abs(x % 400) < 0.01;
-      ctx.strokeStyle = major ? 'rgba(75, 160, 200, 0.13)' : 'rgba(75, 140, 180, 0.055)';
-      ctx.beginPath();
-      ctx.moveTo(x, top);
-      ctx.lineTo(x, bottom);
-      ctx.stroke();
-    }
-    for (let y = startY; y <= bottom; y += step) {
-      const major = Math.abs(y % 400) < 0.01;
-      ctx.strokeStyle = major ? 'rgba(75, 160, 200, 0.13)' : 'rgba(75, 140, 180, 0.055)';
-      ctx.beginPath();
-      ctx.moveTo(left, y);
-      ctx.lineTo(right, y);
-      ctx.stroke();
-    }
+    const rooms = this.mode === 'boss' ? 1 : DUNGEON_ROOMS;
+    for (let room = 0; room < rooms; room++) {
+      const roomLeft = room * ROOM_SIZE;
+      const roomRight = roomLeft + ROOM_SIZE;
+      if (roomRight < viewLeft - 80 || roomLeft > viewRight + 80) continue;
 
-    // Large floor markings
-    ctx.strokeStyle = 'rgba(95, 246, 255, 0.055)';
-    ctx.lineWidth = 2.5 / this.zoom;
-    ctx.beginPath();
-    ctx.arc(this.worldSize / 2, this.worldSize / 2, 330, 0, TAU);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(this.worldSize / 2, this.worldSize / 2, 360, 0, TAU);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(95, 246, 255, 0.03)';
-    ctx.beginPath();
-    ctx.moveTo(this.worldSize / 2 - 430, this.worldSize / 2);
-    ctx.lineTo(this.worldSize / 2 + 430, this.worldSize / 2);
-    ctx.moveTo(this.worldSize / 2, this.worldSize / 2 - 430);
-    ctx.lineTo(this.worldSize / 2, this.worldSize / 2 + 430);
-    ctx.stroke();
+      const accent = this.roomAccent(room);
+      const base = this.roomBaseColor(room);
+      const inset = WALL_PAD;
 
-    // Faint survey markings
-    for (const mark of this.floorMarks) {
-      if (
-        mark.x + mark.radius < left ||
-        mark.x - mark.radius > right ||
-        mark.y + mark.radius < top ||
-        mark.y - mark.radius > bottom
-      ) {
-        continue;
-      }
+      ctx.fillStyle = base;
+      ctx.fillRect(roomLeft + inset, inset, ROOM_SIZE - WALL_THICK, this.worldH - WALL_THICK);
+
       ctx.save();
-      ctx.translate(mark.x, mark.y);
-      ctx.rotate(mark.rotation);
-      ctx.strokeStyle = `rgba(95, 246, 255, ${mark.alpha})`;
-      ctx.lineWidth = 1.2 / this.zoom;
-      if (mark.kind === 'ring') {
+      ctx.beginPath();
+      ctx.rect(roomLeft + inset, inset, ROOM_SIZE - WALL_THICK, this.worldH - WALL_THICK);
+      ctx.clip();
+
+      // Grid
+      const step = 80;
+      ctx.lineWidth = 1 / this.zoom;
+      for (let x = roomLeft + step; x < roomRight; x += step) {
+        if (x < viewLeft - step || x > viewRight + step) continue;
+        const major = (x - roomLeft) % 400 === 0;
+        ctx.strokeStyle = withAlpha(accent, major ? 0.1 : 0.04);
         ctx.beginPath();
-        ctx.arc(0, 0, mark.radius, 0.15, Math.PI * 1.15);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(0, 0, mark.radius * 0.72, Math.PI * 1.2, Math.PI * 2.1);
-        ctx.stroke();
-      } else if (mark.kind === 'cross') {
-        ctx.beginPath();
-        ctx.moveTo(-mark.radius, 0);
-        ctx.lineTo(mark.radius, 0);
-        ctx.moveTo(0, -mark.radius);
-        ctx.lineTo(0, mark.radius);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(0, 0, mark.radius * 0.28, 0, TAU);
-        ctx.stroke();
-      } else {
-        ctx.beginPath();
-        ctx.moveTo(0, -mark.radius);
-        ctx.lineTo(mark.radius, 0);
-        ctx.lineTo(0, mark.radius);
-        ctx.lineTo(-mark.radius, 0);
-        ctx.closePath();
+        ctx.moveTo(x, inset);
+        ctx.lineTo(x, this.worldH - inset);
         ctx.stroke();
       }
+      for (let y = step; y < this.worldH - step; y += step) {
+        if (y < viewTop - step || y > viewBottom + step) continue;
+        const major = y % 400 === 0;
+        ctx.strokeStyle = withAlpha(accent, major ? 0.1 : 0.04);
+        ctx.beginPath();
+        ctx.moveTo(roomLeft + inset, y);
+        ctx.lineTo(roomRight - inset, y);
+        ctx.stroke();
+      }
+
+      // Faint room number etched into the floor.
+      if (this.mode !== 'boss') {
+        ctx.globalAlpha = 0.045;
+        ctx.fillStyle = accent;
+        ctx.font = '900 300px "Arial Narrow", "DIN Condensed", ui-sans-serif, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(
+          String(room).padStart(2, '0'),
+          roomLeft + ROOM_SIZE / 2,
+          this.worldH / 2 + 8,
+        );
+        ctx.globalAlpha = 1;
+      }
+
+      // Faint survey markings
+      for (const mark of this.floorMarks) {
+        if (
+          mark.x + mark.radius < viewLeft ||
+          mark.x - mark.radius > viewRight ||
+          mark.y + mark.radius < viewTop ||
+          mark.y - mark.radius > viewBottom
+        ) {
+          continue;
+        }
+        ctx.save();
+        ctx.translate(mark.x, mark.y);
+        ctx.rotate(mark.rotation);
+        ctx.strokeStyle = withAlpha(accent, mark.alpha);
+        ctx.lineWidth = 1.2 / this.zoom;
+        if (mark.kind === 'ring') {
+          ctx.beginPath();
+          ctx.arc(0, 0, mark.radius, 0.15, Math.PI * 1.15);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(0, 0, mark.radius * 0.72, Math.PI * 1.2, Math.PI * 2.1);
+          ctx.stroke();
+        } else if (mark.kind === 'cross') {
+          ctx.beginPath();
+          ctx.moveTo(-mark.radius, 0);
+          ctx.lineTo(mark.radius, 0);
+          ctx.moveTo(0, -mark.radius);
+          ctx.lineTo(0, mark.radius);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(0, 0, mark.radius * 0.28, 0, TAU);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(0, -mark.radius);
+          ctx.lineTo(mark.radius, 0);
+          ctx.lineTo(0, mark.radius);
+          ctx.lineTo(-mark.radius, 0);
+          ctx.closePath();
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // Sparse debris / stars
+      for (const decoration of this.decorations) {
+        if (
+          decoration.x < roomLeft + inset ||
+          decoration.x > roomRight - inset ||
+          decoration.y < inset ||
+          decoration.y > this.worldH - inset
+        ) {
+          continue;
+        }
+        const twinkle =
+          0.55 + Math.sin(this.ambientTime * 0.8 + decoration.phase) * 0.35;
+        ctx.fillStyle = `rgba(126, 213, 232, ${decoration.alpha * twinkle})`;
+        ctx.fillRect(
+          decoration.x,
+          decoration.y,
+          decoration.size / this.zoom + 0.7,
+          decoration.size / this.zoom + 0.7,
+        );
+      }
+
       ctx.restore();
+      this.drawRoomLabel(room, accent);
     }
 
-    // Sparse debris / stars
-    for (const decoration of this.decorations) {
-      const twinkle =
-        0.55 + Math.sin(this.ambientTime * 0.8 + decoration.phase) * 0.35;
-      ctx.fillStyle = `rgba(126, 213, 232, ${decoration.alpha * twinkle})`;
-      ctx.fillRect(
-        decoration.x,
-        decoration.y,
-        decoration.size / this.zoom + 0.7,
-        decoration.size / this.zoom + 0.7,
-      );
-    }
+    this.drawWalls();
+  }
 
-    // World border
-    ctx.strokeStyle = 'rgba(95, 246, 255, 0.34)';
-    ctx.lineWidth = 3 / this.zoom;
-    ctx.strokeRect(24, 24, this.worldSize - 48, this.worldSize - 48);
-    ctx.strokeStyle = 'rgba(95, 246, 255, 0.08)';
-    ctx.lineWidth = 12 / this.zoom;
-    ctx.strokeRect(26, 26, this.worldSize - 52, this.worldSize - 52);
+  private drawWallSegment(x: number, y: number, w: number, h: number) {
+    if (h <= 0) return;
+    const ctx = this.ctx;
+    ctx.fillStyle = '#0b141d';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(140, 210, 230, 0.16)';
+    ctx.lineWidth = 1 / this.zoom;
+    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+    ctx.strokeStyle = 'rgba(95, 246, 255, 0.07)';
+    ctx.beginPath();
+    for (let lineY = y + 60; lineY < y + h - 10; lineY += 80) {
+      ctx.moveTo(x + 6, lineY);
+      ctx.lineTo(x + w - 6, lineY);
+    }
+    ctx.stroke();
+  }
+
+  private drawWalls() {
+    const ctx = this.ctx;
+    ctx.fillStyle = '#0b141d';
+    ctx.fillRect(0, 0, this.worldW, WALL_PAD);
+    ctx.fillRect(0, this.worldH - WALL_PAD, this.worldW, WALL_PAD);
+    ctx.fillRect(0, 0, WALL_PAD, this.worldH);
+    ctx.fillRect(this.worldW - WALL_PAD, 0, WALL_PAD, this.worldH);
+
+    ctx.strokeStyle = 'rgba(120, 200, 220, 0.3)';
+    ctx.lineWidth = 2 / this.zoom;
+    ctx.strokeRect(WALL_PAD, WALL_PAD, this.worldW - WALL_THICK, this.worldH - WALL_THICK);
+
+    if (this.mode === 'dungeon') {
+      const doorTop = DOOR_Y - DOOR_HALF;
+      const doorBottom = DOOR_Y + DOOR_HALF;
+      for (let boundary = 1; boundary < DUNGEON_ROOMS; boundary++) {
+        const x = boundary * ROOM_SIZE - WALL_PAD;
+        this.drawWallSegment(x, WALL_PAD, WALL_THICK, doorTop - WALL_PAD);
+        this.drawWallSegment(
+          x,
+          doorBottom,
+          WALL_THICK,
+          this.worldH - WALL_PAD - doorBottom,
+        );
+        this.drawDoor(boundary);
+      }
+    }
 
     // Corner brackets
-    const bracket = 60;
+    const bracket = 58;
     const corners: Array<[number, number, number, number]> = [
-      [24, 24, 1, 1],
-      [this.worldSize - 24, 24, -1, 1],
-      [24, this.worldSize - 24, 1, -1],
-      [this.worldSize - 24, this.worldSize - 24, -1, -1],
+      [WALL_PAD, WALL_PAD, 1, 1],
+      [this.worldW - WALL_PAD, WALL_PAD, -1, 1],
+      [WALL_PAD, this.worldH - WALL_PAD, 1, -1],
+      [this.worldW - WALL_PAD, this.worldH - WALL_PAD, -1, -1],
     ];
-    ctx.strokeStyle = 'rgba(95, 246, 255, 0.7)';
-    ctx.lineWidth = 5 / this.zoom;
+    ctx.strokeStyle = 'rgba(95, 246, 255, 0.6)';
+    ctx.lineWidth = 4 / this.zoom;
     for (const [x, y, sx, sy] of corners) {
       ctx.beginPath();
       ctx.moveTo(x + bracket * sx, y);
@@ -1932,6 +2187,135 @@ export class ShooterGame {
       ctx.lineTo(x, y + bracket * sy);
       ctx.stroke();
     }
+  }
+
+  private drawDoor(boundary: number) {
+    const ctx = this.ctx;
+    const x = boundary * ROOM_SIZE;
+    const top = DOOR_Y - DOOR_HALF;
+    const bottom = DOOR_Y + DOOR_HALF;
+    const open = this.isDoorOpen(boundary);
+    const pulse = 0.5 + Math.sin(this.ambientTime * 6.5) * 0.2;
+
+    // Door posts
+    ctx.fillStyle = '#16232f';
+    ctx.fillRect(x - WALL_PAD - 7, top - 16, WALL_THICK + 14, 16);
+    ctx.fillRect(x - WALL_PAD - 7, bottom, WALL_THICK + 14, 16);
+
+    if (!open) {
+      const field = ctx.createLinearGradient(x - WALL_PAD, 0, x + WALL_PAD, 0);
+      field.addColorStop(0, 'rgba(255, 77, 125, 0.04)');
+      field.addColorStop(0.5, `rgba(255, 77, 125, ${0.18 + pulse * 0.16})`);
+      field.addColorStop(1, 'rgba(255, 77, 125, 0.04)');
+      ctx.fillStyle = field;
+      ctx.fillRect(x - WALL_PAD + 5, top, WALL_THICK - 10, DOOR_HALF * 2);
+
+      ctx.strokeStyle = `rgba(255, 128, 152, ${0.3 * pulse})`;
+      ctx.lineWidth = 1.4 / this.zoom;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const y = top + ((this.ambientTime * 46 + i * 44) % (DOOR_HALF * 2));
+        ctx.moveTo(x - WALL_PAD + 6, y);
+        ctx.lineTo(x + WALL_PAD - 6, y);
+      }
+      ctx.stroke();
+
+      // Lock glyph in the middle of the field.
+      ctx.strokeStyle = `rgba(255, 190, 205, ${0.5 + pulse * 0.2})`;
+      ctx.lineWidth = 2 / this.zoom;
+      ctx.beginPath();
+      ctx.arc(x, DOOR_Y, 13, Math.PI, TAU);
+      ctx.stroke();
+      ctx.strokeRect(x - 14, DOOR_Y, 28, 20);
+    } else {
+      ctx.strokeStyle = 'rgba(95, 246, 255, 0.32)';
+      ctx.lineWidth = 1.6 / this.zoom;
+      ctx.beginPath();
+      ctx.moveTo(x - WALL_PAD + 4, top + 4);
+      ctx.lineTo(x - WALL_PAD + 4, bottom - 4);
+      ctx.moveTo(x + WALL_PAD - 4, top + 4);
+      ctx.lineTo(x + WALL_PAD - 4, bottom - 4);
+      ctx.stroke();
+
+      ctx.strokeStyle = withAlpha(PLAYER_COLOR, 0.5);
+      ctx.lineWidth = 2.4 / this.zoom;
+      ctx.beginPath();
+      ctx.moveTo(x - 10, DOOR_Y - 16);
+      ctx.lineTo(x + 8, DOOR_Y);
+      ctx.lineTo(x - 10, DOOR_Y + 16);
+      ctx.stroke();
+    }
+
+    ctx.save();
+    ctx.shadowColor = open ? PLAYER_COLOR : '#ff4d7d';
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = open ? PLAYER_COLOR : '#ff4d7d';
+    ctx.beginPath();
+    ctx.arc(x, top - 28, 3.6, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private drawPortal() {
+    if (this.mode !== 'dungeon') return;
+    const ctx = this.ctx;
+    const active = this.countCleared() >= DUNGEON_ROOMS - 2;
+    const t = this.ambientTime;
+    const color = active ? '#c08bff' : '#6b6485';
+
+    ctx.save();
+    ctx.translate(PORTAL_X, PORTAL_Y);
+
+    ctx.fillStyle = active ? 'rgba(90, 50, 150, 0.16)' : 'rgba(40, 36, 60, 0.2)';
+    ctx.beginPath();
+    ctx.arc(0, 0, PORTAL_RADIUS + 26, 0, TAU);
+    ctx.fill();
+
+    for (let i = 0; i < 4; i++) {
+      const r = 34 + i * 22;
+      const spin = t * (active ? 0.8 : 0.16) * (i % 2 === 0 ? 1 : -1) + i;
+      ctx.strokeStyle = withAlpha(color, active ? 0.5 - i * 0.09 : 0.18);
+      ctx.lineWidth = (i === 0 ? 3 : 1.6) / this.zoom;
+      ctx.setLineDash(i === 2 ? [10, 14] : []);
+      ctx.beginPath();
+      ctx.arc(0, 0, r + Math.sin(t * 1.6 + i) * 2.5, spin, spin + TAU * (0.55 + i * 0.08));
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    if (active) {
+      ctx.globalCompositeOperation = 'lighter';
+      const beam = ctx.createLinearGradient(0, -280, 0, 10);
+      beam.addColorStop(0, 'rgba(192, 139, 255, 0)');
+      beam.addColorStop(0.65, 'rgba(192, 139, 255, 0.1)');
+      beam.addColorStop(1, 'rgba(192, 139, 255, 0.3)');
+      ctx.fillStyle = beam;
+      ctx.beginPath();
+      ctx.moveTo(-12, -280);
+      ctx.lineTo(12, -280);
+      ctx.lineTo(PORTAL_RADIUS, 0);
+      ctx.lineTo(-PORTAL_RADIUS, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+
+      const glow = 6 + Math.sin(t * 4) * 1.8;
+      ctx.fillStyle = 'rgba(236, 224, 255, 0.9)';
+      ctx.beginPath();
+      ctx.arc(0, 0, glow, 0, TAU);
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = 'rgba(160, 150, 190, 0.55)';
+      ctx.lineWidth = 2 / this.zoom;
+      ctx.beginPath();
+      ctx.arc(0, 0, 16, 0, TAU);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-9, 0);
+      ctx.lineTo(9, 0);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private drawTelegraphs() {
