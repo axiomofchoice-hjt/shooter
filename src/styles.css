@@ -1408,16 +1408,17 @@ kbd.accent,
   pointer-events: none;
   user-select: none;
   /* 控件尺寸集中在这里，按屏幕高度缩放并受宽度限制，竖屏 / 小屏也不会挤出界 */
-  --joy-size: min(clamp(120px, 36vh, 164px), 34vw);
-  --fire-size: min(clamp(94px, 28vh, 122px), 26vw);
+  /* 尺寸/位置对齐参考图：两个大按钮直径约屏高 25%，摇杆中心 17% 宽、FIRE 中心 73% 宽 */
+  --joy-size: min(26vh, 24vw);
+  --fire-size: min(25vh, 23vw);
   --ability-size: calc(var(--fire-size) * 0.62);
   --dash-size: calc(var(--fire-size) * 0.58);
 }
 
 .joystick-pad {
   position: absolute;
-  left: calc(16px + var(--safe-left));
-  bottom: calc(16px + var(--safe-bottom));
+  left: calc(11% + var(--safe-left));
+  bottom: calc(7.4% + var(--safe-bottom));
   width: var(--joy-size);
   height: var(--joy-size);
   pointer-events: auto;
@@ -1546,8 +1547,8 @@ kbd.accent,
 
 .fire-zone {
   position: absolute;
-  right: calc(20px + var(--safe-right));
-  bottom: calc(20px + var(--safe-bottom));
+  right: calc(20.7% + var(--safe-right));
+  bottom: calc(12.4% + var(--safe-bottom));
   width: var(--fire-size);
   height: var(--fire-size);
   pointer-events: none;
@@ -1939,10 +1940,6 @@ kbd.accent,
     flex-direction: column;
   }
 
-  .touch-ui {
-    --joy-size: min(clamp(112px, 34vh, 150px), 32vw);
-    --fire-size: min(clamp(90px, 27vh, 112px), 25vw);
-  }
 }
 
 @media (max-width: 380px) {
@@ -2101,11 +2098,6 @@ kbd.accent,
 
   .stat-main strong {
     font-size: 26px;
-  }
-
-  .touch-ui {
-    --joy-size: min(clamp(112px, 34vh, 156px), 30vw);
-    --fire-size: min(clamp(90px, 27vh, 116px), 23vw);
   }
 
   .fire-sub {
