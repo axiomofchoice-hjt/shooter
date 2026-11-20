@@ -35,13 +35,13 @@ const PLAYER_SPEED = 270;
 
 const SECONDARY_COOLDOWN = 3.4;
 const SECONDARY_PELLETS = 7;
-// Dodge: speed is 1.1x the walk speed, the slide is 20% longer than the old
-// 1000px/s x 0.11s burst (110 -> 132px), and the 1.5s cooldown only starts
+// Dodge: speed is 1.4x the walk speed, the slide is 20% longer than the
+// previous 132px pass (132 -> 158.4px), and the 1s cooldown only starts
 // counting once the slide itself is over.
-const DODGE_COOLDOWN = 1.5;
-const DASH_SPEED_MULT = 1.1;
+const DODGE_COOLDOWN = 1;
+const DASH_SPEED_MULT = 1.4;
 const DASH_SPEED = PLAYER_SPEED * DASH_SPEED_MULT;
-const DASH_DISTANCE = 132;
+const DASH_DISTANCE = 158.4;
 const DASH_TIME = DASH_DISTANCE / DASH_SPEED;
 // HUD sweep spans the slide plus the cooldown that follows it.
 const DODGE_CYCLE = DASH_TIME + DODGE_COOLDOWN;
