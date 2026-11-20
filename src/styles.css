@@ -1456,6 +1456,8 @@ kbd.accent,
   /* 全部位置按参考图量出来的百分比：摇杆 16.7%/80.5%，FIRE 73.9%/76.6%，
      副武器 83.6%/53.3%，闪避 86.1%/75.5%；直径都是屏高的 24.6% / 16% / 16.7% */
   --joy-size: min(24.6vh, 23vw);
+  /* 摇杆触摸判定比视觉直径大一圈；最大值仍按视觉直径算，手感不变 */
+  --joy-touch: 20%;
   --fire-size: min(24.6vh, 23vw);
   --joy-half: calc(var(--joy-size) * 0.5);
   --fire-half: calc(var(--fire-size) * 0.5);
@@ -1474,6 +1476,14 @@ kbd.accent,
   pointer-events: auto;
   touch-action: none;
   opacity: 0.9;
+}
+
+/* 只放大触摸判定，不改布局盒：knob 的最大位移依旧按 --joy-size 计算 */
+.joystick-pad::before {
+  content: "";
+  position: absolute;
+  inset: calc(var(--joy-touch) * -1);
+  border-radius: 50%;
 }
 
 .joystick-base {
