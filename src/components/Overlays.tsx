@@ -3,6 +3,8 @@ import {
   ArrowIcon,
   BossIcon,
   CrosshairIcon,
+  FullscreenExitIcon,
+  FullscreenIcon,
   KeyboardIcon,
   PlayIcon,
   TouchIcon,
@@ -10,11 +12,21 @@ import {
 
 interface StartScreenProps {
   isTouch: boolean;
+  isFullscreen: boolean;
+  fullscreenSupported: boolean;
+  onToggleFullscreen: () => void;
   onStart: () => void;
   onStartBoss: () => void;
 }
 
-export function StartScreen({ isTouch, onStart, onStartBoss }: StartScreenProps) {
+export function StartScreen({
+  isTouch,
+  isFullscreen,
+  fullscreenSupported,
+  onToggleFullscreen,
+  onStart,
+  onStartBoss,
+}: StartScreenProps) {
   return (
     <div className="overlay menu-overlay">
       <div className="menu-glow menu-glow-a" />
@@ -25,7 +37,21 @@ export function StartScreen({ isTouch, onStart, onStartBoss }: StartScreenProps)
             <i className="status-dot" />
             SHOOTER / PROTOTYPE 01
           </span>
-          <span className="build-tag">CANVAS 2D · 双端适配</span>
+          <div className="menu-topline-right">
+            <span className="build-tag">CANVAS 2D · 双端适配</span>
+            {fullscreenSupported && (
+              <button
+                type="button"
+                className="fullscreen-button"
+                onClick={onToggleFullscreen}
+                aria-label={isFullscreen ? '退出全屏' : '进入全屏'}
+                title={isFullscreen ? '退出全屏' : '进入全屏'}
+              >
+                {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+                <span>{isFullscreen ? '退出全屏' : '全屏'}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="menu-content">

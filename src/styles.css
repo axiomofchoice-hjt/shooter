@@ -558,6 +558,47 @@ svg {
   white-space: nowrap;
 }
 
+.menu-topline-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.fullscreen-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid rgba(95, 246, 255, 0.24);
+  border-radius: 7px;
+  background: rgba(5, 18, 24, 0.72);
+  color: rgba(190, 250, 255, 0.88);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.fullscreen-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.fullscreen-button:hover {
+  border-color: rgba(95, 246, 255, 0.6);
+  background: rgba(10, 38, 48, 0.86);
+  color: #eaffff;
+}
+
+.fullscreen-button:active {
+  transform: translateY(1px);
+}
+
 .menu-content {
   display: grid;
   grid-template-columns: minmax(0, 1.22fr) minmax(300px, 0.78fr);

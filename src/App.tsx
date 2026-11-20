@@ -35,6 +35,12 @@ export default function App() {
   const [stats, setStats] = useState<GameStats | null>(null);
   const [victory, setVictory] = useState(false);
   const [isTouch, setIsTouch] = useState(detectTouchDevice);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenSupported] = useState(() => {
+    if (typeof document === 'undefined') return false;
+    const doc = document as Document & { webkitFullscreenEnabled?: boolean };
+    return Boolean(doc.fullscreenEnabled ?? doc.webkitFullscreenEnabled);
+  });
   const [isPortrait, setIsPortrait] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.matchMedia('(orientation: portrait)').matches;
@@ -111,6 +117,48 @@ export default function App() {
 
   const toggleMute = useCallback(() => {
     gameRef.current?.toggleMute();
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element | null;
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+    const root = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+    try {
+      if (doc.fullscreenElement ?? doc.webkitFullscreenElement) {
+        if (doc.exitFullscreen) await doc.exitFullscreen();
+        else await doc.webkitExitFullscreen?.();
+        return;
+      }
+      if (root.requestFullscreen) await root.requestFullscreen({ navigationUI: 'hide' });
+      else await root.webkitRequestFullscreen?.();
+      if (isTouch && screen.orientation?.lock) {
+        try {
+          await screen.orientation.lock('landscape');
+        } catch {
+          // Orientation lock is best-effort; some browsers reject it.
+        }
+      }
+    } catch {
+      // The browser may deny fullscreen (e.g. it is disabled in an iframe).
+    }
+  }, [isTouch]);
+
+  useEffect(() => {
+    const doc = document as Document & { webkitFullscreenElement?: Element | null };
+    const onChange = () => {
+      setIsFullscreen(Boolean(doc.fullscreenElement ?? doc.webkitFullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('webkitfullscreenchange', onChange);
+    onChange();
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('webkitfullscreenchange', onChange);
+    };
   }, []);
 
   const handleTouchMove = useCallback((x: number, y: number) => {
@@ -273,6 +321,9 @@ export default function App() {
       {phase === 'menu' && (
         <StartScreen
           isTouch={isTouch}
+          isFullscreen={isFullscreen}
+          fullscreenSupported={fullscreenSupported}
+          onToggleFullscreen={toggleFullscreen}
           onStart={startGame}
           onStartBoss={startBossGame}
         />
