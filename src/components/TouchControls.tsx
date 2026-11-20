@@ -11,7 +11,7 @@ interface TouchControlsProps {
 }
 
 // 视觉圆盘（.joystick-base）半径是 pad 宽度的 0.42 倍；
-// 触摸感应半径是它的 1.5 倍（由 CSS 的 --joy-touch 决定），这里只控制旋钮能拉多远。
+// 触摸感应半径是它的 2 倍（由 CSS 的 --joy-touch 决定），这里只控制旋钮能拉多远。
 const MAX_KNOB_RATIO = 0.26;
 
 export function TouchControls({

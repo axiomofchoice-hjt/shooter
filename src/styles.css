@@ -1457,9 +1457,9 @@ kbd.accent,
      副武器 83.6%/53.3%，闪避 86.1%/75.5%；直径都是屏高的 24.6% / 16% / 16.7% */
   --joy-size: min(24.6vh, 23vw);
   /* 视觉圆盘是 pad 的 84%（.joystick-base inset 8%），半径 0.42 × --joy-size；
-     触摸感应半径取视觉半径的 1.5 倍 = 0.63 × --joy-size，即 ::before 向外扩 13%。
+     触摸感应半径取视觉半径的 2 倍 = 0.84 × --joy-size，即 ::before 向外扩 34%。
      感应半径只决定手指按在哪里还能抓住摇杆，和旋钮最大拉动态无关 */
-  --joy-touch: 13%;
+  --joy-touch: 34%;
   --fire-size: min(24.6vh, 23vw);
   --joy-half: calc(var(--joy-size) * 0.5);
   --fire-half: calc(var(--fire-size) * 0.5);
