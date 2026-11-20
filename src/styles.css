@@ -1693,9 +1693,9 @@ kbd.accent,
 }
 
 .ability-secondary {
-  /* 副武器：FIRE 左侧，拇指回拉即可按到 */
-  right: calc(100% + calc(var(--fire-size) * 0.08));
-  bottom: calc(var(--fire-size) * 0.06);
+  /* 副武器：FIRE 右上 */
+  left: calc(100% + var(--fire-size) * 0.28);
+  bottom: calc(var(--fire-size) * 0.72);
   color: #ffe3a9;
   border: 1px solid rgba(255, 200, 87, 0.56);
   background: radial-gradient(
@@ -1710,9 +1710,9 @@ kbd.accent,
 }
 
 .ability-dodge {
-  /* 闪避：FIRE 正上方，避开右下角误触 */
-  right: calc(var(--fire-size) * 0.04);
-  bottom: calc(100% + calc(var(--fire-size) * 0.1));
+  /* 闪避：FIRE 正右方 */
+  left: calc(100% + var(--fire-size) * 0.42);
+  bottom: calc(var(--fire-size) * 0.06);
   width: var(--dash-size);
   height: var(--dash-size);
   color: #c8fbff;
