@@ -31,11 +31,20 @@ const PLAYER_COLOR = '#5ff6ff';
 const SECONDARY_COLOR = '#ffc857';
 const ENEMY_GLOW = 0.16;
 
+const PLAYER_SPEED = 270;
+
 const SECONDARY_COOLDOWN = 3.4;
 const SECONDARY_PELLETS = 7;
-const DODGE_COOLDOWN = 1.6;
-const DASH_TIME = 0.11;
-const DASH_SPEED = 1000;
+// Dodge: speed is 1.1x the walk speed, the slide is 20% longer than the old
+// 1000px/s x 0.11s burst (110 -> 132px), and the 1.5s cooldown only starts
+// counting once the slide itself is over.
+const DODGE_COOLDOWN = 1.5;
+const DASH_SPEED_MULT = 1.1;
+const DASH_SPEED = PLAYER_SPEED * DASH_SPEED_MULT;
+const DASH_DISTANCE = 132;
+const DASH_TIME = DASH_DISTANCE / DASH_SPEED;
+// HUD sweep spans the slide plus the cooldown that follows it.
+const DODGE_CYCLE = DASH_TIME + DODGE_COOLDOWN;
 
 const BOSS_HP = 320;
 const BOSS_RADIUS = 58;
@@ -608,10 +617,13 @@ export class ShooterGame {
     }
 
     player.dashTime = DASH_TIME;
-    player.invuln = Math.max(player.invuln, 0.3);
+    // i-frames cover the whole slide, which is now longer than the old 0.3s.
+    player.invuln = Math.max(player.invuln, DASH_TIME + 0.05);
     player.vx = player.dashDirX * DASH_SPEED;
     player.vy = player.dashDirY * DASH_SPEED;
-    this.dodgeCooldown = DODGE_COOLDOWN;
+    // Cooldown starts after the slide, so the gap between two dodges is
+    // DODGE_COOLDOWN plus the slide time.
+    this.dodgeCooldown = DODGE_CYCLE;
     this.shake = Math.max(this.shake, 3.5);
     this.sfx.play('dash');
     this.spawnBurst(
@@ -670,7 +682,7 @@ export class ShooterGame {
       radius: 17,
       hp: 100,
       maxHp: 100,
-      speed: 270,
+      speed: PLAYER_SPEED,
       angle: -Math.PI / 2,
       fireCooldown: 0,
       invuln: 0,
@@ -2242,7 +2254,7 @@ export class ShooterGame {
       kills: this.kills,
       muted: this.sfx.muted,
       secondaryCooldown: clamp(this.secondaryCooldown / SECONDARY_COOLDOWN, 0, 1),
-      dodgeCooldown: clamp(this.dodgeCooldown / DODGE_COOLDOWN, 0, 1),
+      dodgeCooldown: clamp(this.dodgeCooldown / DODGE_CYCLE, 0, 1),
       bossHp,
       bossMaxHp: boss?.maxHp ?? 0,
       bossPhase: boss && boss.hp <= boss.maxHp * 0.5 ? 2 : 1,
