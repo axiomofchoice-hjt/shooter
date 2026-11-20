@@ -44,6 +44,20 @@ const BOSS_CONTACT_DAMAGE = 28;
 const BOSS_SCORE = 1600;
 const BOSS_VICTORY_DELAY = 1.6;
 
+// Enemy behaviour timer: every enemy replays a shuffled rotation of one move,
+// one attack and two idle actions, then rolls a fresh rotation.
+const ENEMY_ACTIONS: EnemyAction[] = ['move', 'attack', 'idle', 'idle'];
+const ENEMY_LEGS_MIN = 3;
+const ENEMY_LEGS_MAX = 5;
+// Each hop lands on a ring around the position the move action started from.
+const ENEMY_RING_MIN = 58;
+const ENEMY_RING_MAX = 108;
+// 80% of the hops correct the distance to the enemy's preferred range.
+const ENEMY_APPROACH_CHANCE = 0.8;
+const ENEMY_IDLE_JITTER = 0.5;
+const ENEMY_LEG_TIMEOUT = 1.8;
+const ENEMY_LANE_PAD = 20;
+
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
 const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by);
@@ -71,6 +85,9 @@ interface EnemyDef {
   color: string;
 }
 
+type EnemyAction = 'move' | 'attack' | 'idle';
+type AttackPhase = 'windup' | 'active' | 'recover';
+
 const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   grunt: { radius: 16, hp: 4, speed: 86, damage: 12, score: 10, color: '#ff4d7d' },
   runner: { radius: 12, hp: 3, speed: 154, damage: 8, score: 15, color: '#ffc857' },
@@ -83,6 +100,104 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     damage: BOSS_CONTACT_DAMAGE,
     score: BOSS_SCORE,
     color: BOSS_COLOR,
+  },
+};
+
+interface EnemyAttackDef {
+  /** sweep = a line segment spinning once around the enemy, shot = bullets. */
+  mode: 'sweep' | 'shot';
+  /** 前摇: telegraph before the hit lands. */
+  windup: number;
+  /** 判定: sweep duration / burst window. */
+  active: number;
+  /** 后摇: recovery before the next action. */
+  recovery: number;
+  /** Blade length, or max firing range for shots. */
+  reach: number;
+  damage: number;
+  shots: number;
+  interval: number;
+}
+
+interface EnemyBehaviorDef {
+  /** Preferred distance to the player: melee hugs, ranged keeps its space. */
+  range: number;
+  /** Deliberately slow shuffle speed (px/s) for the straight-line hops. */
+  moveSpeed: number;
+  attack: EnemyAttackDef;
+}
+
+const ENEMY_BEHAVIOR: Record<EnemyKind, EnemyBehaviorDef> = {
+  grunt: {
+    range: 105,
+    moveSpeed: 70,
+    attack: {
+      mode: 'sweep',
+      windup: 0.55,
+      active: 0.5,
+      recovery: 0.4,
+      reach: 120,
+      damage: 12,
+      shots: 1,
+      interval: 0,
+    },
+  },
+  runner: {
+    range: 85,
+    moveSpeed: 112,
+    attack: {
+      mode: 'sweep',
+      windup: 0.32,
+      active: 0.36,
+      recovery: 0.26,
+      reach: 96,
+      damage: 8,
+      shots: 1,
+      interval: 0,
+    },
+  },
+  tank: {
+    range: 138,
+    moveSpeed: 46,
+    attack: {
+      mode: 'sweep',
+      windup: 0.85,
+      active: 0.9,
+      recovery: 0.6,
+      reach: 172,
+      damage: 22,
+      shots: 1,
+      interval: 0,
+    },
+  },
+  spitter: {
+    range: 430,
+    moveSpeed: 60,
+    attack: {
+      mode: 'shot',
+      windup: 0.6,
+      active: 0.52,
+      recovery: 0.45,
+      reach: 640,
+      damage: 9,
+      shots: 3,
+      interval: 0.18,
+    },
+  },
+  // The boss keeps its own scripted pattern; this entry is only a fallback.
+  boss: {
+    range: 300,
+    moveSpeed: 60,
+    attack: {
+      mode: 'sweep',
+      windup: 0.6,
+      active: 0.5,
+      recovery: 0.4,
+      reach: 120,
+      damage: BOSS_CONTACT_DAMAGE,
+      shots: 1,
+      interval: 0,
+    },
   },
 };
 
@@ -110,6 +225,63 @@ interface Player {
   dead: boolean;
 }
 
+interface EnemyBrain {
+  /** Current rotation of actions, re-rolled once it is played through. */
+  queue: EnemyAction[];
+  index: number;
+  started: boolean;
+
+  // move action
+  legsLeft: number;
+  anchorX: number;
+  anchorY: number;
+  ringRadius: number;
+  targetX: number;
+  targetY: number;
+  legSpeed: number;
+  legTime: number;
+  legTimer: number;
+  lastLegTime: number;
+
+  // attack action
+  phase: AttackPhase;
+  timer: number;
+  sweepFrom: number;
+  sweepAngle: number;
+  sweepHit: boolean;
+  shotsLeft: number;
+  fireTimer: number;
+
+  // idle action
+  idleTimer: number;
+}
+
+function createEnemyBrain(): EnemyBrain {
+  return {
+    queue: [],
+    index: 0,
+    started: false,
+    legsLeft: 0,
+    anchorX: 0,
+    anchorY: 0,
+    ringRadius: 0,
+    targetX: 0,
+    targetY: 0,
+    legSpeed: 0,
+    legTime: 0,
+    legTimer: 0,
+    lastLegTime: 0,
+    phase: 'windup',
+    timer: 0,
+    sweepFrom: 0,
+    sweepAngle: 0,
+    sweepHit: false,
+    shotsLeft: 0,
+    fireTimer: 0,
+    idleTimer: 0,
+  };
+}
+
 interface Enemy {
   id: number;
   kind: EnemyKind;
@@ -129,6 +301,11 @@ interface Enemy {
   hitFlash: number;
   age: number;
   seed: number;
+  brain: EnemyBrain;
+  desiredX: number;
+  desiredY: number;
+  desiredSpeed: number;
+  turnRate: number;
   dead: boolean;
 }
 
@@ -1131,50 +1308,60 @@ export class ShooterGame {
       const distance = Math.max(1, Math.hypot(dx, dy));
       const nx = dx / distance;
       const ny = dy / distance;
-      enemy.angle = Math.atan2(dy, dx);
 
-      let desiredX = nx;
-      let desiredY = ny;
+      enemy.desiredX = 0;
+      enemy.desiredY = 0;
+      enemy.desiredSpeed = 0;
+      enemy.turnRate = 4;
+      let aimAtPlayer = true;
 
-      if (enemy.kind === 'spitter') {
-        if (distance < 250) {
-          desiredX = -nx;
-          desiredY = -ny;
-        } else if (distance < 350) {
-          const strafe = Math.sin(this.elapsed * 1.4 + enemy.seed) > 0 ? 1 : -1;
-          desiredX = -ny * strafe * 0.8 + nx * 0.15;
-          desiredY = nx * strafe * 0.8 + ny * 0.15;
-        }
-        if (distance < 660 && enemy.attackTimer <= 0 && !player.dead) {
-          this.spitterFire(enemy);
-        }
-      } else if (enemy.kind === 'boss') {
+      if (enemy.kind === 'boss') {
+        enemy.angle = Math.atan2(dy, dx);
         if (distance > 300) {
-          desiredX = nx;
-          desiredY = ny;
+          enemy.desiredX = nx;
+          enemy.desiredY = ny;
         } else if (distance < 185) {
-          desiredX = -nx;
-          desiredY = -ny;
+          enemy.desiredX = -nx;
+          enemy.desiredY = -ny;
         } else {
           const strafe = Math.sin(this.elapsed * 0.9 + enemy.seed) > 0 ? 1 : -1;
-          desiredX = -ny * strafe * 0.85 + nx * 0.1;
-          desiredY = nx * strafe * 0.85 + ny * 0.1;
+          enemy.desiredX = -ny * strafe * 0.85 + nx * 0.1;
+          enemy.desiredY = nx * strafe * 0.85 + ny * 0.1;
         }
+        const phase2 = enemy.hp <= enemy.maxHp * 0.5;
+        enemy.desiredSpeed = enemy.speed * (phase2 ? 1.32 : 1);
         if (!player.dead) this.updateBossAttack(enemy, dt);
+      } else {
+        aimAtPlayer = this.updateEnemyBrain(enemy, dt, distance);
       }
 
-      const phase2 = enemy.kind === 'boss' && enemy.hp <= enemy.maxHp * 0.5;
-      const desiredLen = Math.max(0.001, Math.hypot(desiredX, desiredY));
-      desiredX /= desiredLen;
-      desiredY /= desiredLen;
-      const turn = 1 - Math.exp(-(enemy.kind === 'runner' ? 10 : 4) * dt);
-      const speed = enemy.speed * (phase2 ? 1.32 : 1);
-      enemy.vx += (desiredX * speed - enemy.vx) * turn;
-      enemy.vy += (desiredY * speed - enemy.vy) * turn;
+      const desiredLen = Math.hypot(enemy.desiredX, enemy.desiredY);
+      if (desiredLen > 0.001) {
+        enemy.desiredX /= desiredLen;
+        enemy.desiredY /= desiredLen;
+      } else {
+        enemy.desiredX = 0;
+        enemy.desiredY = 0;
+      }
+      const turn = 1 - Math.exp(-enemy.turnRate * dt);
+      enemy.vx += (enemy.desiredX * enemy.desiredSpeed - enemy.vx) * turn;
+      enemy.vy += (enemy.desiredY * enemy.desiredSpeed - enemy.vy) * turn;
       enemy.x += enemy.vx * dt;
       enemy.y += enemy.vy * dt;
       enemy.x = clamp(enemy.x, bounds.left + 18, bounds.right - 18);
       enemy.y = clamp(enemy.y, bounds.top + 18, bounds.bottom - 18);
+
+      if (enemy.kind !== 'boss') {
+        if (aimAtPlayer) {
+          enemy.angle = turnTowards(enemy.angle, Math.atan2(dy, dx), 1 - Math.exp(-10 * dt));
+        } else if (Math.hypot(enemy.vx, enemy.vy) > 26) {
+          enemy.angle = turnTowards(
+            enemy.angle,
+            Math.atan2(enemy.vy, enemy.vx),
+            1 - Math.exp(-6 * dt),
+          );
+        }
+      }
 
       if (enemy.age > 0.18 && !player.dead && distance < enemy.radius + player.radius - 2) {
         if (player.invuln <= 0) {
@@ -1217,10 +1404,254 @@ export class ShooterGame {
     this.enemies = this.enemies.filter((enemy) => !enemy.dead);
   }
 
-  private spitterFire(enemy: Enemy) {
-    enemy.attackTimer = rand(1.9, 2.8);
-    const angle = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x) + rand(-0.06, 0.06);
-    const speed = 265;
+  /**
+   * Advances the enemy's move / attack / idle rotation. Returns true while the
+   * enemy is attacking, which makes it face the player instead of its heading.
+   */
+  private updateEnemyBrain(enemy: Enemy, dt: number, distance: number): boolean {
+    const brain = enemy.brain;
+    let guard = 0;
+    while (guard++ < 8) {
+      if (brain.index >= brain.queue.length) {
+        brain.queue = this.rollEnemyActions();
+        brain.index = 0;
+        brain.started = false;
+      }
+      if (!brain.started) {
+        brain.started = true;
+        this.beginEnemyAction(enemy, brain.queue[brain.index]);
+      }
+      if (this.tickEnemyAction(enemy, dt, distance)) {
+        return brain.queue[brain.index] === 'attack';
+      }
+      brain.index += 1;
+      brain.started = false;
+    }
+    return false;
+  }
+
+  /** One move, one attack and two idle actions in a random order. */
+  private rollEnemyActions(): EnemyAction[] {
+    const queue = ENEMY_ACTIONS.slice();
+    for (let i = queue.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const swap = queue[i];
+      queue[i] = queue[j];
+      queue[j] = swap;
+    }
+    return queue;
+  }
+
+  private beginEnemyAction(enemy: Enemy, action: EnemyAction) {
+    if (action === 'move') {
+      this.beginEnemyMove(enemy);
+      return;
+    }
+    if (action === 'attack') {
+      const atk = ENEMY_BEHAVIOR[enemy.kind].attack;
+      enemy.brain.phase = 'windup';
+      enemy.brain.timer = atk.windup * rand(0.9, 1.1);
+      return;
+    }
+    // Idle: random duration whose expectation matches one straight-line hop.
+    const brain = enemy.brain;
+    const def = ENEMY_BEHAVIOR[enemy.kind];
+    const mean =
+      brain.lastLegTime > 0.05
+        ? brain.lastLegTime
+        : (brain.ringRadius > 0 ? brain.ringRadius : (ENEMY_RING_MIN + ENEMY_RING_MAX) / 2) /
+          Math.max(1, def.moveSpeed);
+    brain.idleTimer = clamp(
+      mean * rand(1 - ENEMY_IDLE_JITTER, 1 + ENEMY_IDLE_JITTER),
+      0.35,
+      2.6,
+    );
+  }
+
+  private beginEnemyMove(enemy: Enemy) {
+    const brain = enemy.brain;
+    brain.legsLeft =
+      ENEMY_LEGS_MIN + Math.floor(Math.random() * (ENEMY_LEGS_MAX - ENEMY_LEGS_MIN + 1));
+    this.beginEnemyLeg(enemy, dist(enemy.x, enemy.y, this.player.x, this.player.y));
+  }
+
+  private beginEnemyLeg(enemy: Enemy, distance: number) {
+    const brain = enemy.brain;
+    const def = ENEMY_BEHAVIOR[enemy.kind];
+    const bounds = this.roomBounds();
+    const player = this.player;
+
+    // Each hop starts where the previous one ended; the ring is built around
+    // that spot and a bigger enemy paces a wider ring.
+    brain.anchorX = enemy.x;
+    brain.anchorY = enemy.y;
+    brain.ringRadius =
+      rand(ENEMY_RING_MIN, ENEMY_RING_MAX) * clamp(enemy.radius / 16, 0.8, 1.5);
+
+    // Random point on the ring around the anchor. The player-facing direction
+    // is the one that corrects the distance to the preferred range; 80% of the
+    // hops take it, 20% take the same vector reversed, away from the range.
+    const toPlayer = Math.atan2(player.y - brain.anchorY, player.x - brain.anchorX);
+    const tooFar = distance > def.range;
+    const corrective = tooFar ? toPlayer : toPlayer + Math.PI;
+    const reversed = Math.random() >= ENEMY_APPROACH_CHANCE;
+    let angle = reversed ? corrective + Math.PI : corrective;
+    // Do not overshoot the preferred range and barge into the player.
+    const hopLen =
+      tooFar !== reversed
+        ? Math.min(brain.ringRadius, Math.max(26, distance - def.range))
+        : brain.ringRadius;
+    // Still a ring pick, not a pure radial line.
+    angle += rand(-0.6, 0.6);
+
+    // Never aim outside the room: swing the hop toward the room centre until
+    // the ring point fits, instead of clamping it onto the wall.
+    const pad = ENEMY_LANE_PAD + enemy.radius;
+    const fits = (a: number) => {
+      const x = brain.anchorX + Math.cos(a) * hopLen;
+      const y = brain.anchorY + Math.sin(a) * hopLen;
+      return (
+        x >= bounds.left + pad &&
+        x <= bounds.right - pad &&
+        y >= bounds.top + pad &&
+        y <= bounds.bottom - pad
+      );
+    };
+    if (!fits(angle)) {
+      const toCentre = Math.atan2(
+        (bounds.top + bounds.bottom) / 2 - brain.anchorY,
+        (bounds.left + bounds.right) / 2 - brain.anchorX,
+      );
+      const delta = ((((toCentre - angle + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+      for (let step = 1; step <= 8; step++) {
+        const probe = angle + delta * (step / 8);
+        if (fits(probe)) {
+          angle = probe;
+          break;
+        }
+      }
+    }
+
+    brain.targetX = clamp(
+      brain.anchorX + Math.cos(angle) * hopLen,
+      bounds.left + pad,
+      bounds.right - pad,
+    );
+    brain.targetY = clamp(
+      brain.anchorY + Math.sin(angle) * hopLen,
+      bounds.top + pad,
+      bounds.bottom - pad,
+    );
+
+    const hop = Math.max(12, dist(brain.targetX, brain.targetY, enemy.x, enemy.y));
+    brain.legSpeed = def.moveSpeed * rand(0.9, 1.15);
+    brain.legTime = hop / brain.legSpeed;
+    brain.legTimer = brain.legTime * ENEMY_LEG_TIMEOUT + 0.3;
+    brain.lastLegTime = brain.legTime;
+  }
+
+  private tickEnemyAction(enemy: Enemy, dt: number, distance: number): boolean {
+    const brain = enemy.brain;
+    const action = brain.queue[brain.index];
+
+    if (action === 'move') {
+      const dx = brain.targetX - enemy.x;
+      const dy = brain.targetY - enemy.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 2) {
+        enemy.desiredX = dx / d;
+        enemy.desiredY = dy / d;
+        // Ease into the ring point instead of overshooting it.
+        enemy.desiredSpeed = brain.legSpeed * clamp(d / 34, 0.35, 1);
+      }
+      brain.legTimer -= dt;
+      if (d <= 8 || brain.legTimer <= 0) {
+        brain.legsLeft -= 1;
+        if (brain.legsLeft <= 0) return false;
+        this.beginEnemyLeg(enemy, distance);
+      }
+      return true;
+    }
+
+    if (action === 'attack') {
+      const atk = ENEMY_BEHAVIOR[enemy.kind].attack;
+      enemy.turnRate = 10;
+      if (brain.phase === 'windup') {
+        brain.timer -= dt;
+        if (brain.timer <= 0) {
+          brain.phase = 'active';
+          brain.timer = atk.active;
+          if (atk.mode === 'shot') {
+            brain.shotsLeft = atk.shots;
+            brain.fireTimer = 0;
+          } else {
+            // Start the blade behind the enemy and sweep one full turn.
+            brain.sweepFrom = enemy.angle - Math.PI;
+            brain.sweepAngle = brain.sweepFrom;
+            brain.sweepHit = false;
+            this.sfx.play('sweep');
+          }
+        }
+        return true;
+      }
+      if (brain.phase === 'active') {
+        brain.timer -= dt;
+        if (atk.mode === 'shot') {
+          brain.fireTimer -= dt;
+          if (brain.shotsLeft > 0 && brain.fireTimer <= 0) {
+            this.fireEnemyShot(enemy, atk);
+            brain.shotsLeft -= 1;
+            brain.fireTimer = atk.interval;
+          }
+        } else {
+          const progress = 1 - clamp(brain.timer / Math.max(0.001, atk.active), 0, 1);
+          brain.sweepAngle = brain.sweepFrom + TAU * progress;
+          this.enemySweepHit(enemy, atk);
+        }
+        if (brain.timer <= 0) {
+          brain.phase = 'recover';
+          brain.timer = atk.recovery;
+        }
+        return true;
+      }
+      brain.timer -= dt;
+      return brain.timer > 0;
+    }
+
+    brain.idleTimer -= dt;
+    enemy.turnRate = 6;
+    return brain.idleTimer > 0;
+  }
+
+  private enemySweepHit(enemy: Enemy, atk: EnemyAttackDef) {
+    const brain = enemy.brain;
+    if (brain.sweepHit) return;
+    const player = this.player;
+    if (player.dead || player.invuln > 0) return;
+    const tipX = enemy.x + Math.cos(brain.sweepAngle) * atk.reach;
+    const tipY = enemy.y + Math.sin(brain.sweepAngle) * atk.reach;
+    if (
+      !segmentCircleHit(
+        enemy.x,
+        enemy.y,
+        tipX,
+        tipY,
+        player.x,
+        player.y,
+        player.radius + 9,
+      )
+    ) {
+      return;
+    }
+    brain.sweepHit = true;
+    this.playerHit(atk.damage);
+    this.shake = Math.max(this.shake, 6);
+    this.spawnBurst(tipX, tipY, enemy.color, 8, 150, 0.3);
+  }
+
+  private fireEnemyShot(enemy: Enemy, atk: EnemyAttackDef) {
+    const angle =
+      Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x) + rand(-0.05, 0.05);
     const x = enemy.x + Math.cos(angle) * (enemy.radius + 5);
     const y = enemy.y + Math.sin(angle) * (enemy.radius + 5);
     this.enemyBullets.push({
@@ -1228,14 +1659,14 @@ export class ShooterGame {
       y,
       prevX: x,
       prevY: y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      radius: 6,
-      damage: 9,
+      vx: Math.cos(angle) * 300,
+      vy: Math.sin(angle) * 300,
+      radius: 6.5,
+      damage: atk.damage,
       life: 4,
       color: enemy.color,
     });
-    this.spawnBurst(x, y, enemy.color, 4, 80, 0.25);
+    this.spawnBurst(x, y, enemy.color, 4, 90, 0.25);
     this.sfx.play('spit');
   }
 
@@ -1664,6 +2095,11 @@ export class ShooterGame {
       hitFlash: 0,
       age: 0,
       seed: rand(0, TAU),
+      brain: createEnemyBrain(),
+      desiredX: 0,
+      desiredY: 0,
+      desiredSpeed: 0,
+      turnRate: 4,
       dead: false,
     });
     this.spawnBurst(x, y, def.color, 12, 180, 0.45);
@@ -2624,6 +3060,8 @@ export class ShooterGame {
 
       ctx.restore();
 
+      if (enemy.kind !== 'boss') this.drawEnemyAttack(enemy);
+
       if (enemy.kind === 'boss' && this.bossWindup > 0) {
         const pulse = 0.5 + Math.sin(this.ambientTime * 24) * 0.28;
         const color = this.bossAttackKind === 'summon' ? '#ffc857' : BOSS_COLOR;
@@ -2655,6 +3093,100 @@ export class ShooterGame {
         );
       }
     }
+  }
+
+  /** Wind-up telegraph and blade trail for the mob attack actions. */
+  private drawEnemyAttack(enemy: Enemy) {
+    const brain = enemy.brain;
+    if (!brain.started || brain.queue[brain.index] !== 'attack') return;
+    if (brain.phase === 'recover') return;
+    const atk = ENEMY_BEHAVIOR[enemy.kind].attack;
+    const ctx = this.ctx;
+    const color = enemy.color;
+
+    ctx.save();
+    if (brain.phase === 'windup') {
+      const total = Math.max(0.001, atk.windup);
+      const t = clamp(1 - brain.timer / total, 0, 1);
+      ctx.strokeStyle = withAlpha(color, 0.16 + t * 0.34);
+      ctx.lineWidth = 1.6 / this.zoom;
+      ctx.setLineDash([7 / this.zoom, 9 / this.zoom]);
+      ctx.beginPath();
+      if (atk.mode === 'sweep') {
+        ctx.arc(enemy.x, enemy.y, atk.reach, 0, TAU);
+      } else {
+        const aim = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
+        ctx.moveTo(enemy.x, enemy.y);
+        ctx.lineTo(
+          enemy.x + Math.cos(aim) * atk.reach * 0.55,
+          enemy.y + Math.sin(aim) * atk.reach * 0.55,
+        );
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (atk.mode === 'sweep') {
+        // A marker races one full turn during the wind-up: this is a spin.
+        const spin = enemy.angle - Math.PI + TAU * t;
+        ctx.strokeStyle = withAlpha(color, 0.45 + t * 0.45);
+        ctx.lineWidth = (2.5 + t * 2) / this.zoom;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, atk.reach * 0.94, spin, spin + 0.45 + t * 0.5);
+        ctx.stroke();
+      }
+    } else if (atk.mode === 'sweep') {
+      // Swept sector, the blade edge and the full reach ring.
+      ctx.fillStyle = withAlpha(color, 0.15);
+      ctx.beginPath();
+      ctx.moveTo(enemy.x, enemy.y);
+      ctx.arc(enemy.x, enemy.y, atk.reach, brain.sweepFrom, brain.sweepAngle);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = withAlpha(color, 0.4);
+      ctx.lineWidth = 2 / this.zoom;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, atk.reach, brain.sweepFrom, brain.sweepAngle);
+      ctx.stroke();
+
+      ctx.strokeStyle = withAlpha(color, 0.12);
+      ctx.lineWidth = 1.4 / this.zoom;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, atk.reach, 0, TAU);
+      ctx.stroke();
+
+      const tipX = enemy.x + Math.cos(brain.sweepAngle) * atk.reach;
+      const tipY = enemy.y + Math.sin(brain.sweepAngle) * atk.reach;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(enemy.x, enemy.y);
+      ctx.lineTo(tipX, tipY);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(enemy.x, enemy.y);
+      ctx.lineTo(tipX, tipY);
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = withAlpha(color, 0.5);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(
+        enemy.x,
+        enemy.y,
+        enemy.radius + 10 + Math.sin(this.elapsed * 30) * 3,
+        0,
+        TAU,
+      );
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private drawPlayer() {
@@ -2985,4 +3517,9 @@ function segmentCircleHit(
   const px = x1 + dx * t;
   const py = y1 + dy * t;
   return (px - cx) * (px - cx) + (py - cy) * (py - cy) <= radius * radius;
+}
+
+function turnTowards(from: number, to: number, t: number) {
+  const delta = ((((to - from + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+  return from + delta * clamp(t, 0, 1);
 }
