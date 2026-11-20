@@ -1407,14 +1407,19 @@ kbd.accent,
   z-index: 20;
   pointer-events: none;
   user-select: none;
+  /* 控件尺寸集中在这里，按屏幕高度缩放并受宽度限制，竖屏 / 小屏也不会挤出界 */
+  --joy-size: min(clamp(120px, 36vh, 164px), 34vw);
+  --fire-size: min(clamp(94px, 28vh, 122px), 26vw);
+  --ability-size: calc(var(--fire-size) * 0.62);
+  --dash-size: calc(var(--fire-size) * 0.58);
 }
 
 .joystick-pad {
   position: absolute;
-  left: calc(18px + var(--safe-left));
-  bottom: calc(20px + var(--safe-bottom));
-  width: clamp(138px, 37vw, 178px);
-  height: clamp(138px, 37vw, 178px);
+  left: calc(16px + var(--safe-left));
+  bottom: calc(16px + var(--safe-bottom));
+  width: var(--joy-size);
+  height: var(--joy-size);
   pointer-events: auto;
   touch-action: none;
   opacity: 0.9;
@@ -1542,18 +1547,18 @@ kbd.accent,
 .fire-zone {
   position: absolute;
   right: calc(20px + var(--safe-right));
-  bottom: calc(24px + var(--safe-bottom));
-  display: flex;
-  align-items: flex-end;
-  gap: clamp(7px, 1.5vw, 12px);
+  bottom: calc(20px + var(--safe-bottom));
+  width: var(--fire-size);
+  height: var(--fire-size);
   pointer-events: none;
 }
 
 .fire-button {
-  position: relative;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: auto;
-  width: clamp(98px, 26vw, 126px);
-  height: clamp(98px, 26vw, 126px);
   border-radius: 50%;
   display: flex;
   flex-direction: column;
@@ -1581,7 +1586,7 @@ kbd.accent,
 .fire-button::before {
   content: "";
   position: absolute;
-  inset: -12px;
+  inset: calc(var(--fire-size) * -0.075);
   border-radius: 50%;
   border: 1px dashed rgba(255, 77, 125, 0.22);
   pointer-events: none;
@@ -1601,8 +1606,8 @@ kbd.accent,
 
 .fire-crosshair {
   position: relative;
-  width: 27px;
-  height: 27px;
+  width: calc(var(--fire-size) * 0.25);
+  height: calc(var(--fire-size) * 0.25);
   margin-bottom: 2px;
   border: 1.5px solid currentColor;
   border-radius: 50%;
@@ -1646,7 +1651,7 @@ kbd.accent,
 
 .fire-label {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: calc(var(--fire-size) * 0.11);
   font-weight: 700;
   letter-spacing: 0.18em;
   color: #fff2f5;
@@ -1654,22 +1659,15 @@ kbd.accent,
 
 .fire-sub {
   font-family: var(--mono);
-  font-size: 7px;
+  font-size: calc(var(--fire-size) * 0.065);
   letter-spacing: 0.1em;
   color: rgba(255, 193, 206, 0.56);
 }
 
-.ability-stack {
-  display: flex;
-  flex-direction: column;
-  gap: clamp(6px, 1.3vh, 9px);
-  pointer-events: none;
-}
-
 .ability-button {
-  position: relative;
-  width: clamp(52px, 12vw, 62px);
-  height: clamp(52px, 12vw, 62px);
+  position: absolute;
+  width: var(--ability-size);
+  height: var(--ability-size);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1694,6 +1692,9 @@ kbd.accent,
 }
 
 .ability-secondary {
+  /* 副武器：FIRE 左侧，拇指回拉即可按到 */
+  right: calc(100% + calc(var(--fire-size) * 0.08));
+  bottom: calc(var(--fire-size) * 0.06);
   color: #ffe3a9;
   border: 1px solid rgba(255, 200, 87, 0.56);
   background: radial-gradient(
@@ -1708,6 +1709,11 @@ kbd.accent,
 }
 
 .ability-dodge {
+  /* 闪避：FIRE 正上方，避开右下角误触 */
+  right: calc(var(--fire-size) * 0.04);
+  bottom: calc(100% + calc(var(--fire-size) * 0.1));
+  width: var(--dash-size);
+  height: var(--dash-size);
   color: #c8fbff;
   border: 1px solid rgba(95, 246, 255, 0.5);
   background: radial-gradient(
@@ -1724,8 +1730,8 @@ kbd.accent,
 .ability-icon {
   display: grid;
   place-items: center;
-  width: 15px;
-  height: 15px;
+  width: calc(var(--ability-size) * 0.28);
+  height: calc(var(--ability-size) * 0.28);
   opacity: 0.92;
 }
 
@@ -1736,7 +1742,7 @@ kbd.accent,
 
 .ability-label {
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: calc(var(--ability-size) * 0.15);
   font-weight: 600;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -1933,35 +1939,9 @@ kbd.accent,
     flex-direction: column;
   }
 
-  .joystick-pad {
-    width: clamp(132px, 35vw, 168px);
-    height: clamp(132px, 35vw, 168px);
-    left: calc(14px + var(--safe-left));
-    bottom: calc(18px + var(--safe-bottom));
-  }
-
-  .fire-zone {
-    right: calc(16px + var(--safe-right));
-    bottom: calc(22px + var(--safe-bottom));
-    gap: 8px;
-  }
-
-  .ability-stack {
-    gap: 7px;
-  }
-
-  .ability-button {
-    width: clamp(48px, 11.5vw, 56px);
-    height: clamp(48px, 11.5vw, 56px);
-  }
-
-  .ability-icon {
-    width: 13px;
-    height: 13px;
-  }
-
-  .ability-label {
-    font-size: 7px;
+  .touch-ui {
+    --joy-size: min(clamp(112px, 34vh, 150px), 32vw);
+    --fire-size: min(clamp(90px, 27vh, 112px), 25vw);
   }
 }
 
@@ -2123,46 +2103,13 @@ kbd.accent,
     font-size: 26px;
   }
 
-  .joystick-pad {
-    width: 118px;
-    height: 118px;
-  }
-
-  .fire-button {
-    width: 88px;
-    height: 88px;
-  }
-
-  .fire-label {
-    font-size: 10px;
+  .touch-ui {
+    --joy-size: min(clamp(112px, 34vh, 156px), 30vw);
+    --fire-size: min(clamp(90px, 27vh, 116px), 23vw);
   }
 
   .fire-sub {
     display: none;
-  }
-
-  .fire-zone {
-    gap: 6px;
-  }
-
-  .ability-stack {
-    gap: 5px;
-  }
-
-  .ability-button {
-    width: 43px;
-    height: 43px;
-    gap: 1px;
-  }
-
-  .ability-icon {
-    width: 12px;
-    height: 12px;
-  }
-
-  .ability-label {
-    font-size: 6.5px;
-    letter-spacing: 0;
   }
 }
 
