@@ -1408,17 +1408,22 @@ kbd.accent,
   pointer-events: none;
   user-select: none;
   /* 控件尺寸集中在这里，按屏幕高度缩放并受宽度限制，竖屏 / 小屏也不会挤出界 */
-  /* 尺寸/位置对齐参考图：两个大按钮直径约屏高 25%，摇杆中心 17% 宽、FIRE 中心 73% 宽 */
-  --joy-size: min(26vh, 24vw);
-  --fire-size: min(25vh, 23vw);
-  --ability-size: calc(var(--fire-size) * 0.62);
-  --dash-size: calc(var(--fire-size) * 0.58);
+  /* 全部位置按参考图量出来的百分比：摇杆 16.7%/80.5%，FIRE 73.9%/76.6%，
+     副武器 83.6%/53.3%，闪避 86.1%/75.5%；直径都是屏高的 24.6% / 16% / 16.7% */
+  --joy-size: min(24.6vh, 23vw);
+  --fire-size: min(24.6vh, 23vw);
+  --joy-half: calc(var(--joy-size) * 0.5);
+  --fire-half: calc(var(--fire-size) * 0.5);
+  --ability-size: calc(var(--fire-size) * 0.65);
+  --ability-half: calc(var(--fire-size) * 0.325);
+  --dash-size: calc(var(--fire-size) * 0.68);
+  --dash-half: calc(var(--fire-size) * 0.34);
 }
 
 .joystick-pad {
   position: absolute;
-  left: calc(11% + var(--safe-left));
-  bottom: calc(7.4% + var(--safe-bottom));
+  left: calc(16.7% - var(--joy-half) + var(--safe-left));
+  bottom: calc(19.5% - var(--joy-half) + var(--safe-bottom));
   width: var(--joy-size);
   height: var(--joy-size);
   pointer-events: auto;
@@ -1547,8 +1552,8 @@ kbd.accent,
 
 .fire-zone {
   position: absolute;
-  right: calc(20.7% + var(--safe-right));
-  bottom: calc(12.4% + var(--safe-bottom));
+  right: calc(26.1% - var(--fire-half) + var(--safe-right));
+  bottom: calc(23.4% - var(--fire-half) + var(--safe-bottom));
   width: var(--fire-size);
   height: var(--fire-size);
   pointer-events: none;
@@ -1693,9 +1698,9 @@ kbd.accent,
 }
 
 .ability-secondary {
-  /* 副武器：FIRE 右上 */
-  left: calc(100% + var(--fire-size) * 0.28);
-  bottom: calc(var(--fire-size) * 0.72);
+  /* 副武器：参考图 FIRE 右上那颗（83.6% / 53.3%） */
+  left: calc(83.6% - var(--ability-half) + var(--safe-left));
+  top: calc(53.3% - var(--ability-half));
   color: #ffe3a9;
   border: 1px solid rgba(255, 200, 87, 0.56);
   background: radial-gradient(
@@ -1710,9 +1715,9 @@ kbd.accent,
 }
 
 .ability-dodge {
-  /* 闪避：FIRE 正右方 */
-  left: calc(100% + var(--fire-size) * 0.42);
-  bottom: calc(var(--fire-size) * 0.06);
+  /* 闪避：参考图 FIRE 右侧那颗（86.1% / 75.5%） */
+  left: calc(86.1% - var(--dash-half) + var(--safe-left));
+  top: calc(75.5% - var(--dash-half));
   width: var(--dash-size);
   height: var(--dash-size);
   color: #c8fbff;
