@@ -8,6 +8,7 @@ import { ShooterGame } from './game/Game';
 import { INITIAL_HUD, type GameStats, type HudSnapshot } from './game/types';
 import { Hud } from './components/Hud';
 import { TouchControls } from './components/TouchControls';
+import { WeaponSwitch } from './components/WeaponSwitch';
 import {
   GameOverOverlay,
   PauseOverlay,
@@ -177,6 +178,10 @@ export default function App() {
     gameRef.current?.triggerDodge();
   }, []);
 
+  const cycleWeapon = useCallback(() => {
+    gameRef.current?.cycleWeapon();
+  }, []);
+
   useEffect(() => {
     const updateOrientation = () => {
       setIsPortrait(
@@ -305,6 +310,10 @@ export default function App() {
 
       {(phase === 'playing' || phase === 'paused') && (
         <Hud hud={hud} onPause={pauseGame} onMute={toggleMute} />
+      )}
+
+      {phase === 'playing' && (
+        <WeaponSwitch weapon={hud.weapon} onCycle={cycleWeapon} />
       )}
 
       {phase === 'playing' && isTouch && (

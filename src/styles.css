@@ -198,6 +198,90 @@ svg {
   white-space: nowrap;
 }
 
+.weapon-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.weapon-row strong {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--cyan);
+  text-shadow: 0 0 12px rgba(95, 246, 255, 0.3);
+  white-space: nowrap;
+}
+
+.weapon-row em {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 7px;
+  letter-spacing: 0.16em;
+  color: rgba(151, 209, 222, 0.5);
+}
+
+.weapon-switch {
+  position: absolute;
+  left: calc(14px + env(safe-area-inset-left, 0px));
+  top: 50%;
+  z-index: 14;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 84px;
+  padding: 9px 12px 8px;
+  border: 1px solid rgba(95, 246, 255, 0.28);
+  border-color: color-mix(in srgb, var(--weapon-color) 38%, transparent);
+  border-radius: 9px;
+  background: rgba(4, 17, 22, 0.74);
+  color: rgba(226, 252, 255, 0.92);
+  text-align: left;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  box-shadow:
+    0 0 0 1px rgba(2, 10, 14, 0.45),
+    0 0 22px color-mix(in srgb, var(--weapon-color) 12%, transparent);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.weapon-switch:hover {
+  border-color: color-mix(in srgb, var(--weapon-color) 70%, transparent);
+  background: rgba(7, 27, 34, 0.86);
+}
+
+.weapon-switch:active {
+  transform: translateY(calc(-50% + 1px));
+}
+
+.weapon-switch-tag {
+  font-family: var(--mono);
+  font-size: 7px;
+  letter-spacing: 0.16em;
+  color: color-mix(in srgb, var(--weapon-color) 72%, transparent);
+  text-transform: uppercase;
+}
+
+.weapon-switch strong {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--weapon-color);
+  text-shadow: 0 0 10px rgba(95, 246, 255, 0.3);
+  white-space: nowrap;
+}
+
+.weapon-switch-hint {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: rgba(158, 200, 210, 0.6);
+}
+
 .combo-tag {
   display: inline-flex;
   align-items: baseline;

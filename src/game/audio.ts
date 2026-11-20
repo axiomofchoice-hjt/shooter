@@ -9,6 +9,8 @@ type SoundName =
   | 'death'
   | 'spit'
   | 'secondary'
+  | 'scatter'
+  | 'rail'
   | 'dash'
   | 'bossIntro'
   | 'bossCharge'
@@ -101,6 +103,15 @@ export class SoundFX {
         this.tone(210, 58, 0.22, 'sawtooth', 0.16, 0);
         this.tone(760, 210, 0.16, 'square', 0.07, 0);
         this.tone(120, 48, 0.28, 'triangle', 0.11, 0.02);
+        break;
+      case 'scatter':
+        this.tone(200, 46, 0.24, 'sawtooth', 0.17, 0);
+        this.tone(96, 34, 0.3, 'square', 0.09, 0.01);
+        break;
+      case 'rail':
+        this.tone(1500, 120, 0.24, 'sawtooth', 0.12, 0);
+        this.tone(78, 30, 0.4, 'sine', 0.16, 0);
+        this.tone(940, 280, 0.14, 'square', 0.05, 0.02);
         break;
       case 'dash':
         this.tone(190, 720, 0.16, 'sine', 0.11, 0);

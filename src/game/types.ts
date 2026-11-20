@@ -2,10 +2,13 @@ export type GameMode = 'survival' | 'boss';
 
 export type EnemyKind = 'grunt' | 'runner' | 'tank' | 'spitter' | 'boss';
 
+export type WeaponId = 'pulse' | 'smg' | 'scatter' | 'rail';
+
 export type WavePhase = 'spawning' | 'intermission';
 
 export interface HudSnapshot {
   mode: GameMode;
+  weapon: WeaponId;
   hp: number;
   maxHp: number;
   score: number;
@@ -39,6 +42,7 @@ export interface GameCallbacks {
 
 export const INITIAL_HUD: HudSnapshot = {
   mode: 'survival',
+  weapon: 'pulse',
   hp: 100,
   maxHp: 100,
   score: 0,

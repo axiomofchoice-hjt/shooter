@@ -1,4 +1,5 @@
 import type { HudSnapshot } from '../game/types';
+import { WEAPONS } from '../game/weapons';
 import { PauseIcon, SoundOffIcon, SoundOnIcon } from './Icons';
 
 interface HudProps {
@@ -12,6 +13,7 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
   const critical = hpPercent <= 30;
   const multiplier = 1 + Math.min(20, Math.max(0, hud.combo - 1)) * 0.1;
   const isBoss = hud.mode === 'boss';
+  const weapon = WEAPONS[hud.weapon];
   const bossDown = isBoss && hud.bossMaxHp > 0 && hud.bossHp <= 0;
   const bossPercent =
     hud.bossMaxHp > 0
@@ -52,6 +54,11 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
                 x{multiplier.toFixed(1)} <em>{hud.combo} 连杀</em>
               </span>
             )}
+          </div>
+          <div className="weapon-row">
+            <span className="hud-label">WEAPON</span>
+            <strong style={{ color: weapon.color }}>{weapon.name}</strong>
+            <em>{weapon.tag}</em>
           </div>
         </div>
 

@@ -5,7 +5,9 @@ import type {
   GameMode,
   HudSnapshot,
   WavePhase,
+  WeaponId,
 } from './types';
+import { WEAPONS, nextWeapon } from './weapons';
 
 const TAU = Math.PI * 2;
 const WORLD_SURVIVAL = 2400;
@@ -91,6 +93,7 @@ interface Player {
   dashTime: number;
   dashDirX: number;
   dashDirY: number;
+  weapon: WeaponId;
   dead: boolean;
 }
 
@@ -127,6 +130,8 @@ interface Bullet {
   damage: number;
   life: number;
   color: string;
+  pierce: number;
+  hitIds: number[];
 }
 
 interface EnemyBullet {
@@ -481,6 +486,7 @@ export class ShooterGame {
       dashTime: 0,
       dashDirX: 0,
       dashDirY: 0,
+      weapon: 'pulse',
       dead: false,
     };
     this.camera.x = this.player.x;
@@ -709,47 +715,81 @@ export class ShooterGame {
     return { x, y, magnitude: Math.hypot(x, y) };
   }
 
+  cycleWeapon() {
+    if (this.phase !== 'playing' || this.paused || this.player.dead) return;
+    const next = nextWeapon(this.player.weapon);
+    this.player.weapon = next;
+    const spec = WEAPONS[next];
+    this.floaters.push({
+      x: this.player.x,
+      y: this.player.y - 44,
+      text: spec.name,
+      color: spec.color,
+      life: 0.9,
+      maxLife: 0.9,
+      size: 16,
+    });
+    this.spawnBurst(this.player.x, this.player.y, spec.color, 10, 120, 0.35);
+    this.sfx.play('pickup');
+    this.emitHud(true);
+  }
+
   private firePlayerBullet() {
     const player = this.player;
-    player.fireCooldown = 0.115;
-    player.muzzle = 0.06;
-    player.muzzleColor = PLAYER_COLOR;
-    const cos = Math.cos(player.angle);
-    const sin = Math.sin(player.angle);
-    const offset = 26;
-    const x = player.x + cos * offset;
-    const y = player.y + sin * offset;
-    const speed = 1080;
-    this.bullets.push({
-      x,
-      y,
-      prevX: x,
-      prevY: y,
-      vx: cos * speed,
-      vy: sin * speed,
-      radius: 4,
-      damage: 2,
-      life: 1.15,
-      color: PLAYER_COLOR,
-    });
+    const weapon = WEAPONS[player.weapon];
+    player.fireCooldown = weapon.cooldown;
+    player.muzzle = weapon.pellets > 1 || weapon.id === 'rail' ? 0.1 : 0.06;
+    player.muzzleColor = weapon.color;
 
-    for (let i = 0; i < 4; i++) {
-      const spread = player.angle + Math.PI + rand(-0.55, 0.55);
-      const velocity = rand(40, 150);
+    const offset = 26;
+    for (let i = 0; i < weapon.pellets; i++) {
+      const fan =
+        weapon.pellets > 1
+          ? (i / (weapon.pellets - 1) - 0.5) * weapon.spread
+          : 0;
+      const jitter = weapon.pellets > 1 ? weapon.spread * 0.08 : weapon.spread / 2;
+      const angle = player.angle + fan + rand(-jitter, jitter);
+      const x = player.x + Math.cos(angle) * offset;
+      const y = player.y + Math.sin(angle) * offset;
+      this.bullets.push({
+        x,
+        y,
+        prevX: x,
+        prevY: y,
+        vx: Math.cos(angle) * weapon.speed,
+        vy: Math.sin(angle) * weapon.speed,
+        radius: weapon.radius,
+        damage: weapon.damage,
+        life: weapon.life,
+        color: weapon.color,
+        pierce: weapon.pierce,
+        hitIds: [],
+      });
+    }
+
+    const muzzleCount = weapon.pellets > 1 ? 10 : weapon.id === 'rail' ? 12 : 4;
+    for (let i = 0; i < muzzleCount; i++) {
+      const spread = player.angle + Math.PI + rand(-0.6, 0.6);
+      const velocity = rand(40, weapon.id === 'rail' ? 320 : 150);
       this.particles.push({
-        x: x + rand(-3, 3),
-        y: y + rand(-3, 3),
+        x: player.x + Math.cos(player.angle) * offset + rand(-3, 3),
+        y: player.y + Math.sin(player.angle) * offset + rand(-3, 3),
         vx: Math.cos(spread) * velocity,
         vy: Math.sin(spread) * velocity,
-        life: rand(0.06, 0.16),
-        maxLife: 0.16,
-        size: rand(1.5, 3),
-        color: '#c7fbff',
+        life: rand(0.06, 0.18),
+        maxLife: 0.18,
+        size: rand(1.5, 3.4),
+        color: weapon.color,
         drag: 8,
       });
     }
-    this.shake = Math.max(this.shake, 0.9);
-    this.sfx.play('shoot');
+    this.shake = Math.max(
+      this.shake,
+      weapon.id === 'rail' ? 4.2 : weapon.pellets > 1 ? 2.6 : 0.9,
+    );
+    this.sfx.play(
+      weapon.id === 'rail' ? 'rail' : weapon.id === 'scatter' ? 'scatter' : 'shoot',
+    );
   }
 
   private fireSecondary() {
@@ -776,6 +816,8 @@ export class ShooterGame {
         damage: 2.2,
         life: 0.95,
         color: SECONDARY_COLOR,
+        pierce: 0,
+        hitIds: [],
       });
     }
 
@@ -872,9 +914,15 @@ export class ShooterGame {
             enemy.radius + bullet.radius,
           )
         ) {
+          if (bullet.hitIds.includes(enemy.id)) continue;
           this.damageEnemy(enemy, bullet.damage, bullet.x, bullet.y);
-          consumed = true;
-          break;
+          if (bullet.pierce > 0) {
+            bullet.pierce -= 1;
+            bullet.hitIds.push(enemy.id);
+          } else {
+            consumed = true;
+            break;
+          }
         }
       }
 
@@ -1602,6 +1650,7 @@ export class ShooterGame {
     const bossHp = boss ? Math.max(0, Math.ceil(boss.hp)) : 0;
     const hud: HudSnapshot = {
       mode: this.mode,
+      weapon: this.player.weapon,
       hp: Math.ceil(this.player.hp),
       maxHp: this.player.maxHp,
       score: this.score,
@@ -1954,8 +2003,9 @@ export class ShooterGame {
     ctx.globalCompositeOperation = 'lighter';
     for (const bullet of this.bullets) {
       const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
-      const tailX = bullet.x - (bullet.vx / speed) * 27;
-      const tailY = bullet.y - (bullet.vy / speed) * 27;
+      const tailLength = bullet.pierce > 0 || bullet.hitIds.length > 0 ? 62 : 27;
+      const tailX = bullet.x - (bullet.vx / speed) * tailLength;
+      const tailY = bullet.y - (bullet.vy / speed) * tailLength;
       ctx.strokeStyle = withAlpha(bullet.color, 0.22);
       ctx.lineWidth = 7;
       ctx.beginPath();
