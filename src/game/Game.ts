@@ -27,6 +27,15 @@ const CLEAR_HEAL = 12;
 const FLOOR_HEAL = 18;
 const AUTOAIM_RANGE = 1400;
 
+// Camera framing is the same on every device: the view keeps roughly one
+// screen-height of world (VIEW_WORLD_H) visible vertically, and never shows
+// less than the full 1000-wide room. Phones used to see ~518 world pixels of
+// height against a desktop's 672, which made them read as much harder simply
+// because threats appeared later, so the height target now drives the zoom.
+const VIEW_WORLD_H = 660;
+const VIEW_MIN_ZOOM = 0.62;
+const VIEW_MAX_ZOOM = 1.28;
+
 const PLAYER_COLOR = '#5ff6ff';
 const SECONDARY_COLOR = '#ffc857';
 const ENEMY_GLOW = 0.16;
@@ -942,13 +951,14 @@ export class ShooterGame {
   }
 
   private updateZoom() {
-    if (this.mode === 'boss') {
-      this.zoom = clamp(Math.min(this.width / 860, this.height / 640), 0.66, 1.08);
-    } else {
-      // Fit the 1000-wide room to the viewport width so the dungeon walls
-      // anchor the frame instead of floating over a black void.
-      this.zoom = clamp(this.width / 1120, 0.66, 1.28);
-    }
+    const maxZoom = this.mode === 'boss' ? 1.08 : VIEW_MAX_ZOOM;
+    // Height sets the scale (same slice of world everywhere), the width term
+    // keeps the whole room on screen on narrower viewports.
+    this.zoom = clamp(
+      Math.min(this.height / VIEW_WORLD_H, this.width / ROOM_SIZE),
+      VIEW_MIN_ZOOM,
+      maxZoom,
+    );
     this.clampCamera();
   }
 
