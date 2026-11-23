@@ -72,13 +72,6 @@ const DASH_TIME = DASH_DISTANCE / DASH_SPEED;
 // HUD sweep spans the slide plus the cooldown that follows it.
 const DODGE_CYCLE = DASH_TIME + DODGE_COOLDOWN;
 
-// Fixed screen-space speed streak layout used by the dodge overlay.
-const DASH_STREAKS = Array.from({ length: 14 }, (_, i) => ({
-  offset: ((i * 41) % 100) / 50 - 1,
-  phase: ((i * 67) % 100) / 100,
-  length: ((i * 29) % 100) / 100,
-}));
-
 const BOSS_HP = 320;
 const BOSS_RADIUS = 58;
 const BOSS_COLOR = '#ff3860';
@@ -4406,8 +4399,8 @@ export class ShooterGame {
       ctx.fillRect(0, 0, width, height);
     }
 
-    // Dodge: a brief cyan bloom at the ship plus screen-space speed streaks
-    // shooting backwards along the slide, so a dash never reads as a walk.
+    // Dodge: a brief cyan bloom at the ship, so a dash still lights up the
+    // frame without the wind streaks.
     if (this.dashFlash > 0) {
       const k = this.dashFlash / 0.22;
       const bloom = ctx.createRadialGradient(
@@ -4425,35 +4418,6 @@ export class ShooterGame {
       ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = bloom;
       ctx.fillRect(0, 0, width, height);
-      ctx.restore();
-    }
-
-    if (this.player.dashTime > 0 && this.phase === 'playing') {
-      const power = clamp(this.player.dashTime / DASH_TIME, 0, 1);
-      const angle = Math.atan2(this.player.dashDirY, this.player.dashDirX);
-      const dirX = Math.cos(angle);
-      const dirY = Math.sin(angle);
-      const perpX = -dirY;
-      const perpY = dirX;
-      const cx = width / 2 + shakeX;
-      const cy = height / 2 + shakeY;
-      const span = Math.hypot(width, height) * 0.5;
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = `rgba(205, 255, 255, ${0.5 * power})`;
-      ctx.lineWidth = 1.9;
-      for (const streak of DASH_STREAKS) {
-        const side = streak.offset * span * 0.62;
-        const phase = (streak.phase + this.elapsed * 3.4) % 1;
-        const start = 30 + phase * 150;
-        const len = 54 + streak.length * 120;
-        const bx = cx + perpX * side - dirX * start;
-        const by = cy + perpY * side - dirY * start;
-        ctx.beginPath();
-        ctx.moveTo(bx, by);
-        ctx.lineTo(bx - dirX * len, by - dirY * len);
-        ctx.stroke();
-      }
       ctx.restore();
     }
 
