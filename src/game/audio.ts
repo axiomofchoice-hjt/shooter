@@ -8,6 +8,8 @@ type SoundName =
   | 'clear'
   | 'death'
   | 'spit'
+  | 'shell'
+  | 'split'
   | 'sweep'
   | 'secondary'
   | 'scatter'
@@ -99,6 +101,14 @@ export class SoundFX {
         break;
       case 'spit':
         this.tone(430, 140, 0.14, 'square', 0.055, 0);
+        break;
+      case 'shell':
+        this.tone(180, 90, 0.2, 'triangle', 0.09, 0);
+        this.tone(520, 260, 0.16, 'sine', 0.05, 0.04);
+        break;
+      case 'split':
+        this.tone(880, 260, 0.2, 'triangle', 0.09, 0);
+        this.tone(430, 130, 0.24, 'sawtooth', 0.05, 0.02);
         break;
       case 'sweep':
         this.tone(520, 130, 0.2, 'sawtooth', 0.05, 0);

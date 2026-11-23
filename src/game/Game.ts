@@ -33,6 +33,17 @@ const ENEMY_GLOW = 0.16;
 
 const PLAYER_SPEED = 270;
 
+// Splitter: lobs one shell at where the player stood when it fired. The shell
+// bursts into a ring of faster, long-range bullets where it lands, or early if
+// it touches anything of the player's.
+const SHELL_SPEED = 250;
+const SHELL_RADIUS = 9;
+const SHELL_FLIGHT_TIME = 5;
+const SPLIT_RING_COUNT = 20;
+const SPLIT_BULLET_SPEED = 430;
+const SPLIT_BULLET_LIFE = 999;
+const SPLIT_BULLET_DAMAGE = 8;
+
 const SECONDARY_COOLDOWN = 3.4;
 const SECONDARY_PELLETS = 7;
 // Dodge: speed is 1.4x the walk speed, the slide is 20% longer than the
@@ -109,6 +120,7 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   runner: { radius: 12, hp: 3, speed: 154, damage: 8, score: 15, color: '#ffc857' },
   tank: { radius: 26, hp: 16, speed: 52, damage: 22, score: 35, color: '#b48cff' },
   spitter: { radius: 16, hp: 6, speed: 66, damage: 10, score: 25, color: '#7dff9b' },
+  splitter: { radius: 18, hp: 9, speed: 62, damage: 10, score: 30, color: '#ff9f43' },
   boss: {
     radius: BOSS_RADIUS,
     hp: BOSS_HP,
@@ -120,8 +132,11 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
 };
 
 interface EnemyAttackDef {
-  /** sweep = a line segment spinning once around the enemy, shot = bullets. */
-  mode: 'sweep' | 'shot';
+  /**
+   * sweep = a line segment spinning once around the enemy, shot = direct
+   * bullets, shell = one lobbed projectile that splits into a ring.
+   */
+  mode: 'sweep' | 'shot' | 'shell';
   /** 前摇: telegraph before the hit lands. */
   windup: number;
   /** 判定: sweep duration / burst window. */
@@ -198,6 +213,20 @@ const ENEMY_BEHAVIOR: Record<EnemyKind, EnemyBehaviorDef> = {
       damage: 9,
       shots: 3,
       interval: 0.18,
+    },
+  },
+  splitter: {
+    range: 400,
+    moveSpeed: 62,
+    attack: {
+      mode: 'shell',
+      windup: 0.75,
+      active: 0.12,
+      recovery: 0.6,
+      reach: 900,
+      damage: 12,
+      shots: 1,
+      interval: 0,
     },
   },
   // The boss keeps its own scripted pattern; this entry is only a fallback.
@@ -353,6 +382,25 @@ interface EnemyBullet {
   color: string;
 }
 
+// Lobbed projectile that bursts into a ring where it lands.
+interface EnemyShell {
+  x: number;
+  y: number;
+  prevX: number;
+  prevY: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  damage: number;
+  targetX: number;
+  targetY: number;
+  traveled: number;
+  total: number;
+  life: number;
+  color: string;
+  spin: number;
+}
+
 interface Particle {
   x: number;
   y: number;
@@ -471,6 +519,7 @@ export class ShooterGame {
   private enemies: Enemy[] = [];
   private bullets: Bullet[] = [];
   private enemyBullets: EnemyBullet[] = [];
+  private shells: EnemyShell[] = [];
   private particles: Particle[] = [];
   private ghosts: DashGhost[] = [];
   private dashGhostTimer = 0;
@@ -733,6 +782,7 @@ export class ShooterGame {
     this.enemies = [];
     this.bullets = [];
     this.enemyBullets = [];
+    this.shells = [];
     this.particles = [];
     this.ghosts = [];
     this.dashGhostTimer = 0;
@@ -774,6 +824,7 @@ export class ShooterGame {
     this.updateBullets(dt);
     this.updateEnemies(dt);
     this.updateEnemyBullets(dt);
+    this.updateShells(dt);
     this.updatePickups(dt);
     if (this.mode === 'dungeon') this.updateDungeon(dt);
     this.updateFx(dt);
@@ -1212,6 +1263,7 @@ export class ShooterGame {
       this.spawnBurst(player.x, player.y, PLAYER_COLOR, 70, 420, 1.1);
       this.spawnBurst(player.x, player.y, '#ffffff', 26, 260, 0.8);
       this.enemyBullets = [];
+    this.shells = [];
       this.sfx.play('death');
       this.emitHud(true);
       this.callbacks.onGameOver(
@@ -1650,7 +1702,7 @@ export class ShooterGame {
         if (brain.timer <= 0) {
           brain.phase = 'active';
           brain.timer = atk.active;
-          if (atk.mode === 'shot') {
+          if (atk.mode !== 'sweep') {
             brain.shotsLeft = atk.shots;
             brain.fireTimer = 0;
           } else {
@@ -1665,7 +1717,7 @@ export class ShooterGame {
       }
       if (brain.phase === 'active') {
         brain.timer -= dt;
-        if (atk.mode === 'shot') {
+        if (atk.mode !== 'sweep') {
           brain.fireTimer -= dt;
           if (brain.shotsLeft > 0 && brain.fireTimer <= 0) {
             this.fireEnemyShot(enemy, atk);
@@ -1719,6 +1771,10 @@ export class ShooterGame {
   }
 
   private fireEnemyShot(enemy: Enemy, atk: EnemyAttackDef) {
+    if (atk.mode === 'shell') {
+      this.fireShell(enemy, atk);
+      return;
+    }
     const angle =
       Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x) + rand(-0.05, 0.05);
     const x = enemy.x + Math.cos(angle) * (enemy.radius + 5);
@@ -1737,6 +1793,106 @@ export class ShooterGame {
     });
     this.spawnBurst(x, y, enemy.color, 4, 90, 0.25);
     this.sfx.play('spit');
+  }
+
+  /** Lobs one shell at where the player stands right now. */
+  private fireShell(enemy: Enemy, atk: EnemyAttackDef) {
+    const player = this.player;
+    const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+    const x = enemy.x + Math.cos(angle) * (enemy.radius + SHELL_RADIUS + 6);
+    const y = enemy.y + Math.sin(angle) * (enemy.radius + SHELL_RADIUS + 6);
+    const travel = Math.max(1, dist(x, y, player.x, player.y));
+    this.shells.push({
+      x,
+      y,
+      prevX: x,
+      prevY: y,
+      vx: Math.cos(angle) * SHELL_SPEED,
+      vy: Math.sin(angle) * SHELL_SPEED,
+      radius: SHELL_RADIUS,
+      damage: atk.damage,
+      // Fixed aim point: if the player moves, the shell still lands here.
+      targetX: player.x,
+      targetY: player.y,
+      traveled: 0,
+      total: travel,
+      life: SHELL_FLIGHT_TIME,
+      color: enemy.color,
+      spin: rand(0, TAU),
+    });
+    this.spawnBurst(x, y, enemy.color, 6, 110, 0.3);
+    this.sfx.play('shell');
+  }
+
+  private updateShells(dt: number) {
+    for (let i = this.shells.length - 1; i >= 0; i--) {
+      const shell = this.shells[i];
+      // Stop exactly on the aim point instead of overshooting it by a frame.
+      const step = Math.min(SHELL_SPEED * dt, Math.max(0, shell.total - shell.traveled));
+      shell.prevX = shell.x;
+      shell.prevY = shell.y;
+      const len = Math.hypot(shell.vx, shell.vy) || 1;
+      shell.x += (shell.vx / len) * step;
+      shell.y += (shell.vy / len) * step;
+      shell.traveled += step;
+      shell.life -= dt;
+      shell.spin += dt * 3.4;
+
+      let burst = false;
+
+      // The only early trigger is touching the player; the shell ignores
+      // bullets and only bursts where it was aimed.
+      const player = this.player;
+      if (
+        !player.dead &&
+        segmentCircleHit(
+          shell.prevX,
+          shell.prevY,
+          shell.x,
+          shell.y,
+          player.x,
+          player.y,
+          player.radius + shell.radius - 3,
+        )
+      ) {
+        if (player.invuln <= 0) this.playerHit(shell.damage);
+        burst = true;
+      }
+
+      if (
+        burst ||
+        shell.traveled >= shell.total - 0.01 ||
+        shell.life <= 0 ||
+        this.outOfRoom(shell.x, shell.y, 40)
+      ) {
+        this.splitShell(shell);
+        this.shells.splice(i, 1);
+      }
+    }
+  }
+
+  /** Bursts a shell into a full ring of fast, unlimited-range bullets. */
+  private splitShell(shell: EnemyShell) {
+    const base = rand(0, TAU);
+    for (let i = 0; i < SPLIT_RING_COUNT; i++) {
+      const angle = base + (TAU * i) / SPLIT_RING_COUNT;
+      this.enemyBullets.push({
+        x: shell.x,
+        y: shell.y,
+        prevX: shell.x,
+        prevY: shell.y,
+        vx: Math.cos(angle) * SPLIT_BULLET_SPEED,
+        vy: Math.sin(angle) * SPLIT_BULLET_SPEED,
+        radius: 5,
+        damage: SPLIT_BULLET_DAMAGE,
+        life: SPLIT_BULLET_LIFE,
+        color: shell.color,
+      });
+    }
+    this.spawnBurst(shell.x, shell.y, shell.color, 20, 260, 0.5);
+    this.spawnBurst(shell.x, shell.y, '#ffffff', 8, 190, 0.32);
+    this.shake = Math.max(this.shake, 3);
+    this.sfx.play('split');
   }
 
   private updateBossAttack(enemy: Enemy, dt: number) {
@@ -1859,6 +2015,7 @@ export class ShooterGame {
     this.bossWindup = 0;
     this.player.invuln = Math.max(this.player.invuln, BOSS_VICTORY_DELAY + 1);
     this.enemyBullets = [];
+    this.shells = [];
 
     for (const enemy of this.enemies) {
       if (enemy === boss || enemy.dead) continue;
@@ -1984,14 +2141,19 @@ export class ShooterGame {
     const list: EnemyKind[] = [];
     const spitters = floor >= 2 || room >= 3;
     const tanks = floor >= 3 || (floor >= 2 && room >= 3);
+    const splitters = floor >= 2 || room >= 3;
     for (let i = 0; i < count; i++) {
       let kind: EnemyKind = 'grunt';
       if (tanks && i % 7 === 3) kind = 'tank';
+      else if (splitters && i % 6 === 4) kind = 'splitter';
       else if (spitters && i % 5 === 2) kind = 'spitter';
       else if (room >= 2 || floor >= 2 ? i % 3 === 1 : i % 5 === 3) kind = 'runner';
       list.push(kind);
     }
     if (spitters && !list.includes('spitter')) list[Math.min(2, list.length - 1)] = 'spitter';
+    if (splitters && !list.includes('splitter')) {
+      list[Math.min(3, list.length - 1)] = 'splitter';
+    }
     if (tanks && !list.includes('tank')) list[Math.min(4, list.length - 1)] = 'tank';
 
     // Shuffle so every room opens a little differently.
@@ -2089,6 +2251,7 @@ export class ShooterGame {
     this.telegraphs = [];
     this.enemies = [];
     this.enemyBullets = [];
+    this.shells = [];
     this.bullets = [];
     this.pickups = [];
     this.player.x = ROOM_SIZE / 2;
@@ -2448,6 +2611,7 @@ export class ShooterGame {
     this.drawEnemyBullets();
     this.drawBullets();
     this.drawEnemies();
+    this.drawShells();
     this.drawDashGhosts();
     this.drawPlayer();
     this.drawParticles();
@@ -2953,6 +3117,81 @@ export class ShooterGame {
     }
   }
 
+  private drawShells() {
+    const ctx = this.ctx;
+    if (!this.shells.length) return;
+    for (const shell of this.shells) {
+      // Target reticle stays at the aim point, so moving away visibly dodges it.
+      const t = clamp(shell.traveled / Math.max(1, shell.total), 0, 1);
+      ctx.save();
+      ctx.globalAlpha = 0.2 + t * 0.55;
+      ctx.strokeStyle = withAlpha(shell.color, 0.75);
+      ctx.lineWidth = 1.3;
+      ctx.setLineDash([5, 6]);
+      ctx.beginPath();
+      ctx.arc(shell.targetX, shell.targetY, 17 + Math.sin(this.elapsed * 7) * 2, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(shell.targetX - 24, shell.targetY);
+      ctx.lineTo(shell.targetX - 12, shell.targetY);
+      ctx.moveTo(shell.targetX + 12, shell.targetY);
+      ctx.lineTo(shell.targetX + 24, shell.targetY);
+      ctx.moveTo(shell.targetX, shell.targetY - 24);
+      ctx.lineTo(shell.targetX, shell.targetY - 12);
+      ctx.moveTo(shell.targetX, shell.targetY + 12);
+      ctx.lineTo(shell.targetX, shell.targetY + 24);
+      ctx.stroke();
+      ctx.restore();
+
+      const speed = Math.hypot(shell.vx, shell.vy) || 1;
+      ctx.save();
+      ctx.translate(shell.x, shell.y);
+
+      // Comet tail.
+      ctx.strokeStyle = withAlpha(shell.color, 0.4);
+      ctx.lineWidth = shell.radius * 1.3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-(shell.vx / speed) * 26, -(shell.vy / speed) * 26);
+      ctx.lineTo(0, 0);
+      ctx.stroke();
+
+      // Glow.
+      ctx.globalCompositeOperation = 'lighter';
+      const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, shell.radius * 3.2);
+      glow.addColorStop(0, withAlpha(shell.color, 0.5));
+      glow.addColorStop(1, withAlpha(shell.color, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, shell.radius * 3.2, 0, TAU);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+
+      ctx.rotate(shell.spin);
+      ctx.fillStyle = 'rgba(34, 14, 4, 0.92)';
+      ctx.strokeStyle = shell.color;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, shell.radius, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+
+      // Orbiting arc that hints at the ring it will burst into.
+      ctx.strokeStyle = withAlpha('#ffffff', 0.55);
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(0, 0, shell.radius + 6, 0, TAU * 0.62);
+      ctx.stroke();
+
+      ctx.fillStyle = '#fff1e0';
+      ctx.beginPath();
+      ctx.arc(0, 0, shell.radius * 0.45, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   private drawEnemies() {
     const ctx = this.ctx;
     for (const enemy of this.enemies) {
@@ -3064,6 +3303,45 @@ export class ShooterGame {
         ctx.fillStyle = '#08140c';
         ctx.beginPath();
         ctx.arc(0, 0, 2.3, 0, TAU);
+        ctx.fill();
+      } else if (enemy.kind === 'splitter') {
+        // Hexagonal shell casing with a charged core and an orbiting ring.
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * TAU) / 6;
+          const px = Math.cos(angle) * enemy.radius;
+          const py = Math.sin(angle) * enemy.radius;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.rotate(-enemy.angle);
+        const spin = this.elapsed * 1.1 + enemy.seed;
+        ctx.strokeStyle = withAlpha(enemy.color, 0.55);
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([7, 7]);
+        ctx.beginPath();
+        ctx.arc(0, 0, enemy.radius + 8, spin, spin + TAU);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Split hazard mark inside the casing.
+        ctx.strokeStyle = withAlpha(enemy.color, 0.85);
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(0, -7);
+        ctx.lineTo(7, 0);
+        ctx.lineTo(0, 7);
+        ctx.lineTo(-7, 0);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : '#ffd9ac';
+        ctx.beginPath();
+        ctx.arc(0, 0, 3.6, 0, TAU);
         ctx.fill();
       } else if (enemy.kind === 'boss') {
         const spin = this.elapsed * 0.6;

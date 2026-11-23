@@ -1,6 +1,6 @@
 export type GameMode = 'dungeon' | 'boss';
 
-export type EnemyKind = 'grunt' | 'runner' | 'tank' | 'spitter' | 'boss';
+export type EnemyKind = 'grunt' | 'runner' | 'tank' | 'spitter' | 'splitter' | 'boss';
 
 export type WeaponId = 'pulse' | 'smg' | 'scatter' | 'rail';
 
