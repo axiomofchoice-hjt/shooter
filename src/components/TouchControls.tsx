@@ -23,9 +23,14 @@ export function TouchControls({
   dodgeCooldown,
 }: TouchControlsProps) {
   const padRef = useRef<HTMLDivElement>(null);
+  const knobRef = useRef<HTMLDivElement>(null);
   const stickPointer = useRef<number | null>(null);
+  // Geometry is cached on touch-down: measuring the pad on every pointermove
+  // forced a layout read per event, and moving the knob through React state
+  // re-rendered the whole control cluster at the pointer rate (~120Hz), which
+  // added input lag exactly when dodging needs to feel instant.
+  const stickGeom = useRef({ centerX: 0, centerY: 0, max: 0 });
   const firePointer = useRef<number | null>(null);
-  const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [stickActive, setStickActive] = useState(false);
   const [fireActive, setFireActive] = useState(false);
 
@@ -36,13 +41,16 @@ export function TouchControls({
     };
   }, [onMove, onFire]);
 
+  const moveKnob = (x: number, y: number) => {
+    const knob = knobRef.current;
+    if (knob) {
+      knob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+    }
+  };
+
   const updateStick = (clientX: number, clientY: number) => {
-    const pad = padRef.current;
-    if (!pad) return;
-    const rect = pad.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const max = rect.width * MAX_KNOB_RATIO;
+    const { centerX, centerY, max } = stickGeom.current;
+    if (max <= 0) return;
     let dx = clientX - centerX;
     let dy = clientY - centerY;
     const length = Math.hypot(dx, dy);
@@ -50,7 +58,7 @@ export function TouchControls({
       dx = (dx / length) * max;
       dy = (dy / length) * max;
     }
-    setKnob({ x: dx, y: dy });
+    moveKnob(dx, dy);
     onMove(dx / max, dy / max);
   };
 
@@ -58,7 +66,7 @@ export function TouchControls({
     if (pointerId !== undefined && stickPointer.current !== pointerId) return;
     stickPointer.current = null;
     setStickActive(false);
-    setKnob({ x: 0, y: 0 });
+    moveKnob(0, 0);
     onMove(0, 0);
   };
 
@@ -78,6 +86,12 @@ export function TouchControls({
           if (stickPointer.current !== null) return;
           stickPointer.current = event.pointerId;
           event.currentTarget.setPointerCapture(event.pointerId);
+          const rect = event.currentTarget.getBoundingClientRect();
+          stickGeom.current = {
+            centerX: rect.left + rect.width / 2,
+            centerY: rect.top + rect.height / 2,
+            max: rect.width * MAX_KNOB_RATIO,
+          };
           setStickActive(true);
           updateStick(event.clientX, event.clientY);
         }}
@@ -97,10 +111,7 @@ export function TouchControls({
           <span className="joystick-tick tick-w" />
           <span className="joystick-ring" />
         </div>
-        <div
-          className="joystick-knob"
-          style={{ transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))` }}
-        >
+        <div ref={knobRef} className="joystick-knob">
           <span />
         </div>
         <div className="joystick-label">MOVE</div>

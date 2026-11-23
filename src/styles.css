@@ -1576,6 +1576,7 @@ kbd.accent,
   border-radius: 50%;
   display: grid;
   place-items: center;
+  transform: translate(-50%, -50%);
   border: 1px solid rgba(95, 246, 255, 0.5);
   background: radial-gradient(circle at 35% 30%, rgba(151, 252, 255, 0.26), rgba(6, 27, 35, 0.93) 68%);
   box-shadow:
