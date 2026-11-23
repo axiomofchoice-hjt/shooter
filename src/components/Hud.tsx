@@ -12,9 +12,9 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
   const hpPercent = Math.max(0, Math.min(100, (hud.hp / hud.maxHp) * 100));
   const critical = hpPercent <= 30;
   const multiplier = 1 + Math.min(20, Math.max(0, hud.combo - 1)) * 0.1;
-  const isBoss = hud.mode === 'boss';
+  const isTest = hud.mode === 'boss';
   const weapon = WEAPONS[hud.weapon];
-  const bossDown = isBoss && hud.bossMaxHp > 0 && hud.bossHp <= 0;
+  const bossDown = isTest && hud.bossMaxHp > 0 && hud.bossHp <= 0;
   const bossPercent =
     hud.bossMaxHp > 0
       ? Math.max(0, Math.min(100, (hud.bossHp / hud.bossMaxHp) * 100))
@@ -60,21 +60,19 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
           </div>
         </div>
 
-        <div className={`wave-badge ${isBoss ? 'is-boss' : 'is-dungeon'}`}>
-          <span className="wave-label">{isBoss ? 'BOSS' : 'FLOOR'}</span>
+        <div className={`wave-badge ${isTest ? 'is-test' : 'is-dungeon'}`}>
+          <span className="wave-label">{isTest ? 'TEST' : 'FLOOR'}</span>
           <strong>
-            {isBoss
-              ? bossDown
-                ? 'KO'
-                : hud.bossPhase === 2
-                  ? 'II'
-                  : 'I'
+            {isTest
+              ? String(hud.wave).padStart(2, '0')
               : String(hud.floor).padStart(2, '0')}
           </strong>
           <span
             className={`wave-status ${
-              isBoss
-                ? 'danger'
+              isTest
+                ? hud.enemiesRemaining > 0
+                  ? 'danger'
+                  : 'waiting'
                 : hud.encounterActive
                   ? 'danger'
                   : hud.roomKind === 'portal' && hud.portalActive
@@ -82,9 +80,13 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
                     : ''
             }`}
           >
-            {isBoss ? (bossDown ? '目标清除' : `PHASE ${hud.bossPhase}`) : status}
+            {isTest
+              ? hud.enemiesRemaining > 0
+                ? `分裂者 ${hud.enemiesRemaining}`
+                : '下一波准备中'
+              : status}
           </span>
-          {!isBoss && (
+          {!isTest && (
             <span className="room-pips" aria-hidden="true">
               {[1, 2, 3].map((room) => (
                 <i
@@ -126,7 +128,7 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
         </div>
       </div>
 
-      {isBoss && hud.bossMaxHp > 0 && (
+      {isTest && hud.bossMaxHp > 0 && (
         <div className={`boss-hud ${bossDown ? 'is-down' : ''}`}>
           <div className="boss-hud-head">
             <span className="boss-name">

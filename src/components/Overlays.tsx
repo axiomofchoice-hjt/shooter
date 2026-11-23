@@ -80,14 +80,14 @@ export function StartScreen({
               type="button"
               className="boss-button"
               onClick={onStartBoss}
-              title="直接进入 BOSS 房"
+              title="进入分裂者测试房"
             >
               <span className="boss-button-icon">
                 <BossIcon />
               </span>
               <span className="boss-button-copy">
-                <strong>直接挑战 BOSS</strong>
-                <small>BOSS ARENA · 单挑压制核心</small>
+                <strong>进入测试房</strong>
+                <small>TEST ROOM · 分裂者无限续波</small>
               </span>
               <span className="boss-button-key">
                 {isTouch ? 'TAP' : 'B'}
@@ -192,7 +192,7 @@ export function StartScreen({
 
         <footer className="menu-footer">
           <span>SECTOR 07 · SIGNAL LOST</span>
-          <span>WASD 移动 &nbsp;·&nbsp; J 开火 &nbsp;·&nbsp; K 副武器 &nbsp;·&nbsp; L 闪避 &nbsp;·&nbsp; B BOSS 房</span>
+          <span>WASD 移动 &nbsp;·&nbsp; J 开火 &nbsp;·&nbsp; K 副武器 &nbsp;·&nbsp; L 闪避 &nbsp;·&nbsp; B 测试房</span>
         </footer>
       </main>
     </div>
@@ -258,13 +258,13 @@ export function GameOverOverlay({
           : stats.score >= 500
             ? 'C'
             : 'D';
-  const isBoss = stats.mode === 'boss';
-  const eyebrow = victory ? 'THREAT NEUTRALIZED' : isBoss ? 'CORE ONLINE' : 'RUN TERMINATED';
-  const title = victory ? 'BOSS 已击破' : isBoss ? '挑战失败' : '探索终止';
+  const isTest = stats.mode === 'boss';
+  const eyebrow = victory ? 'THREAT NEUTRALIZED' : isTest ? 'TEST RUN OVER' : 'RUN TERMINATED';
+  const title = victory ? 'BOSS 已击破' : isTest ? '测试结束' : '探索终止';
   const copy = victory
     ? '压制核心沉默，小房间里的威胁暂时清空。'
-    : isBoss
-      ? '压制核心仍然在线。闪避它的弹幕，再进一次 BOSS 房。'
+    : isTest
+      ? `你倒在第 ${stats.wave} 波。分裂弹会追到房间边缘，先拉开距离再处理母弹。`
       : `你倒在了第 ${stats.floor} 层，传送门还在更深处。`;
 
   return (
@@ -289,12 +289,10 @@ export function GameOverOverlay({
             <strong>{String(stats.score).padStart(6, '0')}</strong>
           </div>
           <div className="stat-block">
-            <span>{isBoss ? 'BOSS 战' : '抵达楼层'}</span>
+            <span>{isTest ? '测试波次' : '抵达楼层'}</span>
             <strong>
-              {isBoss
-                ? victory
-                  ? '击破'
-                  : '失败'
+              {isTest
+                ? `WAVE ${String(stats.wave).padStart(2, '0')}`
                 : `FLOOR ${String(stats.floor).padStart(2, '0')}`}
             </strong>
           </div>
@@ -311,7 +309,7 @@ export function GameOverOverlay({
         <div className="modal-actions row-actions">
           <button type="button" className="primary-button" onClick={onRetry} autoFocus>
             <PlayIcon />
-            {isBoss ? (victory ? '再战 BOSS' : '重试 BOSS') : '再次下潜'}
+            {isTest ? (victory ? '再测一次' : '再来一轮') : '再次下潜'}
           </button>
           <button type="button" className="ghost-button" onClick={onMenu}>
             返回主界面

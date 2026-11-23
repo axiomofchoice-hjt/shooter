@@ -363,6 +363,16 @@ svg {
   text-shadow: 0 0 18px rgba(255, 56, 96, 0.5);
 }
 
+.wave-badge.is-test {
+  border-top-color: rgba(255, 159, 67, 0.55);
+  background: linear-gradient(180deg, rgba(32, 16, 5, 0.9), rgba(16, 8, 3, 0.56));
+}
+
+.wave-badge.is-test strong {
+  color: #ffe6c8;
+  text-shadow: 0 0 18px rgba(255, 159, 67, 0.5);
+}
+
 .wave-badge.is-dungeon {
   border-top-color: rgba(125, 255, 155, 0.45);
   background: linear-gradient(180deg, rgba(6, 26, 24, 0.9), rgba(4, 12, 14, 0.56));

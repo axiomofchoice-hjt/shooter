@@ -29,6 +29,8 @@ export interface HudSnapshot {
   bossHp: number;
   bossMaxHp: number;
   bossPhase: number;
+  /** Test-room wave counter (boss mode only). */
+  wave: number;
   floor: number;
   room: number;
   roomKind: RoomKind;
@@ -45,6 +47,8 @@ export interface GameStats {
   time: number;
   floor: number;
   roomsCleared: number;
+  /** Test-room wave reached (boss mode only). */
+  wave: number;
 }
 
 export interface GameCallbacks {
@@ -67,6 +71,7 @@ export const INITIAL_HUD: HudSnapshot = {
   bossHp: 0,
   bossMaxHp: 0,
   bossPhase: 1,
+  wave: 0,
   floor: 1,
   room: 0,
   roomKind: 'start',

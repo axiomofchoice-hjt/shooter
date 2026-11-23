@@ -67,6 +67,7 @@ const DASH_STREAKS = Array.from({ length: 14 }, (_, i) => ({
 const BOSS_HP = 320;
 const BOSS_RADIUS = 58;
 const BOSS_COLOR = '#ff3860';
+const TEST_COLOR = '#ff9f43';
 const BOSS_CONTACT_DAMAGE = 28;
 const BOSS_SCORE = 1600;
 const BOSS_VICTORY_DELAY = 1.6;
@@ -120,7 +121,7 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   runner: { radius: 12, hp: 3, speed: 154, damage: 8, score: 15, color: '#ffc857' },
   tank: { radius: 26, hp: 16, speed: 52, damage: 22, score: 35, color: '#b48cff' },
   spitter: { radius: 16, hp: 6, speed: 66, damage: 10, score: 25, color: '#7dff9b' },
-  splitter: { radius: 18, hp: 9, speed: 62, damage: 10, score: 30, color: '#ff9f43' },
+  splitter: { radius: 18, hp: 9, speed: 62, damage: 10, score: 30, color: TEST_COLOR },
   boss: {
     radius: BOSS_RADIUS,
     hp: BOSS_HP,
@@ -540,6 +541,9 @@ export class ShooterGame {
   private bossWindup = 0;
   private bossAttackKind: BossAttack = 'radial';
   private victoryTimer = 0;
+  // Test room (the old boss arena): endless splitter waves for playtesting.
+  private testWave = 0;
+  private testWaveTimer = 0;
 
   private input: InputState = {
     keys: new Set(),
@@ -604,7 +608,7 @@ export class ShooterGame {
     this.phase = 'playing';
     this.paused = false;
     if (mode === 'boss') {
-      this.beginBoss();
+      this.beginTestRoom();
     } else {
       this.beginRun();
     }
@@ -827,6 +831,7 @@ export class ShooterGame {
     this.updateShells(dt);
     this.updatePickups(dt);
     if (this.mode === 'dungeon') this.updateDungeon(dt);
+    else this.updateTestRoom(dt);
     this.updateFx(dt);
     this.updateCamera();
 
@@ -1274,6 +1279,7 @@ export class ShooterGame {
           time: this.elapsed,
           floor: this.floor,
           roomsCleared: this.countCleared(),
+          wave: this.testWave,
         },
         false,
       );
@@ -1984,30 +1990,52 @@ export class ShooterGame {
     this.emitHud(true);
   }
 
-  private beginBoss() {
+  private beginTestRoom() {
     this.spawnQueue = [];
     this.spawnTimer = 0;
     this.bossWindup = 0;
-    this.bossAttackKind = 'radial';
-
-    const x = this.worldW / 2 + 250;
-    const y = this.worldH / 2;
-    this.spawnEnemy('boss', x, y);
-    const boss = this.enemies[this.enemies.length - 1];
-    boss.hp = boss.maxHp = BOSS_HP;
-    boss.attackTimer = 2.2;
-    this.boss = boss;
-
+    this.boss = null;
+    this.testWave = 0;
+    this.testWaveTimer = 0;
+    this.spawnTestWave();
     this.banner = {
-      title: 'BOSS',
-      sub: '压制核心 · 击破威胁',
-      time: 2.2,
-      duration: 2.2,
-      color: BOSS_COLOR,
+      title: 'TEST ROOM',
+      sub: '分裂者测试场 · 清空自动续波',
+      time: 2,
+      duration: 2,
+      color: TEST_COLOR,
     };
-    this.sfx.play('bossIntro');
-    this.spawnBurst(x, y, BOSS_COLOR, 40, 320, 0.9);
+    this.sfx.play('wave');
     this.emitHud(true);
+  }
+
+  private spawnTestWave() {
+    this.testWave += 1;
+    // Wave 1 opens with two, then one more per wave up to a ceiling.
+    const count = Math.min(6, this.testWave + 1);
+    const cx = this.worldW / 2;
+    const cy = this.worldH / 2;
+    for (let i = 0; i < count; i++) {
+      const angle = (TAU * i) / count + this.testWave * 0.45 + rand(-0.12, 0.12);
+      const radius = 280 + rand(0, 90);
+      this.spawnEnemy(
+        'splitter',
+        clamp(cx + Math.cos(angle) * radius, 80, this.worldW - 80),
+        clamp(cy + Math.sin(angle) * radius, 80, this.worldH - 80),
+      );
+    }
+    this.testWaveTimer = 1.6;
+    this.emitHud(true);
+  }
+
+  private updateTestRoom(dt: number) {
+    if (this.phase !== 'playing') return;
+    if (this.enemies.some((enemy) => !enemy.dead)) {
+      this.testWaveTimer = 1.6;
+      return;
+    }
+    this.testWaveTimer -= dt;
+    if (this.testWaveTimer <= 0) this.spawnTestWave();
   }
 
   private bossDefeated(boss: Enemy) {
@@ -2051,6 +2079,7 @@ export class ShooterGame {
         time: this.elapsed,
         floor: 1,
         roomsCleared: 0,
+        wave: this.testWave,
       },
       true,
     );
@@ -2489,6 +2518,7 @@ export class ShooterGame {
       bossHp,
       bossMaxHp: boss?.maxHp ?? 0,
       bossPhase: boss && boss.hp <= boss.maxHp * 0.5 ? 2 : 1,
+      wave: this.testWave,
     };
     this.callbacks.onHud(hud);
   }
@@ -2628,14 +2658,14 @@ export class ShooterGame {
   }
 
   private roomAccent(room: number) {
-    if (this.mode === 'boss') return BOSS_COLOR;
+    if (this.mode === 'boss') return TEST_COLOR;
     if (room === 0) return '#5ff6ff';
     if (room === DUNGEON_ROOMS - 1) return '#c08bff';
     return this.roomCleared[room] ? '#7dff9b' : '#ff5f7d';
   }
 
   private roomBaseColor(room: number) {
-    if (this.mode === 'boss') return '#12060d';
+    if (this.mode === 'boss') return '#140e07';
     if (room === 0) return '#071119';
     if (room === DUNGEON_ROOMS - 1) return '#0c0817';
     return this.roomCleared[room] ? '#08140f' : '#0c0c17';
@@ -3473,6 +3503,15 @@ export class ShooterGame {
       ctx.beginPath();
       if (atk.mode === 'sweep') {
         ctx.arc(enemy.x, enemy.y, atk.reach, 0, TAU);
+      } else if (atk.mode === 'shell') {
+        // The shell lands on a snapshot, so a long aim line would lie; show a
+        // short muzzle pointer plus a charging ring instead.
+        const aim = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
+        ctx.moveTo(enemy.x, enemy.y);
+        ctx.lineTo(
+          enemy.x + Math.cos(aim) * (enemy.radius + 34),
+          enemy.y + Math.sin(aim) * (enemy.radius + 34),
+        );
       } else {
         const aim = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
         ctx.moveTo(enemy.x, enemy.y);
