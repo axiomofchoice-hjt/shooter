@@ -80,14 +80,14 @@ export function StartScreen({
               type="button"
               className="boss-button"
               onClick={onStartBoss}
-              title="进入分裂者测试房"
+              title="进入测试房（分裂者 / 追踪者）"
             >
               <span className="boss-button-icon">
                 <BossIcon />
               </span>
               <span className="boss-button-copy">
                 <strong>进入测试房</strong>
-                <small>TEST ROOM · 分裂者无限续波</small>
+                <small>TEST ROOM · 分裂者 / 追踪者无限续波</small>
               </span>
               <span className="boss-button-key">
                 {isTouch ? 'TAP' : 'B'}
@@ -264,7 +264,7 @@ export function GameOverOverlay({
   const copy = victory
     ? '压制核心沉默，小房间里的威胁暂时清空。'
     : isTest
-      ? `你倒在第 ${stats.wave} 波。分裂弹会追到房间边缘，先拉开距离再处理母弹。`
+      ? `你倒在第 ${stats.wave} 波。追踪弹只在锁定期内咬人，锁一松就只走直线。`
       : `你倒在了第 ${stats.floor} 层，传送门还在更深处。`;
 
   return (

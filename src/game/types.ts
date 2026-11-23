@@ -1,6 +1,13 @@
 export type GameMode = 'dungeon' | 'boss';
 
-export type EnemyKind = 'grunt' | 'runner' | 'tank' | 'spitter' | 'splitter' | 'boss';
+export type EnemyKind =
+  | 'grunt'
+  | 'runner'
+  | 'tank'
+  | 'spitter'
+  | 'splitter'
+  | 'homing'
+  | 'boss';
 
 export type WeaponId = 'pulse' | 'smg' | 'scatter' | 'rail';
 
@@ -31,6 +38,9 @@ export interface HudSnapshot {
   bossPhase: number;
   /** Test-room wave counter (boss mode only). */
   wave: number;
+  /** Live test-room roster, so the HUD can name what is left. */
+  testSplitter: number;
+  testHoming: number;
   floor: number;
   room: number;
   roomKind: RoomKind;
@@ -72,6 +82,8 @@ export const INITIAL_HUD: HudSnapshot = {
   bossMaxHp: 0,
   bossPhase: 1,
   wave: 0,
+  testSplitter: 0,
+  testHoming: 0,
   floor: 1,
   room: 0,
   roomKind: 'start',

@@ -44,6 +44,21 @@ const SPLIT_BULLET_SPEED = 430;
 const SPLIT_BULLET_LIFE = 999;
 const SPLIT_BULLET_DAMAGE = 8;
 
+// Homing: the missile steers after the player for a short window, then loses
+// its lock and flies straight. Touching a wall or the player sets off a small
+// blast; after running out of life it just fizzles out.
+const HOMING_COLOR = '#ff5bd0';
+const HOMING_SPEED = 255;
+// Steering is capped, so a well-timed dodge breaks the lock instead of the
+// missile simply outrunning the player.
+const HOMING_TURN_RATE = 2.2;
+const HOMING_SEEK_TIME = 2.2;
+const HOMING_LIFE = 7;
+const HOMING_RADIUS = 7;
+const HOMING_BLAST_RADIUS = 34;
+const HOMING_BLAST_DAMAGE = 6;
+const HOMING_TRAIL_POINTS = 9;
+
 const SECONDARY_COOLDOWN = 3.4;
 const SECONDARY_PELLETS = 7;
 // Dodge: speed is 1.4x the walk speed, the slide is 20% longer than the
@@ -122,6 +137,7 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   tank: { radius: 26, hp: 16, speed: 52, damage: 22, score: 35, color: '#b48cff' },
   spitter: { radius: 16, hp: 6, speed: 66, damage: 10, score: 25, color: '#7dff9b' },
   splitter: { radius: 18, hp: 9, speed: 62, damage: 10, score: 30, color: TEST_COLOR },
+  homing: { radius: 17, hp: 10, speed: 64, damage: 10, score: 35, color: HOMING_COLOR },
   boss: {
     radius: BOSS_RADIUS,
     hp: BOSS_HP,
@@ -135,9 +151,10 @@ const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
 interface EnemyAttackDef {
   /**
    * sweep = a line segment spinning once around the enemy, shot = direct
-   * bullets, shell = one lobbed projectile that splits into a ring.
+   * bullets, shell = one lobbed projectile that splits into a ring,
+   * homing = missiles that chase for a while and then fly straight.
    */
-  mode: 'sweep' | 'shot' | 'shell';
+  mode: 'sweep' | 'shot' | 'shell' | 'homing';
   /** 前摇: telegraph before the hit lands. */
   windup: number;
   /** 判定: sweep duration / burst window. */
@@ -228,6 +245,20 @@ const ENEMY_BEHAVIOR: Record<EnemyKind, EnemyBehaviorDef> = {
       damage: 12,
       shots: 1,
       interval: 0,
+    },
+  },
+  homing: {
+    range: 460,
+    moveSpeed: 60,
+    attack: {
+      mode: 'homing',
+      windup: 0.8,
+      active: 0.5,
+      recovery: 0.7,
+      reach: 900,
+      damage: 10,
+      shots: 2,
+      interval: 0.34,
     },
   },
   // The boss keeps its own scripted pattern; this entry is only a fallback.
@@ -402,6 +433,36 @@ interface EnemyShell {
   spin: number;
 }
 
+// Missile that chases the player for a while, then locks its heading.
+interface EnemyHoming {
+  x: number;
+  y: number;
+  prevX: number;
+  prevY: number;
+  vx: number;
+  vy: number;
+  /** Heading in radians; the missile always travels along it. */
+  angle: number;
+  radius: number;
+  damage: number;
+  /** Seconds of steering left. At zero it flies straight. */
+  seek: number;
+  life: number;
+  color: string;
+  spin: number;
+  trail: Array<{ x: number; y: number }>;
+}
+
+// Small round blast left where a homing missile breaks.
+interface Blast {
+  x: number;
+  y: number;
+  radius: number;
+  life: number;
+  maxLife: number;
+  color: string;
+}
+
 interface Particle {
   x: number;
   y: number;
@@ -521,6 +582,8 @@ export class ShooterGame {
   private bullets: Bullet[] = [];
   private enemyBullets: EnemyBullet[] = [];
   private shells: EnemyShell[] = [];
+  private homings: EnemyHoming[] = [];
+  private blasts: Blast[] = [];
   private particles: Particle[] = [];
   private ghosts: DashGhost[] = [];
   private dashGhostTimer = 0;
@@ -787,6 +850,8 @@ export class ShooterGame {
     this.bullets = [];
     this.enemyBullets = [];
     this.shells = [];
+    this.homings = [];
+    this.blasts = [];
     this.particles = [];
     this.ghosts = [];
     this.dashGhostTimer = 0;
@@ -829,6 +894,7 @@ export class ShooterGame {
     this.updateEnemies(dt);
     this.updateEnemyBullets(dt);
     this.updateShells(dt);
+    this.updateHomings(dt);
     this.updatePickups(dt);
     if (this.mode === 'dungeon') this.updateDungeon(dt);
     else this.updateTestRoom(dt);
@@ -1268,7 +1334,9 @@ export class ShooterGame {
       this.spawnBurst(player.x, player.y, PLAYER_COLOR, 70, 420, 1.1);
       this.spawnBurst(player.x, player.y, '#ffffff', 26, 260, 0.8);
       this.enemyBullets = [];
-    this.shells = [];
+      this.shells = [];
+      this.homings = [];
+      this.blasts = [];
       this.sfx.play('death');
       this.emitHud(true);
       this.callbacks.onGameOver(
@@ -1781,6 +1849,10 @@ export class ShooterGame {
       this.fireShell(enemy, atk);
       return;
     }
+    if (atk.mode === 'homing') {
+      this.fireHoming(enemy, atk);
+      return;
+    }
     const angle =
       Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x) + rand(-0.05, 0.05);
     const x = enemy.x + Math.cos(angle) * (enemy.radius + 5);
@@ -1901,6 +1973,132 @@ export class ShooterGame {
     this.sfx.play('split');
   }
 
+  /**
+   * Launches a missile that starts out aimed at the player and then chases at
+   * a capped turn rate. The lock only lasts HOMING_SEEK_TIME, after which the
+   * missile keeps whatever heading it had and flies straight.
+   */
+  private fireHoming(enemy: Enemy, atk: EnemyAttackDef) {
+    const player = this.player;
+    const angle =
+      Math.atan2(player.y - enemy.y, player.x - enemy.x) + rand(-0.1, 0.1);
+    const x = enemy.x + Math.cos(angle) * (enemy.radius + 9);
+    const y = enemy.y + Math.sin(angle) * (enemy.radius + 9);
+    this.homings.push({
+      x,
+      y,
+      prevX: x,
+      prevY: y,
+      vx: Math.cos(angle) * HOMING_SPEED,
+      vy: Math.sin(angle) * HOMING_SPEED,
+      angle,
+      radius: HOMING_RADIUS,
+      damage: atk.damage,
+      seek: HOMING_SEEK_TIME,
+      life: HOMING_LIFE,
+      color: enemy.color,
+      spin: rand(0, TAU),
+      trail: [{ x, y }],
+    });
+    this.spawnBurst(x, y, enemy.color, 5, 100, 0.28);
+    this.sfx.play('lock');
+  }
+
+  private updateHomings(dt: number) {
+    const bounds = this.roomBounds();
+    const player = this.player;
+
+    for (let i = this.homings.length - 1; i >= 0; i--) {
+      const missile = this.homings[i];
+      missile.prevX = missile.x;
+      missile.prevY = missile.y;
+      missile.life -= dt;
+      missile.spin += dt * 5;
+      // Keep the smoke trail short: a curved ribbon, not a full path record.
+      missile.trail.push({ x: missile.x, y: missile.y });
+      if (missile.trail.length > HOMING_TRAIL_POINTS) missile.trail.shift();
+
+      if (missile.seek > 0) {
+        missile.seek = Math.max(0, missile.seek - dt);
+        if (!player.dead) {
+          const want = Math.atan2(player.y - missile.y, player.x - missile.x);
+          const maxTurn = HOMING_TURN_RATE * dt;
+          missile.angle += clamp(angleDelta(missile.angle, want), -maxTurn, maxTurn);
+        }
+        if (missile.seek <= 0) {
+          // Lock lost: a white ping marks the moment it stops chasing.
+          this.spawnBurst(missile.x, missile.y, '#ffffff', 6, 90, 0.26);
+        }
+      }
+
+      missile.vx = Math.cos(missile.angle) * HOMING_SPEED;
+      missile.vy = Math.sin(missile.angle) * HOMING_SPEED;
+      missile.x += missile.vx * dt;
+      missile.y += missile.vy * dt;
+
+      // Walls are the room's inner face; the missile's own radius decides how
+      // close it has to get before it counts as a touch.
+      const hitWall =
+        missile.x <= bounds.left + missile.radius ||
+        missile.x >= bounds.right - missile.radius ||
+        missile.y <= bounds.top + missile.radius ||
+        missile.y >= bounds.bottom - missile.radius;
+
+      const hitPlayer =
+        !player.dead &&
+        segmentCircleHit(
+          missile.prevX,
+          missile.prevY,
+          missile.x,
+          missile.y,
+          player.x,
+          player.y,
+          player.radius + missile.radius - 2,
+        );
+
+      if (hitWall || hitPlayer) {
+        if (hitPlayer && player.invuln <= 0) this.playerHit(missile.damage);
+        this.explodeHoming(missile, hitPlayer);
+        this.homings.splice(i, 1);
+        continue;
+      }
+
+      if (missile.life <= 0) {
+        // Out of fuel: no blast, just a fizzle where it gave up.
+        this.spawnBurst(missile.x, missile.y, missile.color, 5, 80, 0.3);
+        this.homings.splice(i, 1);
+      }
+    }
+  }
+
+  /**
+   * Small blast that ends a homing missile. A body hit already paid its
+   * damage, so only a wall burst can clip the player standing next to it.
+   */
+  private explodeHoming(missile: EnemyHoming, alreadyHitPlayer: boolean) {
+    this.blasts.push({
+      x: missile.x,
+      y: missile.y,
+      radius: HOMING_BLAST_RADIUS,
+      life: 0.3,
+      maxLife: 0.3,
+      color: missile.color,
+    });
+    this.spawnBurst(missile.x, missile.y, missile.color, 12, 200, 0.36);
+    this.spawnBurst(missile.x, missile.y, '#ffffff', 5, 130, 0.22);
+    this.shake = Math.max(this.shake, 2.6);
+    this.sfx.play('blast');
+
+    const player = this.player;
+    if (alreadyHitPlayer || player.dead) return;
+    if (
+      dist(missile.x, missile.y, player.x, player.y) <=
+      HOMING_BLAST_RADIUS + player.radius - 10
+    ) {
+      if (player.invuln <= 0) this.playerHit(HOMING_BLAST_DAMAGE);
+    }
+  }
+
   private updateBossAttack(enemy: Enemy, dt: number) {
     if (this.bossWindup > 0) {
       this.bossWindup = Math.max(0, this.bossWindup - dt);
@@ -2000,7 +2198,7 @@ export class ShooterGame {
     this.spawnTestWave();
     this.banner = {
       title: 'TEST ROOM',
-      sub: '分裂者测试场 · 清空自动续波',
+      sub: '分裂者 · 追踪者测试场 · 清空自动续波',
       time: 2,
       duration: 2,
       color: TEST_COLOR,
@@ -2018,8 +2216,10 @@ export class ShooterGame {
     for (let i = 0; i < count; i++) {
       const angle = (TAU * i) / count + this.testWave * 0.45 + rand(-0.12, 0.12);
       const radius = 280 + rand(0, 90);
+      // Both test enemies share the room so a wave always shows the mix.
+      const kind: EnemyKind = i % 2 === 0 ? 'splitter' : 'homing';
       this.spawnEnemy(
-        'splitter',
+        kind,
         clamp(cx + Math.cos(angle) * radius, 80, this.worldW - 80),
         clamp(cy + Math.sin(angle) * radius, 80, this.worldH - 80),
       );
@@ -2044,6 +2244,8 @@ export class ShooterGame {
     this.player.invuln = Math.max(this.player.invuln, BOSS_VICTORY_DELAY + 1);
     this.enemyBullets = [];
     this.shells = [];
+    this.homings = [];
+    this.blasts = [];
 
     for (const enemy of this.enemies) {
       if (enemy === boss || enemy.dead) continue;
@@ -2171,9 +2373,11 @@ export class ShooterGame {
     const spitters = floor >= 2 || room >= 3;
     const tanks = floor >= 3 || (floor >= 2 && room >= 3);
     const splitters = floor >= 2 || room >= 3;
+    const homings = floor >= 2 && room >= 2;
     for (let i = 0; i < count; i++) {
       let kind: EnemyKind = 'grunt';
       if (tanks && i % 7 === 3) kind = 'tank';
+      else if (homings && i % 8 === 6) kind = 'homing';
       else if (splitters && i % 6 === 4) kind = 'splitter';
       else if (spitters && i % 5 === 2) kind = 'spitter';
       else if (room >= 2 || floor >= 2 ? i % 3 === 1 : i % 5 === 3) kind = 'runner';
@@ -2182,6 +2386,9 @@ export class ShooterGame {
     if (spitters && !list.includes('spitter')) list[Math.min(2, list.length - 1)] = 'spitter';
     if (splitters && !list.includes('splitter')) {
       list[Math.min(3, list.length - 1)] = 'splitter';
+    }
+    if (homings && !list.includes('homing')) {
+      list[Math.min(5, list.length - 1)] = 'homing';
     }
     if (tanks && !list.includes('tank')) list[Math.min(4, list.length - 1)] = 'tank';
 
@@ -2281,6 +2488,8 @@ export class ShooterGame {
     this.enemies = [];
     this.enemyBullets = [];
     this.shells = [];
+    this.homings = [];
+    this.blasts = [];
     this.bullets = [];
     this.pickups = [];
     this.player.x = ROOM_SIZE / 2;
@@ -2448,6 +2657,10 @@ export class ShooterGame {
 
   private updateFx(dt: number) {
     this.updateParticles(dt);
+    for (let i = this.blasts.length - 1; i >= 0; i--) {
+      this.blasts[i].life -= dt;
+      if (this.blasts[i].life <= 0) this.blasts.splice(i, 1);
+    }
     for (let i = this.ghosts.length - 1; i >= 0; i--) {
       this.ghosts[i].life -= dt;
       if (this.ghosts[i].life <= 0) this.ghosts.splice(i, 1);
@@ -2519,6 +2732,12 @@ export class ShooterGame {
       bossMaxHp: boss?.maxHp ?? 0,
       bossPhase: boss && boss.hp <= boss.maxHp * 0.5 ? 2 : 1,
       wave: this.testWave,
+      testSplitter: this.enemies.filter(
+        (enemy) => !enemy.dead && enemy.kind === 'splitter',
+      ).length,
+      testHoming: this.enemies.filter(
+        (enemy) => !enemy.dead && enemy.kind === 'homing',
+      ).length,
     };
     this.callbacks.onHud(hud);
   }
@@ -2642,6 +2861,8 @@ export class ShooterGame {
     this.drawBullets();
     this.drawEnemies();
     this.drawShells();
+    this.drawHomings();
+    this.drawBlasts();
     this.drawDashGhosts();
     this.drawPlayer();
     this.drawParticles();
@@ -3222,6 +3443,105 @@ export class ShooterGame {
     }
   }
 
+  private drawHomings() {
+    const ctx = this.ctx;
+    if (!this.homings.length) return;
+    for (const missile of this.homings) {
+      const seeking = missile.seek > 0;
+      // Locked missiles keep their hot colour; without a lock they go grey,
+      // which is the cue that the next move just has to be a sidestep.
+      const color = seeking ? missile.color : '#c1b2bd';
+
+      // Curved smoke trail. Dashed while seeking, straight once the lock drops,
+      // which is the main read for "it stopped following me".
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      for (let i = 1; i < missile.trail.length; i++) {
+        const a = missile.trail[i - 1];
+        const b = missile.trail[i];
+        const t = i / Math.max(1, missile.trail.length - 1);
+        ctx.strokeStyle = withAlpha(color, t * (seeking ? 0.42 : 0.24));
+        ctx.lineWidth = 1 + t * 5.5;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+
+      const glow = ctx.createRadialGradient(
+        missile.x,
+        missile.y,
+        1,
+        missile.x,
+        missile.y,
+        missile.radius * 3.4,
+      );
+      glow.addColorStop(0, withAlpha(color, seeking ? 0.55 : 0.3));
+      glow.addColorStop(1, withAlpha(color, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(missile.x, missile.y, missile.radius * 3.4, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(missile.x, missile.y);
+      ctx.rotate(missile.angle);
+      ctx.beginPath();
+      ctx.moveTo(missile.radius * 2, 0);
+      ctx.lineTo(-missile.radius * 1.1, missile.radius * 0.9);
+      ctx.lineTo(-missile.radius * 0.45, 0);
+      ctx.lineTo(-missile.radius * 1.1, -missile.radius * 0.9);
+      ctx.closePath();
+      ctx.fillStyle = withAlpha(color, 0.82);
+      ctx.fill();
+      ctx.strokeStyle = seeking ? '#ffffff' : withAlpha(color, 0.5);
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+
+      ctx.fillStyle = seeking ? '#ffffff' : '#f2e9f7';
+      ctx.beginPath();
+      ctx.arc(0, 0, missile.radius * 0.38, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      if (seeking) {
+        // Dashed seeker ring spins only while the missile still has a lock.
+        ctx.save();
+        ctx.translate(missile.x, missile.y);
+        ctx.strokeStyle = withAlpha('#ffffff', 0.6);
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 5]);
+        ctx.beginPath();
+        ctx.arc(0, 0, missile.radius + 6, missile.spin, missile.spin + TAU * 0.7);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+  }
+
+  private drawBlasts() {
+    if (!this.blasts.length) return;
+    const ctx = this.ctx;
+    for (const blast of this.blasts) {
+      const t = 1 - blast.life / blast.maxLife;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = withAlpha(blast.color, (1 - t) * 0.9);
+      ctx.lineWidth = 3.6 * (1 - t) + 0.6;
+      ctx.beginPath();
+      ctx.arc(blast.x, blast.y, blast.radius * (0.35 + t * 0.9), 0, TAU);
+      ctx.stroke();
+      ctx.fillStyle = withAlpha('#ffffff', (1 - t) * 0.18);
+      ctx.beginPath();
+      ctx.arc(blast.x, blast.y, blast.radius * (0.85 - t * 0.7), 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   private drawEnemies() {
     const ctx = this.ctx;
     for (const enemy of this.enemies) {
@@ -3373,6 +3693,49 @@ export class ShooterGame {
         ctx.beginPath();
         ctx.arc(0, 0, 3.6, 0, TAU);
         ctx.fill();
+      } else if (enemy.kind === 'homing') {
+        // Arrowhead hull with two side pods and a seeker eye: reads as a
+        // launcher rather than a brawler.
+        const spin = this.elapsed * 0.9 + enemy.seed;
+        ctx.strokeStyle = withAlpha(enemy.color, 0.4);
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([5, 7]);
+        ctx.beginPath();
+        ctx.arc(0, 0, enemy.radius + 9, spin, spin + TAU);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        ctx.moveTo(enemy.radius * 1.15, 0);
+        ctx.lineTo(-enemy.radius * 0.55, enemy.radius * 0.92);
+        ctx.lineTo(-enemy.radius * 0.95, 0);
+        ctx.lineTo(-enemy.radius * 0.55, -enemy.radius * 0.92);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Launch tubes either side of the hull.
+        for (const side of [-1, 1]) {
+          ctx.beginPath();
+          ctx.roundRect(
+            enemy.radius * 0.1,
+            side * enemy.radius * 0.46 - 3,
+            enemy.radius * 0.72,
+            6,
+            3,
+          );
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : withAlpha(enemy.color, 0.9);
+        ctx.beginPath();
+        ctx.arc(enemy.radius * 0.2, 0, 4.2, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = '#fff0fb';
+        ctx.beginPath();
+        ctx.arc(enemy.radius * 0.2, 0, 1.9, 0, TAU);
+        ctx.fill();
       } else if (enemy.kind === 'boss') {
         const spin = this.elapsed * 0.6;
         ctx.strokeStyle = withAlpha(enemy.color, 0.36);
@@ -3512,6 +3875,14 @@ export class ShooterGame {
           enemy.x + Math.cos(aim) * (enemy.radius + 34),
           enemy.y + Math.sin(aim) * (enemy.radius + 34),
         );
+      } else if (atk.mode === 'homing') {
+        // The missile steers, so only the launch direction is promised.
+        const aim = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
+        ctx.moveTo(enemy.x, enemy.y);
+        ctx.lineTo(
+          enemy.x + Math.cos(aim) * (enemy.radius + 22),
+          enemy.y + Math.sin(aim) * (enemy.radius + 22),
+        );
       } else {
         const aim = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
         ctx.moveTo(enemy.x, enemy.y);
@@ -3532,6 +3903,19 @@ export class ShooterGame {
         ctx.beginPath();
         ctx.arc(enemy.x, enemy.y, atk.reach * 0.94, spin, spin + 0.45 + t * 0.5);
         ctx.stroke();
+      } else if (atk.mode === 'homing') {
+        // Lock brackets close in on the player: this shot will chase.
+        const target = this.player;
+        const lockRadius = 48 - t * 24;
+        ctx.strokeStyle = withAlpha(color, 0.22 + t * 0.5);
+        ctx.lineWidth = (1.4 + t * 1.2) / this.zoom;
+        ctx.lineCap = 'round';
+        for (let q = 0; q < 4; q++) {
+          const start = q * (TAU / 4) + this.elapsed * 1.6;
+          ctx.beginPath();
+          ctx.arc(target.x, target.y, lockRadius, start, start + 0.4);
+          ctx.stroke();
+        }
       }
     } else if (atk.mode === 'sweep') {
       // Swept sector, the blade edge and the full reach ring.
@@ -4168,6 +4552,10 @@ function segmentCircleHit(
 }
 
 function turnTowards(from: number, to: number, t: number) {
-  const delta = ((((to - from + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
-  return from + delta * clamp(t, 0, 1);
+  return from + angleDelta(from, to) * clamp(t, 0, 1);
+}
+
+/** Shortest signed turn from `from` to `to`, in (-PI, PI]. */
+function angleDelta(from: number, to: number) {
+  return ((((to - from + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
 }

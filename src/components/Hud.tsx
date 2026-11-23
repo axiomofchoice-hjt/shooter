@@ -29,6 +29,12 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
     return `已清 ${hud.roomsCleared}/3 · 门已开`;
   })();
 
+  // Test room names what is still alive, since both test enemies can share a wave.
+  const testParts: string[] = [];
+  if (hud.testSplitter > 0) testParts.push(`分裂者 ${hud.testSplitter}`);
+  if (hud.testHoming > 0) testParts.push(`追踪者 ${hud.testHoming}`);
+  const testStatus = testParts.length ? testParts.join(' · ') : '下一波准备中';
+
   return (
     <>
       <div className="hud">
@@ -80,11 +86,7 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
                     : ''
             }`}
           >
-            {isTest
-              ? hud.enemiesRemaining > 0
-                ? `分裂者 ${hud.enemiesRemaining}`
-                : '下一波准备中'
-              : status}
+            {isTest ? testStatus : status}
           </span>
           {!isTest && (
             <span className="room-pips" aria-hidden="true">
