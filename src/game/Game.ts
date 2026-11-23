@@ -1919,10 +1919,12 @@ export class ShooterGame {
       let burst = false;
 
       // The only early trigger is touching the player; the shell ignores
-      // bullets and only bursts where it was aimed.
+      // bullets and only bursts where it was aimed. A dodging player is not
+      // there at all, so the shell sails through instead of bursting on them.
       const player = this.player;
       if (
         !player.dead &&
+        player.invuln <= 0 &&
         segmentCircleHit(
           shell.prevX,
           shell.prevY,
@@ -1933,7 +1935,7 @@ export class ShooterGame {
           player.radius + shell.radius - 3,
         )
       ) {
-        if (player.invuln <= 0) this.playerHit(shell.damage);
+        this.playerHit(shell.damage);
         burst = true;
       }
 
@@ -2044,8 +2046,11 @@ export class ShooterGame {
         missile.y <= bounds.top + missile.radius ||
         missile.y >= bounds.bottom - missile.radius;
 
+      // A dodging player is not there: the missile crosses the i-frame gap
+      // without detonating, so a well-timed slide really does ignore the shot.
       const hitPlayer =
         !player.dead &&
+        player.invuln <= 0 &&
         segmentCircleHit(
           missile.prevX,
           missile.prevY,
@@ -2057,7 +2062,7 @@ export class ShooterGame {
         );
 
       if (hitWall || hitPlayer) {
-        if (hitPlayer && player.invuln <= 0) this.playerHit(missile.damage);
+        if (hitPlayer) this.playerHit(missile.damage);
         this.explodeHoming(missile, hitPlayer);
         this.homings.splice(i, 1);
         continue;
