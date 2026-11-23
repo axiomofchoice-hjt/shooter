@@ -46,6 +46,13 @@ const DASH_TIME = DASH_DISTANCE / DASH_SPEED;
 // HUD sweep spans the slide plus the cooldown that follows it.
 const DODGE_CYCLE = DASH_TIME + DODGE_COOLDOWN;
 
+// Fixed screen-space speed streak layout used by the dodge overlay.
+const DASH_STREAKS = Array.from({ length: 14 }, (_, i) => ({
+  offset: ((i * 41) % 100) / 50 - 1,
+  phase: ((i * 67) % 100) / 100,
+  length: ((i * 29) % 100) / 100,
+}));
+
 const BOSS_HP = 320;
 const BOSS_RADIUS = 58;
 const BOSS_COLOR = '#ff3860';
@@ -358,6 +365,17 @@ interface Particle {
   drag: number;
 }
 
+// Dash afterimage: a frozen copy of the ship that fades out behind the slide.
+interface DashGhost {
+  x: number;
+  y: number;
+  angle: number;
+  dirX: number;
+  dirY: number;
+  life: number;
+  maxLife: number;
+}
+
 interface Floater {
   x: number;
   y: number;
@@ -454,6 +472,14 @@ export class ShooterGame {
   private bullets: Bullet[] = [];
   private enemyBullets: EnemyBullet[] = [];
   private particles: Particle[] = [];
+  private ghosts: DashGhost[] = [];
+  private dashGhostTimer = 0;
+  // Expanding ring left at the launch point so a dodge reads even at a glance.
+  private dashRing = { x: 0, y: 0, life: 0, maxLife: 0.36 };
+  private dashFlash = 0;
+  // Light streak left behind by the finished slide, fading for a moment so the
+  // dash stays readable even after it ends.
+  private dashTrail = { x1: 0, y1: 0, x2: 0, y2: 0, life: 0, maxLife: 0.34 };
   private floaters: Floater[] = [];
   private pickups: Pickup[] = [];
   private telegraphs: Telegraph[] = [];
@@ -624,6 +650,12 @@ export class ShooterGame {
     // Cooldown starts after the slide, so the gap between two dodges is
     // DODGE_COOLDOWN plus the slide time.
     this.dodgeCooldown = DODGE_CYCLE;
+    this.dashRing.x = player.x;
+    this.dashRing.y = player.y;
+    this.dashRing.life = this.dashRing.maxLife;
+    this.dashFlash = 0.22;
+    this.dashTrail.life = 0;
+    this.dashGhostTimer = 0;
     this.shake = Math.max(this.shake, 3.5);
     this.sfx.play('dash');
     this.spawnBurst(
@@ -702,6 +734,11 @@ export class ShooterGame {
     this.bullets = [];
     this.enemyBullets = [];
     this.particles = [];
+    this.ghosts = [];
+    this.dashGhostTimer = 0;
+    this.dashRing.life = 0;
+    this.dashFlash = 0;
+    this.dashTrail.life = 0;
     this.floaters = [];
     this.pickups = [];
     this.telegraphs = [];
@@ -902,8 +939,28 @@ export class ShooterGame {
     if (player.dashTime > 0) {
       // Dash locks the launch direction, even if the stick is released mid-dash.
       player.dashTime = Math.max(0, player.dashTime - dt);
+      if (player.dashTime === 0 && this.dashTrail.life === 0) {
+        this.dashTrail.x1 = this.dashRing.x;
+        this.dashTrail.y1 = this.dashRing.y;
+        this.dashTrail.x2 = player.x;
+        this.dashTrail.y2 = player.y;
+        this.dashTrail.life = this.dashTrail.maxLife;
+      }
       player.vx = player.dashDirX * DASH_SPEED;
       player.vy = player.dashDirY * DASH_SPEED;
+      this.dashGhostTimer -= dt;
+      if (this.dashGhostTimer <= 0) {
+        this.dashGhostTimer = 0.045;
+        this.ghosts.push({
+          x: player.x,
+          y: player.y,
+          angle: player.angle,
+          dirX: player.dashDirX,
+          dirY: player.dashDirY,
+          life: 0.26,
+          maxLife: 0.26,
+        });
+      }
       if (player.trailTimer <= 0) {
         player.trailTimer = 0.018;
         this.particles.push({
@@ -2037,6 +2094,10 @@ export class ShooterGame {
     this.player.x = ROOM_SIZE / 2;
     this.player.y = this.worldH / 2;
     this.player.invuln = 1.2;
+    // Nothing from the previous floor should linger at the old coordinates.
+    this.ghosts = [];
+    this.dashTrail.life = 0;
+    this.dashRing.life = 0;
     this.player.hp = Math.min(this.player.maxHp, this.player.hp + FLOOR_HEAL);
     this.camera.x = this.player.x;
     this.camera.y = this.player.y;
@@ -2195,6 +2256,13 @@ export class ShooterGame {
 
   private updateFx(dt: number) {
     this.updateParticles(dt);
+    for (let i = this.ghosts.length - 1; i >= 0; i--) {
+      this.ghosts[i].life -= dt;
+      if (this.ghosts[i].life <= 0) this.ghosts.splice(i, 1);
+    }
+    this.dashRing.life = Math.max(0, this.dashRing.life - dt);
+    this.dashFlash = Math.max(0, this.dashFlash - dt);
+    this.dashTrail.life = Math.max(0, this.dashTrail.life - dt);
     this.updateFloaters(dt);
     if (this.banner) {
       this.banner.time -= dt;
@@ -2380,6 +2448,7 @@ export class ShooterGame {
     this.drawEnemyBullets();
     this.drawBullets();
     this.drawEnemies();
+    this.drawDashGhosts();
     this.drawPlayer();
     this.drawParticles();
     this.drawFloaters();
@@ -3201,6 +3270,148 @@ export class ShooterGame {
     ctx.restore();
   }
 
+  private drawDashGhosts() {
+    const ctx = this.ctx;
+
+    // Launch ring: expands once from the point where the dodge started, which
+    // stays put even while the ship slides away from it.
+    if (this.dashRing.life > 0) {
+      const t = 1 - this.dashRing.life / this.dashRing.maxLife;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = withAlpha(PLAYER_COLOR, (1 - t) * 0.5);
+      ctx.lineWidth = 3 * (1 - t) + 0.4;
+      ctx.beginPath();
+      ctx.arc(this.dashRing.x, this.dashRing.y, 18 + t * 40, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Comet ribbon from the launch point to the live ship: the clearest
+    // "this is a dodge, not a walk" cue while the slide is happening.
+    const player = this.player;
+    if (player.dashTime > 0 && this.dashRing.life > 0) {
+      const dx = player.x - this.dashRing.x;
+      const dy = player.y - this.dashRing.y;
+      const span = Math.hypot(dx, dy);
+      if (span > 4) {
+        const nx = -dy / span;
+        const ny = dx / span;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const ribbon = ctx.createLinearGradient(
+          this.dashRing.x,
+          this.dashRing.y,
+          player.x,
+          player.y,
+        );
+        ribbon.addColorStop(0, 'rgba(95, 246, 255, 0)');
+        ribbon.addColorStop(0.55, 'rgba(120, 250, 255, 0.16)');
+        ribbon.addColorStop(1, 'rgba(210, 255, 255, 0.34)');
+        ctx.fillStyle = ribbon;
+        ctx.beginPath();
+        ctx.moveTo(this.dashRing.x + nx * 5, this.dashRing.y + ny * 5);
+        ctx.lineTo(player.x + nx * 15, player.y + ny * 15);
+        ctx.lineTo(player.x - nx * 15, player.y - ny * 15);
+        ctx.lineTo(this.dashRing.x - nx * 5, this.dashRing.y - ny * 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    if (this.dashTrail.life > 0) {
+      const trail = this.dashTrail;
+      const t = trail.life / trail.maxLife;
+      const dx = trail.x2 - trail.x1;
+      const dy = trail.y2 - trail.y1;
+      const span = Math.hypot(dx, dy) || 1;
+      const nx = -dy / span;
+      const ny = dx / span;
+      // Tapered, gradient tail: thin and transparent where the dodge began,
+      // widest and brightest where the ship came to rest.
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const tail = ctx.createLinearGradient(trail.x1, trail.y1, trail.x2, trail.y2);
+      tail.addColorStop(0, 'rgba(95, 246, 255, 0)');
+      tail.addColorStop(0.5, `rgba(95, 246, 255, ${0.16 * t})`);
+      tail.addColorStop(1, `rgba(140, 250, 255, ${0.4 * t})`);
+      const w0 = 1.5;
+      const w1 = 5 + 11 * t;
+      ctx.fillStyle = tail;
+      ctx.beginPath();
+      ctx.moveTo(trail.x1 + nx * w0, trail.y1 + ny * w0);
+      ctx.lineTo(trail.x2 + nx * w1, trail.y2 + ny * w1);
+      ctx.lineTo(trail.x2 - nx * w1, trail.y2 - ny * w1);
+      ctx.lineTo(trail.x1 - nx * w0, trail.y1 - ny * w0);
+      ctx.closePath();
+      ctx.fill();
+
+      const core = ctx.createLinearGradient(trail.x1, trail.y1, trail.x2, trail.y2);
+      core.addColorStop(0, 'rgba(230, 255, 255, 0)');
+      core.addColorStop(1, `rgba(240, 255, 255, ${0.5 * t})`);
+      ctx.strokeStyle = core;
+      ctx.lineWidth = 1 + 1.6 * t;
+      ctx.beginPath();
+      ctx.moveTo(trail.x1, trail.y1);
+      ctx.lineTo(trail.x2, trail.y2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    if (!this.ghosts.length) return;
+    ctx.save();
+    for (const ghost of this.ghosts) {
+      const t = clamp(ghost.life / ghost.maxLife, 0, 1);
+      ctx.save();
+      ctx.translate(ghost.x, ghost.y);
+      ctx.rotate(ghost.angle);
+
+      // Solid, darkened copy of the ship: the silhouette (hull, fins, barrel,
+      // white core) is what makes an echo read as the player instead of a
+      // string of glowing bubbles.
+      ctx.globalAlpha = 0.25 + t * 0.7;
+      ctx.fillStyle = 'rgba(14, 44, 58, 0.92)';
+      ctx.strokeStyle = withAlpha(PLAYER_COLOR, 0.7);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 17, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(10, 32, 44, 0.92)';
+      ctx.strokeStyle = withAlpha(PLAYER_COLOR, 0.5);
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.roundRect(2, -5, 26, 10, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = withAlpha(PLAYER_COLOR, 0.16);
+      ctx.strokeStyle = withAlpha(PLAYER_COLOR, 0.55);
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(-6, -10);
+      ctx.lineTo(-20, -16);
+      ctx.lineTo(-14, -3);
+      ctx.closePath();
+      ctx.moveTo(-6, 10);
+      ctx.lineTo(-20, 16);
+      ctx.lineTo(-14, 3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = withAlpha('#d9fdff', 0.55 + t * 0.4);
+      ctx.beginPath();
+      ctx.arc(0, 0, 4.6, 0, TAU);
+      ctx.fill();
+
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   private drawPlayer() {
     const ctx = this.ctx;
     const player = this.player;
@@ -3225,6 +3436,62 @@ export class ShooterGame {
     ctx.beginPath();
     ctx.arc(0, 0, 46, 0, TAU);
     ctx.fill();
+
+    if (player.dashTime > 0) {
+      // Dodge wake: layered afterburner cones plus flickering jets, so an
+      // ordinary stick move never looks like this.
+      const charge = clamp(player.dashTime / DASH_TIME, 0, 1);
+      const flicker = 0.82 + Math.sin(this.elapsed * 46) * 0.18;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.rotate(Math.atan2(player.dashDirY, player.dashDirX));
+
+      const len = 54 + 74 * charge;
+      const wake = ctx.createLinearGradient(0, 0, -len, 0);
+      wake.addColorStop(0, 'rgba(200, 255, 255, 0.42)');
+      wake.addColorStop(0.35, 'rgba(95, 246, 255, 0.2)');
+      wake.addColorStop(1, 'rgba(95, 246, 255, 0)');
+      ctx.fillStyle = wake;
+      ctx.beginPath();
+      ctx.moveTo(-8, -18);
+      ctx.quadraticCurveTo(-len * 0.62, 0, -8, 18);
+      ctx.closePath();
+      ctx.fill();
+
+      // Two hot jets out of the rear fins.
+      for (const side of [-1, 1]) {
+        const jet = 30 + 26 * charge * flicker;
+        const flame = ctx.createLinearGradient(-10, 0, -10 - jet, 0);
+        flame.addColorStop(0, 'rgba(255, 255, 255, 0.85)');
+        flame.addColorStop(0.35, 'rgba(150, 252, 255, 0.5)');
+        flame.addColorStop(1, 'rgba(95, 246, 255, 0)');
+        ctx.fillStyle = flame;
+        ctx.beginPath();
+        ctx.moveTo(-12, side * 4);
+        ctx.lineTo(-12 - jet, side * 11);
+        ctx.lineTo(-12, side * 13);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.strokeStyle = 'rgba(225, 255, 255, 0.55)';
+      ctx.lineWidth = 1.5;
+      for (const offset of [-11, 0, 11]) {
+        ctx.beginPath();
+        ctx.moveTo(-14, offset);
+        ctx.lineTo(-len * (offset === 0 ? 0.95 : 0.66), offset * 1.3);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const burst = ctx.createRadialGradient(0, 0, 2, 0, 0, 36);
+      burst.addColorStop(0, 'rgba(240, 255, 255, 0.6)');
+      burst.addColorStop(1, 'rgba(95, 246, 255, 0)');
+      ctx.fillStyle = burst;
+      ctx.beginPath();
+      ctx.arc(0, 0, 36, 0, TAU);
+      ctx.fill();
+    }
 
     if (player.invuln > 0) {
       ctx.strokeStyle = withAlpha(PLAYER_COLOR, 0.45);
@@ -3269,10 +3536,11 @@ export class ShooterGame {
     ctx.fill();
     ctx.stroke();
 
-    // Hull
+    // Hull (white-hot while dodging)
+    const dashing = player.dashTime > 0;
     ctx.fillStyle = '#071722';
-    ctx.strokeStyle = PLAYER_COLOR;
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = dashing ? '#f2ffff' : PLAYER_COLOR;
+    ctx.lineWidth = dashing ? 3 : 2.5;
     ctx.beginPath();
     ctx.arc(0, 0, 17 * pulse, 0, TAU);
     ctx.fill();
@@ -3430,6 +3698,57 @@ export class ShooterGame {
     if (this.killFlash > 0) {
       ctx.fillStyle = `rgba(190, 255, 255, ${this.killFlash * 0.045})`;
       ctx.fillRect(0, 0, width, height);
+    }
+
+    // Dodge: a brief cyan bloom at the ship plus screen-space speed streaks
+    // shooting backwards along the slide, so a dash never reads as a walk.
+    if (this.dashFlash > 0) {
+      const k = this.dashFlash / 0.22;
+      const bloom = ctx.createRadialGradient(
+        width / 2,
+        height / 2,
+        0,
+        width / 2,
+        height / 2,
+        Math.max(width, height) * 0.62,
+      );
+      bloom.addColorStop(0, `rgba(200, 255, 255, ${0.16 * k})`);
+      bloom.addColorStop(0.4, `rgba(95, 246, 255, ${0.07 * k})`);
+      bloom.addColorStop(1, 'rgba(95, 246, 255, 0)');
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = bloom;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+    }
+
+    if (this.player.dashTime > 0 && this.phase === 'playing') {
+      const power = clamp(this.player.dashTime / DASH_TIME, 0, 1);
+      const angle = Math.atan2(this.player.dashDirY, this.player.dashDirX);
+      const dirX = Math.cos(angle);
+      const dirY = Math.sin(angle);
+      const perpX = -dirY;
+      const perpY = dirX;
+      const cx = width / 2 + shakeX;
+      const cy = height / 2 + shakeY;
+      const span = Math.hypot(width, height) * 0.5;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(205, 255, 255, ${0.5 * power})`;
+      ctx.lineWidth = 1.9;
+      for (const streak of DASH_STREAKS) {
+        const side = streak.offset * span * 0.62;
+        const phase = (streak.phase + this.elapsed * 3.4) % 1;
+        const start = 30 + phase * 150;
+        const len = 54 + streak.length * 120;
+        const bx = cx + perpX * side - dirX * start;
+        const by = cy + perpY * side - dirY * start;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx - dirX * len, by - dirY * len);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
 
     // Impact frame
