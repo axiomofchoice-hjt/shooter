@@ -160,8 +160,8 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pellets: 1,
     spread: 0,
     pierce: 0,
-    range: 520,
-    chain: { targets: 4, jumpRange: 190, falloff: 0.62 },
+    // No range cap: the first target can be anywhere the player can see.
+    chain: { targets: 4, jumpRange: 260, falloff: 0.62 },
   },
 };
 

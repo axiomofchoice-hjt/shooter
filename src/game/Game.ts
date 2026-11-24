@@ -1332,9 +1332,10 @@ export class ShooterGame {
   }
 
   /**
-   * Chain lightning: zaps the nearest visible enemy in range, then jumps to
-   * the closest not-yet-hit enemy within the jump radius. Walls do not stop a
-   * jump. Damage falls off with every link.
+   * Chain lightning: the arc itself has no range cap, so it zaps the nearest
+   * visible enemy anywhere. It then jumps to the closest not-yet-hit enemy
+   * within the (larger) jump radius. Walls do not stop a jump. Damage falls
+   * off with every link.
    */
   private fireArc(weapon: WeaponSpec) {
     const player = this.player;
@@ -1343,7 +1344,7 @@ export class ShooterGame {
     let target = this.findNearestEnemy(
       player.x,
       player.y,
-      weapon.range ?? 520,
+      AUTOAIM_RANGE,
       true,
     );
     if (!target) return;
