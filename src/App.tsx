@@ -184,6 +184,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Buttons are game controls, not form fields: a click should not leave one
+    // focused, or the next Enter/Space would re-trigger it. Keyboard play goes
+    // through the global hotkeys instead (Enter / B / P / Esc).
+    const onClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest('button');
+      if (button) button.blur();
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, []);
+
+  useEffect(() => {
     const updateOrientation = () => {
       setIsPortrait(
         window.matchMedia('(orientation: portrait)').matches ||
@@ -257,10 +271,7 @@ export default function App() {
       }
 
       if (event.code === 'Enter') {
-        const onBossButton =
-          event.target instanceof Element && event.target.closest('.boss-button');
         if (phaseRef.current === 'menu') {
-          if (onBossButton) return;
           event.preventDefault();
           startGame();
         } else if (phaseRef.current === 'gameover') {

@@ -173,8 +173,8 @@ export function TouchControls({
         tabIndex={-1}
         className={`ability-button ability-dodge ${dodgeCooldown > 0 ? 'is-cooling' : ''}`}
         style={{ '--cool': `${dodgeCooldown * 100}%` } as CSSProperties}
-        aria-label="闪避：向当前移动方向冲刺"
-        title="闪避：向当前移动方向冲刺"
+        aria-label="闪避：沿移动方向冲刺"
+        title="闪避：沿移动方向冲刺"
         onPointerDown={(event) => {
           event.preventDefault();
           if (dodgeCooldown > 0) return;

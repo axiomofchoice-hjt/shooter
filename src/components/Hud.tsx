@@ -111,6 +111,7 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
         <div className="hud-actions">
           <button
             type="button"
+            tabIndex={-1}
             className="icon-button"
             onClick={onMute}
             aria-label={hud.muted ? '打开音效' : '关闭音效'}
@@ -120,6 +121,7 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
           </button>
           <button
             type="button"
+            tabIndex={-1}
             className="icon-button"
             onClick={onPause}
             aria-label="暂停游戏"

@@ -12,6 +12,7 @@ export function WeaponSwitch({ weapon, onCycle }: WeaponSwitchProps) {
   return (
     <button
       type="button"
+      tabIndex={-1}
       className="weapon-switch"
       style={{ '--weapon-color': spec.color } as CSSProperties}
       onClick={onCycle}

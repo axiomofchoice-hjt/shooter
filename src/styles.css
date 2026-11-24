@@ -51,9 +51,10 @@ button {
   color: inherit;
 }
 
+/* Buttons here are game controls, not form fields: never draw a focus ring. */
+button:focus,
 button:focus-visible {
-  outline: 2px solid var(--cyan);
-  outline-offset: 3px;
+  outline: none;
 }
 
 svg {

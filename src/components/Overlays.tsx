@@ -42,6 +42,7 @@ export function StartScreen({
             {fullscreenSupported && (
               <button
                 type="button"
+                tabIndex={-1}
                 className="fullscreen-button"
                 onClick={onToggleFullscreen}
                 aria-label={isFullscreen ? '退出全屏' : '进入全屏'}
@@ -62,7 +63,12 @@ export function StartScreen({
               禁区信号失控。从起始房出发，清空三个战斗房，踏入最右侧的传送门继续下潜。
             </p>
 
-            <button type="button" className="start-button" onClick={onStart} autoFocus>
+            <button
+              type="button"
+              tabIndex={-1}
+              className="start-button"
+              onClick={onStart}
+            >
               <span className="start-button-icon">
                 <PlayIcon />
               </span>
@@ -78,6 +84,7 @@ export function StartScreen({
 
             <button
               type="button"
+              tabIndex={-1}
               className="boss-button"
               onClick={onStartBoss}
               title="进入测试房（分裂者 / 追踪者）"
@@ -214,11 +221,16 @@ export function PauseOverlay({ onResume, onMenu }: PauseOverlayProps) {
         </h2>
         <p className="modal-copy">战斗已冻结。喘口气，然后继续。</p>
         <div className="modal-actions">
-          <button type="button" className="primary-button" onClick={onResume} autoFocus>
+          <button
+            type="button"
+            tabIndex={-1}
+            className="primary-button"
+            onClick={onResume}
+          >
             <PlayIcon />
             继续战斗
           </button>
-          <button type="button" className="ghost-button" onClick={onMenu}>
+          <button type="button" tabIndex={-1} className="ghost-button" onClick={onMenu}>
             返回主界面
           </button>
         </div>
@@ -307,11 +319,16 @@ export function GameOverOverlay({
         </div>
 
         <div className="modal-actions row-actions">
-          <button type="button" className="primary-button" onClick={onRetry} autoFocus>
+          <button
+            type="button"
+            tabIndex={-1}
+            className="primary-button"
+            onClick={onRetry}
+          >
             <PlayIcon />
             {isTest ? (victory ? '再测一次' : '再来一轮') : '再次下潜'}
           </button>
-          <button type="button" className="ghost-button" onClick={onMenu}>
+          <button type="button" tabIndex={-1} className="ghost-button" onClick={onMenu}>
             返回主界面
           </button>
         </div>
