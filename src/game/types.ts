@@ -17,7 +17,8 @@ export type WeaponId =
   | 'seeker'
   | 'flamer'
   | 'arc'
-  | 'shock';
+  | 'shock'
+  | 'storm';
 
 export type RoomKind = 'start' | 'combat' | 'portal';
 

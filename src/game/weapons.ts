@@ -44,10 +44,22 @@ export interface WeaponSpec {
     /** Outward shove applied to enemies caught in the blast. */
     knockback: number;
   };
+  /** Deployable dart that decelerates and periodically zaps an area. */
+  storm?: {
+    /** Seconds spent flying to the endpoint (fast then slow). */
+    flight: number;
+    /** How far past the target's original position the dart stops. */
+    overshoot: number;
+    /** Radius of each electric pulse. */
+    aoeRadius: number;
+    /** Seconds between pulses. */
+    pulseInterval: number;
+  };
 }
 
 const ALL_WEAPONS: WeaponId[] = [
   'pulse',
+  'storm',
   'smg',
   'scatter',
   'rail',
@@ -57,10 +69,10 @@ const ALL_WEAPONS: WeaponId[] = [
   'shock',
 ];
 
-// Temporarily expose only the first weapon. The other seven stay implemented
-// and fully specced, but cannot be reached from the in-game weapon cycle.
-// Raise this count to bring them back without restoring any deleted code.
-const VISIBLE_WEAPONS = 1;
+// Temporarily expose only the pulse rifle and the storm dart. The other seven
+// stay implemented and fully specced, but cannot be reached from the in-game
+// weapon cycle. Raise this count to bring them back.
+const VISIBLE_WEAPONS = 2;
 
 export const WEAPON_ORDER: WeaponId[] = ALL_WEAPONS.slice(0, VISIBLE_WEAPONS);
 
@@ -177,6 +189,28 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pierce: 0,
     // No range cap: the first target can be anywhere the player can see.
     chain: { targets: 4, jumpRange: 260, falloff: 0.62 },
+  },
+  // Lightning dart: flies past the target, then becomes a short-lived storm
+  // emitter that shocks everything around it.
+  storm: {
+    id: 'storm',
+    name: '雷暴镖',
+    tag: 'STORM',
+    color: '#7dffd4',
+    damage: 5,
+    cooldown: 1,
+    speed: 0,
+    radius: 0,
+    life: 5,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    storm: {
+      flight: 0.8,
+      overshoot: 110,
+      aoeRadius: 150,
+      pulseInterval: 0.75,
+    },
   },
   // Concussion shell: explodes on contact and shoves the blast outward.
   shock: {

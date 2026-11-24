@@ -490,6 +490,27 @@ interface Blast {
   color: string;
 }
 
+// Decelerating lightning dart that keeps zapping the area around its resting point.
+interface StormDart {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  x: number;
+  y: number;
+  age: number;
+  life: number;
+  flight: number;
+  pulseTimer: number;
+  pulseInterval: number;
+  aoeRadius: number;
+  damage: number;
+  color: string;
+  dirX: number;
+  dirY: number;
+  seed: number;
+}
+
 // Expanding blast ring; damage is applied at detonation, this is the visual.
 interface Shockwave {
   x: number;
@@ -633,6 +654,7 @@ export class ShooterGame {
   private blasts: Blast[] = [];
   private arcs: ArcBolt[] = [];
   private shockwaves: Shockwave[] = [];
+  private stormDarts: StormDart[] = [];
   private particles: Particle[] = [];
   private ghosts: DashGhost[] = [];
   private dashGhostTimer = 0;
@@ -901,6 +923,7 @@ export class ShooterGame {
     this.blasts = [];
     this.arcs = [];
     this.shockwaves = [];
+    this.stormDarts = [];
     this.particles = [];
     this.ghosts = [];
     this.dashGhostTimer = 0;
@@ -941,6 +964,7 @@ export class ShooterGame {
   private update(dt: number) {
     this.updatePlayer(dt);
     this.updateBullets(dt);
+    this.updateStormDarts(dt);
     this.updateEnemies(dt);
     this.updateEnemyBullets(dt);
     this.updateShells(dt);
@@ -1275,7 +1299,9 @@ export class ShooterGame {
     player.muzzleColor = weapon.color;
 
     const offset = 26;
-    if (weapon.chain) {
+    if (weapon.storm) {
+      this.spawnStormDart(weapon);
+    } else if (weapon.chain) {
       this.fireArc(weapon);
     } else {
       for (let i = 0; i < weapon.pellets; i++) {
@@ -1316,13 +1342,15 @@ export class ShooterGame {
       }
     }
 
-    const muzzleCount = weapon.chain
-      ? 8
-      : weapon.pellets > 1
-        ? 10
-        : weapon.id === 'rail'
-          ? 12
-          : 4;
+    const muzzleCount = weapon.storm
+      ? 6
+      : weapon.chain
+        ? 8
+        : weapon.pellets > 1
+          ? 10
+          : weapon.id === 'rail'
+            ? 12
+            : 4;
     for (let i = 0; i < muzzleCount; i++) {
       const spread = player.angle + Math.PI + rand(-0.6, 0.6);
       const velocity = rand(40, weapon.id === 'rail' ? 320 : 150);
@@ -1342,14 +1370,16 @@ export class ShooterGame {
       this.shake,
       weapon.id === 'rail'
         ? 4.2
-        : weapon.chain
-          ? 2.2
-          : weapon.pellets > 1
-            ? 2.6
-            : 0.9,
+        : weapon.storm
+          ? 1.6
+          : weapon.chain
+            ? 2.2
+            : weapon.pellets > 1
+              ? 2.6
+              : 0.9,
     );
     this.sfx.play(
-      weapon.chain
+      weapon.storm || weapon.chain
         ? 'arc'
         : weapon.id === 'rail'
           ? 'rail'
@@ -1357,6 +1387,116 @@ export class ShooterGame {
             ? 'scatter'
             : 'shoot',
     );
+  }
+
+  /**
+   * Lightning dart: snapshots the target point now, flies past it, then sits
+   * there for the rest of its 5s life and pulses an electric AOE. It never
+   * homes and has no contact damage.
+   */
+  private spawnStormDart(weapon: WeaponSpec) {
+    const player = this.player;
+    const storm = weapon.storm;
+    if (!storm) return;
+    const target = this.findNearestEnemy(
+      player.x,
+      player.y,
+      AUTOAIM_RANGE,
+      true,
+    );
+    const angle = target
+      ? Math.atan2(target.y - player.y, target.x - player.x)
+      : player.angle;
+    const distance = target
+      ? dist(player.x, player.y, target.x, target.y) + storm.overshoot
+      : 320;
+    const bounds = this.roomBounds();
+    const endX = clamp(
+      player.x + Math.cos(angle) * distance,
+      bounds.left + 14,
+      bounds.right - 14,
+    );
+    const endY = clamp(
+      player.y + Math.sin(angle) * distance,
+      bounds.top + 14,
+      bounds.bottom - 14,
+    );
+    this.stormDarts.push({
+      startX: player.x,
+      startY: player.y,
+      endX,
+      endY,
+      x: player.x,
+      y: player.y,
+      age: 0,
+      life: weapon.life,
+      flight: storm.flight,
+      pulseTimer: storm.pulseInterval,
+      pulseInterval: storm.pulseInterval,
+      aoeRadius: storm.aoeRadius,
+      damage: weapon.damage,
+      color: weapon.color,
+      dirX: Math.cos(angle),
+      dirY: Math.sin(angle),
+      seed: rand(0, 100),
+    });
+  }
+
+  private updateStormDarts(dt: number) {
+    for (let i = this.stormDarts.length - 1; i >= 0; i--) {
+      const dart = this.stormDarts[i];
+      dart.age += dt;
+      const t = clamp(dart.age / dart.flight, 0, 1);
+      // Fast launch, long glide: cubic ease-out reaches zero speed exactly
+      // at the endpoint, which is the requested "fast then slow" feel.
+      const ease = 1 - Math.pow(1 - t, 3);
+      dart.x = dart.startX + (dart.endX - dart.startX) * ease;
+      dart.y = dart.startY + (dart.endY - dart.startY) * ease;
+
+      dart.pulseTimer -= dt;
+      if (dart.pulseTimer <= 0 && dart.age < dart.life) {
+        dart.pulseTimer += dart.pulseInterval;
+        this.stormPulse(dart);
+      }
+
+      if (dart.age >= dart.life) {
+        this.spawnBurst(dart.x, dart.y, dart.color, 12, 170, 0.4);
+        this.stormDarts.splice(i, 1);
+      }
+    }
+  }
+
+  private stormPulse(dart: StormDart) {
+    this.shockwaves.push({
+      x: dart.x,
+      y: dart.y,
+      maxRadius: dart.aoeRadius,
+      life: 0.4,
+      maxLife: 0.4,
+      color: dart.color,
+    });
+    this.sfx.play('arc');
+    let hitAny = false;
+    for (const enemy of this.enemies) {
+      if (enemy.dead) continue;
+      if (this.outOfRoom(enemy.x, enemy.y, 0)) continue;
+      const distance = dist(dart.x, dart.y, enemy.x, enemy.y);
+      if (distance > dart.aoeRadius + enemy.radius) continue;
+      hitAny = true;
+      this.damageEnemy(enemy, dart.damage, enemy.x, enemy.y, true);
+      this.arcs.push({
+        nodes: [
+          { x: dart.x, y: dart.y },
+          { x: enemy.x, y: enemy.y },
+        ],
+        life: 0.16,
+        maxLife: 0.16,
+        color: dart.color,
+        seed: rand(0, 100),
+      });
+      this.spawnBurst(enemy.x, enemy.y, dart.color, 4, 120, 0.25);
+    }
+    if (hitAny) this.shake = Math.max(this.shake, 2);
   }
 
   /**
@@ -1640,6 +1780,7 @@ export class ShooterGame {
       this.blasts = [];
       this.arcs = [];
       this.shockwaves = [];
+      this.stormDarts = [];
       this.sfx.play('death');
       this.emitHud(true);
       this.callbacks.onGameOver(
@@ -2927,6 +3068,7 @@ export class ShooterGame {
     this.blasts = [];
     this.arcs = [];
     this.shockwaves = [];
+    this.stormDarts = [];
     this.bullets = [];
     this.pickups = [];
     this.player.x = ROOM_SIZE / 2;
@@ -3313,6 +3455,7 @@ export class ShooterGame {
     this.drawBlasts();
     this.drawDashGhosts();
     this.drawPlayer();
+    this.drawStormDarts();
     this.drawFlamer();
     this.drawArcs();
     this.drawShockwaves();
@@ -3985,6 +4128,61 @@ export class ShooterGame {
       ctx.moveTo(points[0][0], points[0][1]);
       for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
       ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Lightning dart: fast trailing shard that hovers after its glide. */
+  private drawStormDarts() {
+    if (!this.stormDarts.length) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const dart of this.stormDarts) {
+      const fade =
+        dart.age > dart.life - 0.25
+          ? clamp((dart.life - dart.age) / 0.25, 0, 1)
+          : 1;
+      const flightLeft = clamp(1 - dart.age / dart.flight, 0, 1);
+      const trailLength = 16 + flightLeft * 58;
+      const tailX = dart.x - dart.dirX * trailLength;
+      const tailY = dart.y - dart.dirY * trailLength;
+      const trail = ctx.createLinearGradient(tailX, tailY, dart.x, dart.y);
+      trail.addColorStop(0, withAlpha(dart.color, 0));
+      trail.addColorStop(1, withAlpha(dart.color, 0.42 * fade));
+      ctx.strokeStyle = trail;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(dart.x, dart.y);
+      ctx.stroke();
+
+      const charge = 1 - clamp(dart.pulseTimer / dart.pulseInterval, 0, 1);
+      ctx.save();
+      ctx.translate(dart.x, dart.y);
+      ctx.strokeStyle = withAlpha(dart.color, (0.22 + charge * 0.45) * fade);
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(0, 0, 13 + charge * 5, 0, TAU);
+      ctx.stroke();
+      ctx.rotate(dart.age * 8 + dart.seed);
+      ctx.fillStyle = withAlpha(dart.color, 0.32 * fade);
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = withAlpha(dart.color, 0.95 * fade);
+      ctx.beginPath();
+      ctx.moveTo(13, 0);
+      ctx.lineTo(0, 3.2);
+      ctx.lineTo(-9, 0);
+      ctx.lineTo(0, -3.2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.9 * fade})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.4, 0, TAU);
+      ctx.fill();
+      ctx.restore();
     }
     ctx.restore();
   }
