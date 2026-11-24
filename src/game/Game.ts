@@ -70,11 +70,11 @@ const HOMING_TRAIL_POINTS = 9;
 
 const SECONDARY_COOLDOWN = 3.4;
 const SECONDARY_PELLETS = 7;
-// Dodge: speed is 1.4x the walk speed, the slide is 20% longer than the
-// previous 132px pass (132 -> 158.4px), and the 1s cooldown only starts
-// counting once the slide itself is over.
+// Dodge: speed is 1.82x the walk speed (30% faster than the old 1.4x), while
+// the slide stays 158.4px, so the slide itself is correspondingly shorter
+// (~0.32s). The 1s cooldown only starts counting once the slide is over.
 const DODGE_COOLDOWN = 1;
-const DASH_SPEED_MULT = 1.4;
+const DASH_SPEED_MULT = 1.82;
 const DASH_SPEED = PLAYER_SPEED * DASH_SPEED_MULT;
 const DASH_DISTANCE = 158.4;
 const DASH_TIME = DASH_DISTANCE / DASH_SPEED;
@@ -1078,6 +1078,8 @@ export class ShooterGame {
 
     if (player.dashTime > 0) {
       // Dash locks the launch direction, even if the stick is released mid-dash.
+      // Scale the last partial frame so the slide covers exactly DASH_DISTANCE.
+      const dashStep = Math.min(dt, player.dashTime);
       player.dashTime = Math.max(0, player.dashTime - dt);
       if (player.dashTime === 0 && this.dashTrail.life === 0) {
         this.dashTrail.x1 = this.dashRing.x;
@@ -1086,8 +1088,9 @@ export class ShooterGame {
         this.dashTrail.y2 = player.y;
         this.dashTrail.life = this.dashTrail.maxLife;
       }
-      player.vx = player.dashDirX * DASH_SPEED;
-      player.vy = player.dashDirY * DASH_SPEED;
+      const stepScale = dt > 0 ? dashStep / dt : 0;
+      player.vx = player.dashDirX * DASH_SPEED * stepScale;
+      player.vy = player.dashDirY * DASH_SPEED * stepScale;
       this.dashGhostTimer -= dt;
       if (this.dashGhostTimer <= 0) {
         this.dashGhostTimer = 0.045;
