@@ -5,6 +5,7 @@ import {
   useState,
 } from 'react';
 import { ShooterGame } from './game/Game';
+import { createGamepadPoller, PAD_BUTTON } from './game/gamepad';
 import { INITIAL_HUD, type GameStats, type HudSnapshot } from './game/types';
 import { Hud } from './components/Hud';
 import { TouchControls } from './components/TouchControls';
@@ -31,6 +32,8 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<ShooterGame | null>(null);
   const phaseRef = useRef<Phase>('menu');
+  // One poller for the whole session so button edges survive re-renders.
+  const [gamepad] = useState(createGamepadPoller);
 
   const [phase, setPhase] = useState<Phase>('menu');
   const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
@@ -298,6 +301,50 @@ export default function App() {
       window.removeEventListener('blur', onBlur);
     };
   }, [retryGame, startBossGame, startGame, togglePause]);
+
+  useEffect(() => {
+    let raf = 0;
+
+    const tick = () => {
+      const pad = gamepad.poll();
+      const game = gameRef.current;
+      const phase = phaseRef.current;
+
+      if (game) {
+        if (phase === 'playing') {
+          game.setGamepadMove(pad.moveX, pad.moveY);
+          game.setGamepadFire(pad.fire);
+          if (pad.pressed.has(PAD_BUTTON.dodge)) game.triggerDodge();
+          if (pad.pressed.has(PAD_BUTTON.secondary)) game.triggerSecondary();
+          if (pad.pressed.has(PAD_BUTTON.weapon)) game.cycleWeapon();
+        } else {
+          // Holding buttons through a menu transition must not leak into play.
+          game.setGamepadMove(0, 0);
+          game.setGamepadFire(false);
+        }
+      }
+
+      if (pad.pressed.has(PAD_BUTTON.pause)) {
+        if (phase === 'menu') startGame();
+        else if (phase === 'gameover') retryGame();
+        else togglePause();
+      }
+      if (pad.pressed.has(PAD_BUTTON.dodge)) {
+        if (phase === 'menu') startGame();
+        else if (phase === 'paused') resumeGame();
+        else if (phase === 'gameover') retryGame();
+      }
+      if (pad.pressed.has(PAD_BUTTON.back)) {
+        if (phase === 'menu') startBossGame();
+        else if (phase === 'paused' || phase === 'gameover') returnToMenu();
+      }
+
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [retryGame, resumeGame, returnToMenu, startBossGame, startGame, togglePause]);
 
   useEffect(() => {
     const onVisibility = () => {

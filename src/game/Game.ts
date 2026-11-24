@@ -644,6 +644,9 @@ interface InputState {
   touchX: number;
   touchY: number;
   touchFire: boolean;
+  padX: number;
+  padY: number;
+  padFire: boolean;
   fireKey: boolean;
 }
 
@@ -708,6 +711,9 @@ export class ShooterGame {
     touchX: 0,
     touchY: 0,
     touchFire: false,
+    padX: 0,
+    padY: 0,
+    padFire: false,
     fireKey: false,
   };
 
@@ -821,6 +827,15 @@ export class ShooterGame {
     this.input.touchFire = active;
   }
 
+  setGamepadMove(x: number, y: number) {
+    this.input.padX = x;
+    this.input.padY = y;
+  }
+
+  setGamepadFire(active: boolean) {
+    this.input.padFire = active;
+  }
+
   triggerSecondary() {
     if (
       this.phase !== 'playing' ||
@@ -888,6 +903,9 @@ export class ShooterGame {
     this.input.touchX = 0;
     this.input.touchY = 0;
     this.input.touchFire = false;
+    this.input.padX = 0;
+    this.input.padY = 0;
+    this.input.padFire = false;
   }
 
   dispose() {
@@ -1304,7 +1322,7 @@ export class ShooterGame {
       this.laserCharge = 0;
     }
 
-    const firing = this.input.fireKey || this.input.touchFire;
+    const firing = this.input.fireKey || this.input.touchFire || this.input.padFire;
     if (firing) {
       if (WEAPONS[player.weapon].flame) {
         this.updateFlamer(dt);
@@ -1321,8 +1339,14 @@ export class ShooterGame {
   private readMoveInput() {
     let x = 0;
     let y = 0;
+    // Pad beats touch beats keys when more than one is active, so a plugged-in
+    // controller keeps working on touch-capable hardware.
+    const padMag = Math.hypot(this.input.padX, this.input.padY);
     const touchMag = Math.hypot(this.input.touchX, this.input.touchY);
-    if (touchMag > 0.12) {
+    if (padMag > 0.12) {
+      x = this.input.padX;
+      y = this.input.padY;
+    } else if (touchMag > 0.12) {
       x = this.input.touchX;
       y = this.input.touchY;
     } else {
