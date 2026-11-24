@@ -263,6 +263,11 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   },
 };
 
+export function previousWeapon(current: WeaponId): WeaponId {
+  const index = WEAPON_ORDER.indexOf(current);
+  return WEAPON_ORDER[(index - 1 + WEAPON_ORDER.length) % WEAPON_ORDER.length];
+}
+
 export function nextWeapon(current: WeaponId): WeaponId {
   const index = WEAPON_ORDER.indexOf(current);
   return WEAPON_ORDER[(index + 1) % WEAPON_ORDER.length];

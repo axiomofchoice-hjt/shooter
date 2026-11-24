@@ -1,11 +1,11 @@
-// Standard-mapping gamepad buttons the game reacts to. Triggers report
-// `pressed` above their threshold, so RT works as a hold-to-fire button.
+// Standard-mapping gamepad buttons the game reacts to.
 export const PAD_BUTTON = {
   dodge: 0,
   back: 1,
-  secondary: 2,
-  weapon: 3,
-  fire: 7,
+  fire: 2,
+  secondary: 3,
+  weaponPrev: 4,
+  weaponNext: 5,
   pause: 9,
 } as const;
 

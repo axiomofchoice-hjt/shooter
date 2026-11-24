@@ -316,7 +316,8 @@ export default function App() {
           game.setGamepadFire(pad.fire);
           if (pad.pressed.has(PAD_BUTTON.dodge)) game.triggerDodge();
           if (pad.pressed.has(PAD_BUTTON.secondary)) game.triggerSecondary();
-          if (pad.pressed.has(PAD_BUTTON.weapon)) game.cycleWeapon();
+          if (pad.pressed.has(PAD_BUTTON.weaponPrev)) game.cycleWeapon(-1);
+          if (pad.pressed.has(PAD_BUTTON.weaponNext)) game.cycleWeapon();
         } else {
           // Holding buttons through a menu transition must not leak into play.
           game.setGamepadMove(0, 0);

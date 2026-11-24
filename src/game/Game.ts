@@ -7,7 +7,7 @@ import {
   type HudSnapshot,
   type WeaponId,
 } from './types';
-import { WEAPONS, nextWeapon, type WeaponSpec } from './weapons';
+import { WEAPONS, nextWeapon, previousWeapon, type WeaponSpec } from './weapons';
 
 const TAU = Math.PI * 2;
 
@@ -1359,9 +1359,10 @@ export class ShooterGame {
     return { x, y, magnitude: Math.hypot(x, y) };
   }
 
-  cycleWeapon() {
+  cycleWeapon(direction: 1 | -1 = 1) {
     if (this.phase !== 'playing' || this.paused || this.player.dead) return;
-    const next = nextWeapon(this.player.weapon);
+    const next =
+      direction > 0 ? nextWeapon(this.player.weapon) : previousWeapon(this.player.weapon);
     this.player.weapon = next;
     const spec = WEAPONS[next];
     this.floaters.push({
