@@ -1165,7 +1165,11 @@ export class ShooterGame {
     player.invuln = Math.max(0, player.invuln - dt);
     player.muzzle = Math.max(0, player.muzzle - dt);
 
-    this.autoTarget = this.findNearestEnemy(player.x, player.y, AUTOAIM_RANGE, true);
+    // Range-limited weapons only auto-aim at targets they can actually lock.
+    // Past that ring there is no reticle and no turn: the shot just goes
+    // wherever the player is already facing.
+    const aimRange = WEAPONS[player.weapon].range ?? AUTOAIM_RANGE;
+    this.autoTarget = this.findNearestEnemy(player.x, player.y, aimRange, true);
     if (this.autoTarget) {
       player.angle = Math.atan2(this.autoTarget.y - player.y, this.autoTarget.x - player.x);
     } else if (move.magnitude > 0.12) {
