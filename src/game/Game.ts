@@ -41,6 +41,7 @@ const SECONDARY_COLOR = '#ffc857';
 const ENEMY_GLOW = 0.16;
 
 const PLAYER_SPEED = 270;
+const PLAYER_START_ANGLE = -Math.PI / 2;
 
 // Splitter: lobs one shell at where the player stood when it fired. The shell
 // bursts into a ring of faster, long-range bullets where it lands, or early if
@@ -297,6 +298,9 @@ interface Player {
   maxHp: number;
   speed: number;
   angle: number;
+  /** Unit vector of the last actual travel direction; dodges follow it. */
+  lastMoveX: number;
+  lastMoveY: number;
   fireCooldown: number;
   invuln: number;
   muzzle: number;
@@ -842,15 +846,18 @@ export class ShooterGame {
       return;
     }
 
-    // Snapshot the stick / keys at the moment the button is pressed.
+    // Dodge direction only ever follows movement: the auto-aim heading must
+    // not pick it, or standing still would fling the player at the nearest
+    // enemy. With no input it reuses the last travel direction, which starts
+    // out as the ship's initial facing.
     const move = this.readMoveInput();
     const player = this.player;
     if (move.magnitude > 0.12) {
       player.dashDirX = move.x / move.magnitude;
       player.dashDirY = move.y / move.magnitude;
     } else {
-      player.dashDirX = Math.cos(player.angle);
-      player.dashDirY = Math.sin(player.angle);
+      player.dashDirX = player.lastMoveX;
+      player.dashDirY = player.lastMoveY;
     }
 
     player.dashTime = DASH_TIME;
@@ -923,7 +930,10 @@ export class ShooterGame {
       hp: 100,
       maxHp: 100,
       speed: PLAYER_SPEED,
-      angle: -Math.PI / 2,
+      angle: PLAYER_START_ANGLE,
+      // A dodge before the player ever moves follows the starting facing (up).
+      lastMoveX: Math.cos(PLAYER_START_ANGLE),
+      lastMoveY: Math.sin(PLAYER_START_ANGLE),
       fireCooldown: 0,
       invuln: 0,
       muzzle: 0,
@@ -1027,7 +1037,8 @@ export class ShooterGame {
       if (this.banner.time <= 0) this.banner = null;
     }
     if (this.phase === 'idle') {
-      this.player.angle = -Math.PI / 2 + Math.sin(this.ambientTime * 0.55) * 0.25;
+      this.player.angle =
+        PLAYER_START_ANGLE + Math.sin(this.ambientTime * 0.55) * 0.25;
       this.camera.x += (ROOM_SIZE / 2 - this.camera.x) * Math.min(1, dt * 2);
       this.camera.y += (this.worldH / 2 - this.camera.y) * Math.min(1, dt * 2);
     }
@@ -1178,6 +1189,10 @@ export class ShooterGame {
       const stepScale = dt > 0 ? dashStep / dt : 0;
       player.vx = player.dashDirX * DASH_SPEED * stepScale;
       player.vy = player.dashDirY * DASH_SPEED * stepScale;
+      // The slide is movement too: release the stick mid-dodge and the next
+      // dodge still heads where the ship actually travelled.
+      player.lastMoveX = player.dashDirX;
+      player.lastMoveY = player.dashDirY;
       this.dashGhostTimer -= dt;
       if (this.dashGhostTimer <= 0) {
         this.dashGhostTimer = 0.045;
@@ -1211,6 +1226,14 @@ export class ShooterGame {
       if (move.magnitude > 1) {
         moveX /= move.magnitude;
         moveY /= move.magnitude;
+      }
+
+      // Remember where the player is actually travelling, so a dodge from a
+      // standstill can reuse it after the stick is released.
+      if (move.magnitude > 0.12) {
+        const length = Math.hypot(moveX, moveY);
+        player.lastMoveX = moveX / length;
+        player.lastMoveY = moveY / length;
       }
 
       const targetVx = moveX * player.speed;
