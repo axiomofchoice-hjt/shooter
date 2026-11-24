@@ -14,6 +14,14 @@ npm run dev
 
 打开终端里显示的地址（默认 `http://localhost:5173`）。
 
+## 部署
+
+推送到 `main` 会触发 GitHub Actions（[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)）：`npm ci` → `npm run build`，然后把 `dist/` 发布到 `gh-pages` 分支。也可以在仓库的 Actions 页面手动 Run workflow。
+
+首次使用需在仓库 Settings → Pages 里把 Source 设为 `Deploy from a branch`，分支选 `gh-pages`、目录选 `/ (root)`，之后访问 `https://<user>.github.io/shooter/`。
+
+构建产物用相对路径（`vite.config.ts` 里的 `base: './'`），同一份 `dist` 放在域名根目录或 `/<repo>/` 子路径下都能直接打开。
+
 ## 操作
 
 - 电脑：`WASD` / 方向键移动，自动锁定最近的敌人；按住 `J` 连续开火，`K` 发射副武器散射炮，`L` 朝移动方向闪避（松开按键时沿静止前的移动方向，从未移动则朝初始朝向；闪避途中开火仍自动索敌）；开始界面按 `B` 打开测试房设置，再按 `B` / `Enter` 用当前配置开始；`P` / `Esc` 暂停。游玩全程无需鼠标。
