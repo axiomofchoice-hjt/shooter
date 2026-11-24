@@ -1506,14 +1506,9 @@ export class ShooterGame {
   }
 
   private stormPulse(dart: StormDart) {
-    this.shockwaves.push({
-      x: dart.x,
-      y: dart.y,
-      maxRadius: dart.aoeRadius,
-      life: 0.4,
-      maxLife: 0.4,
-      color: dart.color,
-    });
+    // No expanding blast ring here: the zap itself is the electric arcs and
+    // sparks, not a shockwave.
+    this.spawnBurst(dart.x, dart.y, dart.color, 7, 120, 0.22);
     this.sfx.play('arc');
     let hitAny = false;
     for (const enemy of this.enemies) {
