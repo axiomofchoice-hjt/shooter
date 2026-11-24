@@ -3598,7 +3598,7 @@ export class ShooterGame {
     this.drawBlasts();
     this.drawDashGhosts();
     this.drawPlayer();
-    this.drawLaserCharge();
+    this.drawLaserMuzzleGlow();
     this.drawStormDarts();
     this.drawFlamer();
     this.drawArcs();
@@ -4310,44 +4310,31 @@ export class ShooterGame {
     ctx.restore();
   }
 
-  /** Charge meter around the player while the laser is equipped. */
-  private drawLaserCharge() {
+  /** Charge level shown as a glow at the laser's firing port. */
+  private drawLaserMuzzleGlow() {
     const player = this.player;
     if (player.weapon !== 'laser' || player.dead) return;
     const charge = clamp(this.laserCharge, 0, 1);
     const color = WEAPONS.laser.color;
+    const mx = player.x + Math.cos(player.angle) * 26;
+    const my = player.y + Math.sin(player.angle) * 26;
+    const pulse =
+      charge >= 0.999 ? 0.5 + 0.5 * Math.sin(this.ambientTime * 10) : 0;
+    const radius = 3 + charge * 9 + pulse * 2;
     const ctx = this.ctx;
-    const radius = 34;
     ctx.save();
-    ctx.strokeStyle = withAlpha(color, 0.14);
-    ctx.lineWidth = 1.4 / this.zoom;
+    ctx.globalCompositeOperation = 'lighter';
+    const glow = ctx.createRadialGradient(mx, my, 0, mx, my, radius * 2.2);
+    glow.addColorStop(0, withAlpha(color, 0.22 + charge * 0.6));
+    glow.addColorStop(0.5, withAlpha(color, 0.08 + charge * 0.25));
+    glow.addColorStop(1, withAlpha(color, 0));
+    ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(player.x, player.y, radius, 0, TAU);
-    ctx.stroke();
-    ctx.strokeStyle = withAlpha(color, 0.55 + charge * 0.35);
-    ctx.lineWidth = 2.4 / this.zoom;
+    ctx.arc(mx, my, radius * 2.2, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.25 + charge * 0.65})`;
     ctx.beginPath();
-    ctx.arc(
-      player.x,
-      player.y,
-      radius,
-      -Math.PI / 2,
-      -Math.PI / 2 + TAU * charge,
-    );
-    ctx.stroke();
-    if (charge >= 0.999) {
-      const pulse = 0.5 + 0.5 * Math.sin(this.ambientTime * 9);
-      ctx.strokeStyle = withAlpha(color, 0.2 + pulse * 0.3);
-      ctx.lineWidth = 1.2 / this.zoom;
-      ctx.beginPath();
-      ctx.arc(player.x, player.y, radius + 4 + pulse * 2, 0, TAU);
-      ctx.stroke();
-    }
-    const mx = player.x + Math.cos(player.angle) * 22;
-    const my = player.y + Math.sin(player.angle) * 22;
-    ctx.fillStyle = withAlpha(color, 0.25 + charge * 0.6);
-    ctx.beginPath();
-    ctx.arc(mx, my, 2 + charge * 4, 0, TAU);
+    ctx.arc(mx, my, 1.5 + charge * 2.5 + pulse, 0, TAU);
     ctx.fill();
     ctx.restore();
   }

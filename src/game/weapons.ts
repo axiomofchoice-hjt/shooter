@@ -239,8 +239,8 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     spread: 0,
     pierce: 0,
     laser: {
-      chargeTime: 0.75,
-      maxMultiplier: 2,
+      chargeTime: 3,
+      maxMultiplier: 5,
       minWidth: 3,
       maxWidth: 32,
     },
