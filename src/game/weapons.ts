@@ -46,10 +46,8 @@ export interface WeaponSpec {
   };
   /** Deployable dart that decelerates and periodically zaps an area. */
   storm?: {
-    /** Seconds spent flying to the endpoint (fast then slow). */
-    flight: number;
-    /** How far past the target's original position the dart stops. */
-    overshoot: number;
+    /** End point distance as a multiple of the target distance (1.1 = 10% past). */
+    overshootRatio: number;
     /** Radius of each electric pulse. */
     aoeRadius: number;
     /** Seconds between pulses. */
@@ -206,8 +204,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     spread: 0,
     pierce: 0,
     storm: {
-      flight: 0.8,
-      overshoot: 110,
+      overshootRatio: 0.1,
       aoeRadius: 150,
       pulseInterval: 0.75,
     },
