@@ -98,7 +98,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pellets: 1,
     spread: 0,
     pierce: 0,
-    range: 320,
+    range: 240,
     homing: true,
     turnRate: 9,
   },

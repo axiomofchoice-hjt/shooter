@@ -1284,7 +1284,7 @@ export class ShooterGame {
    */
   private spawnMissile(weapon: WeaponSpec, offset: number) {
     const player = this.player;
-    const range = weapon.range ?? 320;
+    const range = weapon.range ?? 240;
     const target = this.findNearestEnemy(player.x, player.y, range, false);
     const side = Math.random() < 0.5 ? -1 : 1;
     const lateral = 15 * side;
