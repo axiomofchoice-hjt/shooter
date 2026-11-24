@@ -369,6 +369,9 @@ interface Enemy {
   y: number;
   vx: number;
   vy: number;
+  /** External shove from a shockwave, separate from steering. */
+  knockX: number;
+  knockY: number;
   radius: number;
   hp: number;
   maxHp: number;
@@ -417,6 +420,12 @@ interface Bullet {
   };
   /** Short curved trail, so the visual offset reads as a homing turn. */
   trail?: Array<{ x: number; y: number }>;
+  /** Detonates on the first enemy or wall it touches. */
+  shock?: {
+    blastRadius: number;
+    damage: number;
+    knockback: number;
+  };
 }
 
 interface EnemyBullet {
@@ -476,6 +485,16 @@ interface Blast {
   x: number;
   y: number;
   radius: number;
+  life: number;
+  maxLife: number;
+  color: string;
+}
+
+// Expanding blast ring; damage is applied at detonation, this is the visual.
+interface Shockwave {
+  x: number;
+  y: number;
+  maxRadius: number;
   life: number;
   maxLife: number;
   color: string;
@@ -613,6 +632,7 @@ export class ShooterGame {
   private homings: EnemyHoming[] = [];
   private blasts: Blast[] = [];
   private arcs: ArcBolt[] = [];
+  private shockwaves: Shockwave[] = [];
   private particles: Particle[] = [];
   private ghosts: DashGhost[] = [];
   private dashGhostTimer = 0;
@@ -880,6 +900,7 @@ export class ShooterGame {
     this.homings = [];
     this.blasts = [];
     this.arcs = [];
+    this.shockwaves = [];
     this.particles = [];
     this.ghosts = [];
     this.dashGhostTimer = 0;
@@ -1284,6 +1305,13 @@ export class ShooterGame {
           color: weapon.color,
           pierce: weapon.pierce,
           hitIds: [],
+          shock: weapon.shock
+            ? {
+                blastRadius: weapon.shock.blastRadius,
+                damage: weapon.damage,
+                knockback: weapon.shock.knockback,
+              }
+            : undefined,
         });
       }
     }
@@ -1611,6 +1639,7 @@ export class ShooterGame {
       this.homings = [];
       this.blasts = [];
       this.arcs = [];
+      this.shockwaves = [];
       this.sfx.play('death');
       this.emitHud(true);
       this.callbacks.onGameOver(
@@ -1682,6 +1711,11 @@ export class ShooterGame {
           )
         ) {
           if (bullet.hitIds.includes(enemy.id)) continue;
+          if (bullet.shock) {
+            this.detonateShock(bullet, enemy.x, enemy.y);
+            consumed = true;
+            break;
+          }
           this.damageEnemy(enemy, bullet.damage, bullet.x, bullet.y);
           if (bullet.pierce > 0) {
             bullet.pierce -= 1;
@@ -1690,6 +1724,24 @@ export class ShooterGame {
             consumed = true;
             break;
           }
+        }
+      }
+
+      // Concussion shells burst against the room wall instead of leaving.
+      if (!consumed && bullet.shock) {
+        const bounds = this.roomBounds();
+        const hitWall =
+          bullet.x <= bounds.left + bullet.radius ||
+          bullet.x >= bounds.right - bullet.radius ||
+          bullet.y <= bounds.top + bullet.radius ||
+          bullet.y >= bounds.bottom - bullet.radius;
+        if (hitWall || bullet.life <= 0) {
+          this.detonateShock(
+            bullet,
+            clamp(bullet.x, bounds.left, bounds.right),
+            clamp(bullet.y, bounds.top, bounds.bottom),
+          );
+          consumed = true;
         }
       }
 
@@ -1716,6 +1768,47 @@ export class ShooterGame {
       }
     }
     this.enemies = this.enemies.filter((enemy) => !enemy.dead);
+  }
+
+  /**
+   * Concussion shell: damages every enemy in the blast and shoves them
+   * outward. The player is deliberately untouched — the shockwave only
+   * affects enemies.
+   */
+  private detonateShock(bullet: Bullet, x: number, y: number) {
+    const shock = bullet.shock;
+    if (!shock) return;
+    this.shockwaves.push({
+      x,
+      y,
+      maxRadius: shock.blastRadius * 1.2,
+      life: 0.5,
+      maxLife: 0.5,
+      color: bullet.color,
+    });
+    this.shake = Math.max(this.shake, 9);
+    this.sfx.play('blast');
+    this.spawnBurst(x, y, bullet.color, 26, 330, 0.6);
+    this.spawnBurst(x, y, '#ffffff', 12, 220, 0.4);
+
+    for (const enemy of this.enemies) {
+      if (enemy.dead) continue;
+      // Do not reach through a wall into the neighbouring room.
+      if (this.outOfRoom(enemy.x, enemy.y, 0)) continue;
+      const distance = dist(x, y, enemy.x, enemy.y);
+      if (distance > shock.blastRadius + enemy.radius) continue;
+      this.damageEnemy(enemy, shock.damage, enemy.x, enemy.y, true);
+      const resistance =
+        enemy.kind === 'boss' ? 0.15 : enemy.radius >= 22 ? 0.55 : 1;
+      const falloff =
+        1 - clamp(distance / (shock.blastRadius + enemy.radius), 0, 1) * 0.55;
+      const angle =
+        distance > 0.001 ? Math.atan2(enemy.y - y, enemy.x - x) : 0;
+      const push = shock.knockback * falloff * resistance;
+      enemy.knockX += Math.cos(angle) * push;
+      enemy.knockY += Math.sin(angle) * push;
+      this.spawnBurst(enemy.x, enemy.y, bullet.color, 4, 130, 0.25);
+    }
   }
 
   private damageEnemy(
@@ -1873,8 +1966,13 @@ export class ShooterGame {
       const turn = 1 - Math.exp(-enemy.turnRate * dt);
       enemy.vx += (enemy.desiredX * enemy.desiredSpeed - enemy.vx) * turn;
       enemy.vy += (enemy.desiredY * enemy.desiredSpeed - enemy.vy) * turn;
-      enemy.x += enemy.vx * dt;
-      enemy.y += enemy.vy * dt;
+      enemy.x += (enemy.vx + enemy.knockX) * dt;
+      enemy.y += (enemy.vy + enemy.knockY) * dt;
+      const knockDecay = Math.exp(-5 * dt);
+      enemy.knockX *= knockDecay;
+      enemy.knockY *= knockDecay;
+      if (Math.abs(enemy.knockX) < 0.5) enemy.knockX = 0;
+      if (Math.abs(enemy.knockY) < 0.5) enemy.knockY = 0;
       enemy.x = clamp(enemy.x, bounds.left + 18, bounds.right - 18);
       enemy.y = clamp(enemy.y, bounds.top + 18, bounds.bottom - 18);
 
@@ -2828,6 +2926,7 @@ export class ShooterGame {
     this.homings = [];
     this.blasts = [];
     this.arcs = [];
+    this.shockwaves = [];
     this.bullets = [];
     this.pickups = [];
     this.player.x = ROOM_SIZE / 2;
@@ -2895,6 +2994,8 @@ export class ShooterGame {
       y,
       vx: 0,
       vy: 0,
+      knockX: 0,
+      knockY: 0,
       radius: def.radius,
       hp,
       maxHp: hp,
@@ -3002,6 +3103,10 @@ export class ShooterGame {
     for (let i = this.arcs.length - 1; i >= 0; i--) {
       this.arcs[i].life -= dt;
       if (this.arcs[i].life <= 0) this.arcs.splice(i, 1);
+    }
+    for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+      this.shockwaves[i].life -= dt;
+      if (this.shockwaves[i].life <= 0) this.shockwaves.splice(i, 1);
     }
     for (let i = this.ghosts.length - 1; i >= 0; i--) {
       this.ghosts[i].life -= dt;
@@ -3210,6 +3315,7 @@ export class ShooterGame {
     this.drawPlayer();
     this.drawFlamer();
     this.drawArcs();
+    this.drawShockwaves();
     this.drawParticles();
     this.drawFloaters();
     this.drawAutoTarget();
@@ -3690,6 +3796,10 @@ export class ShooterGame {
         this.drawMissile(bullet);
         continue;
       }
+      if (bullet.shock) {
+        this.drawShockShot(bullet);
+        continue;
+      }
       const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
       const tailLength = bullet.pierce > 0 || bullet.hitIds.length > 0 ? 62 : 27;
       const tailX = bullet.x - (bullet.vx / speed) * tailLength;
@@ -3874,6 +3984,87 @@ export class ShooterGame {
       ctx.beginPath();
       ctx.moveTo(points[0][0], points[0][1]);
       for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Concussion shell: a glowing orb with a spinning containment ring. */
+  private drawShockShot(bullet: Bullet) {
+    const ctx = this.ctx;
+    const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
+    const dirX = bullet.vx / speed;
+    const dirY = bullet.vy / speed;
+    const pulse = 1 + Math.sin(this.ambientTime * 20 + bullet.x * 0.02) * 0.12;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = withAlpha(bullet.color, 0.28);
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(bullet.x - dirX * 26, bullet.y - dirY * 26);
+    ctx.lineTo(bullet.x, bullet.y);
+    ctx.stroke();
+    ctx.translate(bullet.x, bullet.y);
+    ctx.fillStyle = withAlpha(bullet.color, 0.18);
+    ctx.beginPath();
+    ctx.arc(0, 0, 18 * pulse, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = withAlpha(bullet.color, 0.55);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 11 * pulse, 0, TAU);
+    ctx.stroke();
+    ctx.fillStyle = bullet.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, bullet.radius, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(-1.5, -1.5, 3, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** Expanding rings left by a concussion shell. */
+  private drawShockwaves() {
+    if (!this.shockwaves.length) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const wave of this.shockwaves) {
+      const t = clamp(1 - wave.life / wave.maxLife, 0, 1);
+      const radius = wave.maxRadius * (1 - Math.pow(1 - t, 2));
+      const fade = 1 - t;
+      const glow = ctx.createRadialGradient(
+        wave.x,
+        wave.y,
+        0,
+        wave.x,
+        wave.y,
+        Math.max(1, radius),
+      );
+      glow.addColorStop(0, withAlpha(wave.color, 0.22 * fade));
+      glow.addColorStop(0.6, withAlpha(wave.color, 0.1 * fade));
+      glow.addColorStop(1, withAlpha(wave.color, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(wave.x, wave.y, radius, 0, TAU);
+      ctx.fill();
+
+      ctx.strokeStyle = withAlpha(wave.color, 0.95 * fade);
+      ctx.lineWidth = 11 * fade + 2;
+      ctx.beginPath();
+      ctx.arc(wave.x, wave.y, radius, 0, TAU);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.8 * fade})`;
+      ctx.lineWidth = 2.5 * fade + 1;
+      ctx.beginPath();
+      ctx.arc(wave.x, wave.y, radius * 0.82, 0, TAU);
+      ctx.stroke();
+      ctx.strokeStyle = withAlpha(wave.color, 0.5 * fade);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(wave.x, wave.y, radius * 0.55, 0, TAU);
       ctx.stroke();
     }
     ctx.restore();

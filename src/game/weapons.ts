@@ -37,6 +37,13 @@ export interface WeaponSpec {
     /** Damage multiplier applied on every jump. */
     falloff: number;
   };
+  /** Projectile that detonates on an enemy or wall. */
+  shock?: {
+    /** Damage radius of the blast. */
+    blastRadius: number;
+    /** Outward shove applied to enemies caught in the blast. */
+    knockback: number;
+  };
 }
 
 export const WEAPON_ORDER: WeaponId[] = [
@@ -47,6 +54,7 @@ export const WEAPON_ORDER: WeaponId[] = [
   'seeker',
   'flamer',
   'arc',
+  'shock',
 ];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
@@ -162,6 +170,22 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pierce: 0,
     // No range cap: the first target can be anywhere the player can see.
     chain: { targets: 4, jumpRange: 260, falloff: 0.62 },
+  },
+  // Concussion shell: explodes on contact and shoves the blast outward.
+  shock: {
+    id: 'shock',
+    name: '震荡炮',
+    tag: 'SHOCK',
+    color: '#ffe066',
+    damage: 20,
+    cooldown: 1,
+    speed: 780,
+    radius: 8,
+    life: 2.5,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    shock: { blastRadius: 150, knockback: 430 },
   },
 };
 
