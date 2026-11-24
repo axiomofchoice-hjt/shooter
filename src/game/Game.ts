@@ -706,6 +706,9 @@ export class ShooterGame {
   private elapsed = 0;
   private ambientTime = 0;
   private hudTimer = 0;
+  private fps = 0;
+  private fpsFrames = 0;
+  private fpsElapsed = 0;
   private destroyed = false;
 
   private player!: Player;
@@ -971,9 +974,12 @@ export class ShooterGame {
 
   private loop(time: number) {
     if (this.destroyed) return;
-    if (!this.lastTime) this.lastTime = time;
-    const dt = Math.min(0.033, Math.max(0, (time - this.lastTime) / 1000));
+    // Keep the real frame delta for the FPS readout; the simulation clamps it
+    // so a slow frame cannot teleport anything across the room.
+    const frameSeconds = this.lastTime ? Math.max(0, (time - this.lastTime) / 1000) : 0;
     this.lastTime = time;
+    const dt = Math.min(0.033, frameSeconds);
+    this.sampleFps(frameSeconds);
     this.ambientTime += dt;
 
     if (this.phase === 'playing' && !this.paused) {
@@ -985,6 +991,28 @@ export class ShooterGame {
 
     this.render();
     this.raf = requestAnimationFrame(this.loop);
+  }
+
+  /**
+   * Averages frame deltas over a 0.25s window. The HUD is only re-rendered
+   * every 0.09s, so the window is long enough to stay readable but short
+   * enough to react when the frame budget starts slipping.
+   */
+  private sampleFps(frameSeconds: number) {
+    if (frameSeconds <= 0 || frameSeconds > 1) {
+      // Backgrounded tab or a very long stall: don't mix that gap into the
+      // window, it would only show a meaningless single-digit number.
+      this.fpsFrames = 0;
+      this.fpsElapsed = 0;
+      return;
+    }
+    this.fpsFrames += 1;
+    this.fpsElapsed += frameSeconds;
+    if (this.fpsElapsed >= 0.25) {
+      this.fps = Math.round(this.fpsFrames / this.fpsElapsed);
+      this.fpsFrames = 0;
+      this.fpsElapsed = 0;
+    }
   }
 
   private resetWorld() {
@@ -3601,6 +3629,7 @@ export class ShooterGame {
       wave: this.testWave,
       testRoster,
       weaponCount: this.weaponPool.length,
+      fps: this.fps,
     };
     this.callbacks.onHud(hud);
   }

@@ -520,11 +520,69 @@ svg {
   );
 }
 
-.hud-actions {
+.hud-right {
   justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.hud-actions {
   display: flex;
   gap: 7px;
   pointer-events: auto;
+}
+
+/* Frame-rate readout under the pause / mute buttons. Kept as a plain layer:
+   no blur, no shadow, so watching the meter never costs frames itself. */
+.fps-meter {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 7px 4px;
+  font-family: var(--mono);
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  color: rgba(143, 234, 255, 0.55);
+  background: rgba(4, 13, 19, 0.72);
+  border: 1px solid rgba(95, 246, 255, 0.14);
+  border-radius: 2px;
+  pointer-events: auto;
+  cursor: help;
+  transition:
+    border-color 0.3s ease,
+    color 0.3s ease;
+}
+
+.fps-value {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--green);
+}
+
+.fps-unit {
+  opacity: 0.75;
+}
+
+.fps-meter.is-warn {
+  border-color: rgba(255, 200, 87, 0.35);
+}
+
+.fps-meter.is-warn .fps-value {
+  color: var(--amber);
+}
+
+.fps-meter.is-bad {
+  border-color: rgba(255, 77, 125, 0.4);
+}
+
+.fps-meter.is-bad .fps-value {
+  color: var(--pink);
 }
 
 .icon-button {
@@ -2164,6 +2222,15 @@ kbd.accent,
 
   .hud-actions {
     gap: 5px;
+  }
+
+  .fps-meter {
+    gap: 3px;
+    padding: 2px 6px 3px;
+  }
+
+  .fps-value {
+    font-size: 11px;
   }
 
   .modal-panel {

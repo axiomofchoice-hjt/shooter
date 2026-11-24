@@ -29,6 +29,12 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
     return `已清 ${hud.roomsCleared}/3 · 门已开`;
   })();
 
+  // The meter is colour-coded so a drop is readable at a glance while playing:
+  // green down to 55, amber below that, red once it is closer to 30.
+  const fpsTone =
+    hud.fps > 0 && hud.fps < 30 ? 'is-bad' : hud.fps > 0 && hud.fps < 55 ? 'is-warn' : '';
+  const frameMs = hud.fps > 0 ? (1000 / hud.fps).toFixed(1) : null;
+
   // Test room names what is still alive for the selected enemy types. Keep it
   // compact once several types are mixed in the same wave.
   const testTotal = hud.testRoster.reduce((sum, entry) => sum + entry.count, 0);
@@ -114,27 +120,36 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
           )}
         </div>
 
-        <div className="hud-actions">
-          <button
-            type="button"
-            tabIndex={-1}
-            className="icon-button"
-            onClick={onMute}
-            aria-label={hud.muted ? '打开音效' : '关闭音效'}
-            title={hud.muted ? '打开音效' : '关闭音效'}
+        <div className="hud-right">
+          <div className="hud-actions">
+            <button
+              type="button"
+              tabIndex={-1}
+              className="icon-button"
+              onClick={onMute}
+              aria-label={hud.muted ? '打开音效' : '关闭音效'}
+              title={hud.muted ? '打开音效' : '关闭音效'}
+            >
+              {hud.muted ? <SoundOffIcon /> : <SoundOnIcon />}
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              className="icon-button"
+              onClick={onPause}
+              aria-label="暂停游戏"
+              title="暂停游戏"
+            >
+              <PauseIcon />
+            </button>
+          </div>
+          <span
+            className={`fps-meter ${fpsTone}`}
+            title={frameMs ? `约 ${frameMs} ms/帧` : '帧率采样中'}
           >
-            {hud.muted ? <SoundOffIcon /> : <SoundOnIcon />}
-          </button>
-          <button
-            type="button"
-            tabIndex={-1}
-            className="icon-button"
-            onClick={onPause}
-            aria-label="暂停游戏"
-            title="暂停游戏"
-          >
-            <PauseIcon />
-          </button>
+            <span className="fps-value">{hud.fps > 0 ? hud.fps : '--'}</span>
+            <span className="fps-unit">FPS</span>
+          </span>
         </div>
       </div>
 

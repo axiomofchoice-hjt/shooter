@@ -96,6 +96,8 @@ export interface HudSnapshot {
   enemiesRemaining: number;
   encounterActive: boolean;
   portalActive: boolean;
+  /** Render frame rate, sampled over a short window (0 until the first sample). */
+  fps: number;
 }
 
 export interface GameStats {
@@ -139,4 +141,5 @@ export const INITIAL_HUD: HudSnapshot = {
   enemiesRemaining: 0,
   encounterActive: false,
   portalActive: false,
+  fps: 0,
 };
