@@ -242,7 +242,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       chargeTime: 2,
       maxMultiplier: 2,
       minWidth: 3,
-      maxWidth: 16,
+      maxWidth: 22,
     },
   },
   // Concussion shell: explodes on contact and shoves the blast outward.
