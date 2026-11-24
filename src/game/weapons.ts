@@ -48,6 +48,10 @@ export interface WeaponSpec {
   storm?: {
     /** End point distance as a multiple of the target distance (1.1 = 10% past). */
     overshootRatio: number;
+    /** Seconds to cover the first 90% of the total path. */
+    fastTime: number;
+    /** Low speed used for the final 10% of the path. */
+    glideSpeed: number;
     /** Radius of each electric pulse. */
     aoeRadius: number;
     /** Seconds between pulses. */
@@ -205,6 +209,8 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pierce: 0,
     storm: {
       overshootRatio: 0.1,
+      fastTime: 0.8,
+      glideSpeed: 44,
       aoeRadius: 150,
       pulseInterval: 0.75,
     },

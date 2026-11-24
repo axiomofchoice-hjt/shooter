@@ -71,11 +71,6 @@ const HOMING_TRAIL_POINTS = 9;
 // Flamer damage is applied on fixed ticks so its DPS does not depend on fps.
 const FLAME_TICK = 0.05;
 
-// Storm dart motion: a fast launch that decays into a steady drift. The dart
-// is still moving when it vanishes at the end of its life.
-const STORM_DRIFT_SPEED = 45;
-const STORM_BOOST_SPEED = 900;
-const STORM_DECAY = 8;
 
 const SECONDARY_COOLDOWN = 3.4;
 const SECONDARY_PELLETS = 7;
@@ -506,6 +501,12 @@ interface StormDart {
   y: number;
   age: number;
   life: number;
+  totalDistance: number;
+  fastTime: number;
+  fastDistance: number;
+  startSpeed: number;
+  glideSpeed: number;
+  arrivalTime: number;
   pulseTimer: number;
   pulseInterval: number;
   aoeRadius: number;
@@ -1412,21 +1413,38 @@ export class ShooterGame {
     const angle = target
       ? Math.atan2(target.y - player.y, target.x - player.x)
       : player.angle;
-    const distance = target
-      ? dist(player.x, player.y, target.x, target.y) *
-        (1 + storm.overshootRatio)
+    const targetDistance = target
+      ? dist(player.x, player.y, target.x, target.y)
+      : 320;
+    const desiredDistance = target
+      ? targetDistance * (1 + storm.overshootRatio)
       : 320;
     const bounds = this.roomBounds();
     const endX = clamp(
-      player.x + Math.cos(angle) * distance,
+      player.x + Math.cos(angle) * desiredDistance,
       bounds.left + 14,
       bounds.right - 14,
     );
     const endY = clamp(
-      player.y + Math.sin(angle) * distance,
+      player.y + Math.sin(angle) * desiredDistance,
       bounds.top + 14,
       bounds.bottom - 14,
     );
+    const totalDistance = Math.hypot(endX - player.x, endY - player.y);
+    // Quick phase to 90% of the whole path, then a low-speed glide through the
+    // last 10%. The dart holds the end point after that, still zapping.
+    let fastTime = storm.fastTime;
+    let fastDistance = totalDistance * 0.9;
+    const glideSpeed = storm.glideSpeed;
+    let startSpeed = (2 * fastDistance) / fastTime - glideSpeed;
+    if (startSpeed < glideSpeed) {
+      // Very close target: skip the fast phase and just glide slowly.
+      fastTime = 0;
+      fastDistance = 0;
+      startSpeed = glideSpeed;
+    }
+    const arrivalTime =
+      fastTime + (totalDistance - fastDistance) / glideSpeed;
     this.stormDarts.push({
       startX: player.x,
       startY: player.y,
@@ -1436,6 +1454,12 @@ export class ShooterGame {
       y: player.y,
       age: 0,
       life: weapon.life,
+      totalDistance,
+      fastTime,
+      fastDistance,
+      startSpeed,
+      glideSpeed,
+      arrivalTime,
       pulseTimer: storm.pulseInterval,
       pulseInterval: storm.pulseInterval,
       aoeRadius: storm.aoeRadius,
@@ -1451,19 +1475,20 @@ export class ShooterGame {
     for (let i = this.stormDarts.length - 1; i >= 0; i--) {
       const dart = this.stormDarts[i];
       dart.age += dt;
-      // Integral of v(t) = drift + boost * e^(-decay * t), normalized so the
-      // dart reaches its endpoint exactly at the end of its 5s life. The
-      // velocity never reaches zero: it is fast, slows down, then keeps
-      // drifting until it disappears.
-      const stiffness =
-        STORM_DRIFT_SPEED * dart.life +
-        (STORM_BOOST_SPEED * (1 - Math.exp(-STORM_DECAY * dart.life))) /
-          STORM_DECAY;
-      const traveled =
-        STORM_DRIFT_SPEED * dart.age +
-        (STORM_BOOST_SPEED * (1 - Math.exp(-STORM_DECAY * dart.age))) /
-          STORM_DECAY;
-      const progress = clamp(traveled / stiffness, 0, 1);
+      // Constant deceleration to the 90% point, then a constant glide. The
+      // handoff is velocity-continuous, so the dart is still visibly moving
+      // when it vanishes at the end of its life.
+      let traveled: number;
+      if (dart.age < dart.fastTime) {
+        const acceleration =
+          (dart.glideSpeed - dart.startSpeed) / dart.fastTime;
+        traveled =
+          dart.startSpeed * dart.age + 0.5 * acceleration * dart.age * dart.age;
+      } else {
+        traveled =
+          dart.fastDistance + dart.glideSpeed * (dart.age - dart.fastTime);
+      }
+      const progress = clamp(traveled / dart.totalDistance, 0, 1);
       dart.x = dart.startX + (dart.endX - dart.startX) * progress;
       dart.y = dart.startY + (dart.endY - dart.startY) * progress;
 
@@ -4157,8 +4182,14 @@ export class ShooterGame {
         dart.age > dart.life - 0.25
           ? clamp((dart.life - dart.age) / 0.25, 0, 1)
           : 1;
-      const speedLeft = 0.2 + 0.8 * Math.exp(-STORM_DECAY * dart.age);
-      const trailLength = 16 + speedLeft * 58;
+      const speed =
+        dart.age >= dart.arrivalTime
+          ? 0
+          : dart.age < dart.fastTime
+            ? dart.startSpeed +
+              ((dart.glideSpeed - dart.startSpeed) * dart.age) / dart.fastTime
+            : dart.glideSpeed;
+      const trailLength = 16 + Math.min(1, speed / 600) * 58;
       const tailX = dart.x - dart.dirX * trailLength;
       const tailY = dart.y - dart.dirY * trailLength;
       const trail = ctx.createLinearGradient(tailX, tailY, dart.x, dart.y);
