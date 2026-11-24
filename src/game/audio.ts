@@ -18,6 +18,7 @@ type SoundName =
   | 'rail'
   | 'flame'
   | 'arc'
+  | 'laser'
   | 'dash'
   | 'bossIntro'
   | 'bossCharge'
@@ -154,6 +155,11 @@ export class SoundFX {
         this.tone(1900, 420, 0.1, 'sawtooth', 0.08, 0);
         this.tone(2800, 900, 0.06, 'square', 0.035, 0.015);
         this.tone(620, 110, 0.16, 'triangle', 0.05, 0);
+        break;
+      case 'laser':
+        this.tone(2400, 300, 0.18, 'sawtooth', 0.11, 0);
+        this.tone(1200, 160, 0.12, 'square', 0.045, 0.01);
+        this.tone(90, 38, 0.24, 'sine', 0.08, 0);
         break;
       case 'dash':
         this.tone(190, 720, 0.16, 'sine', 0.11, 0);

@@ -55,11 +55,22 @@ export interface WeaponSpec {
     /** Seconds between pulses. */
     pulseInterval: number;
   };
+  /** Hitscan piercing beam that grows stronger while idle. */
+  laser?: {
+    /** Seconds of idle time to reach full charge. */
+    chargeTime: number;
+    /** Damage multiplier at full charge. */
+    maxMultiplier: number;
+    /** Beam width at no charge / full charge. */
+    minWidth: number;
+    maxWidth: number;
+  };
 }
 
 const ALL_WEAPONS: WeaponId[] = [
   'pulse',
   'storm',
+  'laser',
   'smg',
   'scatter',
   'rail',
@@ -69,10 +80,10 @@ const ALL_WEAPONS: WeaponId[] = [
   'shock',
 ];
 
-// Temporarily expose only the pulse rifle and the storm dart. The other seven
+// Temporarily expose the pulse rifle, storm dart and laser. The other seven
 // stay implemented and fully specced, but cannot be reached from the in-game
 // weapon cycle. Raise this count to bring them back.
-const VISIBLE_WEAPONS = 2;
+const VISIBLE_WEAPONS = 3;
 
 export const WEAPON_ORDER: WeaponId[] = ALL_WEAPONS.slice(0, VISIBLE_WEAPONS);
 
@@ -210,6 +221,28 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       fastTime: 0.5,
       aoeRadius: 150,
       pulseInterval: 0.5,
+    },
+  },
+  // Charge laser: one piercing beam. Idle time makes the beam thicker and
+  // stronger (up to 2x), but firing as fast as possible is the higher DPS.
+  laser: {
+    id: 'laser',
+    name: '聚能激光',
+    tag: 'LASER',
+    color: '#ff5c8a',
+    damage: 10,
+    cooldown: 0.75,
+    speed: 0,
+    radius: 0,
+    life: 0,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    laser: {
+      chargeTime: 2,
+      maxMultiplier: 2,
+      minWidth: 3,
+      maxWidth: 9,
     },
   },
   // Concussion shell: explodes on contact and shoves the blast outward.

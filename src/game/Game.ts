@@ -539,6 +539,19 @@ interface ArcBolt {
   seed: number;
 }
 
+// One piercing hitscan beam, kept briefly so the shot can be drawn.
+interface LaserBeam {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  width: number;
+  life: number;
+  maxLife: number;
+  color: string;
+  seed: number;
+}
+
 interface Particle {
   x: number;
   y: number;
@@ -663,6 +676,7 @@ export class ShooterGame {
   private arcs: ArcBolt[] = [];
   private shockwaves: Shockwave[] = [];
   private stormDarts: StormDart[] = [];
+  private laserBeams: LaserBeam[] = [];
   private particles: Particle[] = [];
   private ghosts: DashGhost[] = [];
   private dashGhostTimer = 0;
@@ -717,6 +731,7 @@ export class ShooterGame {
   private secondaryCooldown = 0;
   private dodgeCooldown = 0;
   private flameTick = 0;
+  private laserCharge = 0;
   private sfx = new SoundFX();
 
   private bgGradient: CanvasGradient | null = null;
@@ -932,6 +947,8 @@ export class ShooterGame {
     this.arcs = [];
     this.shockwaves = [];
     this.stormDarts = [];
+    this.laserBeams = [];
+    this.laserCharge = 0;
     this.particles = [];
     this.ghosts = [];
     this.dashGhostTimer = 0;
@@ -1249,6 +1266,16 @@ export class ShooterGame {
       player.angle = Math.atan2(move.y, move.x);
     }
 
+    const laserSpec = WEAPONS[player.weapon].laser;
+    if (laserSpec) {
+      this.laserCharge = Math.min(
+        1,
+        this.laserCharge + dt / laserSpec.chargeTime,
+      );
+    } else {
+      this.laserCharge = 0;
+    }
+
     const firing = this.input.fireKey || this.input.touchFire;
     if (firing) {
       if (WEAPONS[player.weapon].flame) {
@@ -1303,11 +1330,14 @@ export class ShooterGame {
     const player = this.player;
     const weapon = WEAPONS[player.weapon];
     player.fireCooldown = weapon.cooldown;
-    player.muzzle = weapon.pellets > 1 || weapon.id === 'rail' ? 0.1 : 0.06;
+    player.muzzle =
+      weapon.pellets > 1 || weapon.id === 'rail' || weapon.laser ? 0.1 : 0.06;
     player.muzzleColor = weapon.color;
 
     const offset = 26;
-    if (weapon.storm) {
+    if (weapon.laser) {
+      this.fireLaser(weapon);
+    } else if (weapon.storm) {
       this.spawnStormDart(weapon);
     } else if (weapon.chain) {
       this.fireArc(weapon);
@@ -1350,15 +1380,17 @@ export class ShooterGame {
       }
     }
 
-    const muzzleCount = weapon.storm
-      ? 6
-      : weapon.chain
-        ? 8
-        : weapon.pellets > 1
-          ? 10
-          : weapon.id === 'rail'
-            ? 12
-            : 4;
+    const muzzleCount = weapon.laser
+      ? 10
+      : weapon.storm
+        ? 6
+        : weapon.chain
+          ? 8
+          : weapon.pellets > 1
+            ? 10
+            : weapon.id === 'rail'
+              ? 12
+              : 4;
     for (let i = 0; i < muzzleCount; i++) {
       const spread = player.angle + Math.PI + rand(-0.6, 0.6);
       const velocity = rand(40, weapon.id === 'rail' ? 320 : 150);
@@ -1378,23 +1410,88 @@ export class ShooterGame {
       this.shake,
       weapon.id === 'rail'
         ? 4.2
-        : weapon.storm
-          ? 1.6
-          : weapon.chain
-            ? 2.2
-            : weapon.pellets > 1
-              ? 2.6
-              : 0.9,
+        : weapon.laser
+          ? 3
+          : weapon.storm
+            ? 1.6
+            : weapon.chain
+              ? 2.2
+              : weapon.pellets > 1
+                ? 2.6
+                : 0.9,
     );
     this.sfx.play(
-      weapon.storm || weapon.chain
-        ? 'arc'
-        : weapon.id === 'rail'
-          ? 'rail'
-          : weapon.id === 'scatter'
-            ? 'scatter'
-            : 'shoot',
+      weapon.laser
+        ? 'laser'
+        : weapon.storm || weapon.chain
+          ? 'arc'
+          : weapon.id === 'rail'
+            ? 'rail'
+            : weapon.id === 'scatter'
+              ? 'scatter'
+              : 'shoot',
     );
+  }
+
+  /**
+   * Piercing hitscan: one beam through every enemy on the line. The beam grows
+   * thicker and stronger with idle charge, but firing at the 0.75s cadence
+   * always beats waiting for a full charge in DPS.
+   */
+  private fireLaser(weapon: WeaponSpec) {
+    const spec = weapon.laser;
+    if (!spec) return;
+    const player = this.player;
+    const charge = clamp(this.laserCharge, 0, 1);
+    const multiplier = 1 + (spec.maxMultiplier - 1) * charge;
+    const width = spec.minWidth + (spec.maxWidth - spec.minWidth) * charge;
+    this.laserCharge = 0;
+
+    const dx = Math.cos(player.angle);
+    const dy = Math.sin(player.angle);
+    const bounds = this.roomBounds();
+    let length = AUTOAIM_RANGE;
+    if (dx > 0.00001) length = Math.min(length, (bounds.right - player.x) / dx);
+    else if (dx < -0.00001) length = Math.min(length, (bounds.left - player.x) / dx);
+    if (dy > 0.00001) length = Math.min(length, (bounds.bottom - player.y) / dy);
+    else if (dy < -0.00001) length = Math.min(length, (bounds.top - player.y) / dy);
+    length = Math.max(16, length);
+
+    const startX = player.x + dx * 22;
+    const startY = player.y + dy * 22;
+    const endX = player.x + dx * length;
+    const endY = player.y + dy * length;
+    this.laserBeams.push({
+      x1: startX,
+      y1: startY,
+      x2: endX,
+      y2: endY,
+      width,
+      life: 0.22,
+      maxLife: 0.22,
+      color: weapon.color,
+      seed: rand(0, 100),
+    });
+    this.shake = Math.max(this.shake, 1.8 + charge * 4);
+
+    for (const enemy of this.enemies) {
+      if (enemy.dead) continue;
+      if (this.outOfRoom(enemy.x, enemy.y, 0)) continue;
+      const relX = enemy.x - player.x;
+      const relY = enemy.y - player.y;
+      const along = relX * dx + relY * dy;
+      if (along < 0 || along > length + enemy.radius) continue;
+      const perpendicular = Math.abs(relX * dy - relY * dx);
+      if (perpendicular > width * 0.5 + enemy.radius) continue;
+      this.damageEnemy(
+        enemy,
+        weapon.damage * multiplier,
+        enemy.x,
+        enemy.y,
+        true,
+      );
+      this.spawnBurst(enemy.x, enemy.y, weapon.color, 9, 180, 0.32);
+    }
   }
 
   /**
@@ -1812,6 +1909,8 @@ export class ShooterGame {
       this.arcs = [];
       this.shockwaves = [];
       this.stormDarts = [];
+      this.laserBeams = [];
+      this.laserCharge = 0;
       this.sfx.play('death');
       this.emitHud(true);
       this.callbacks.onGameOver(
@@ -3100,6 +3199,8 @@ export class ShooterGame {
     this.arcs = [];
     this.shockwaves = [];
     this.stormDarts = [];
+    this.laserBeams = [];
+    this.laserCharge = 0;
     this.bullets = [];
     this.pickups = [];
     this.player.x = ROOM_SIZE / 2;
@@ -3280,6 +3381,10 @@ export class ShooterGame {
     for (let i = this.shockwaves.length - 1; i >= 0; i--) {
       this.shockwaves[i].life -= dt;
       if (this.shockwaves[i].life <= 0) this.shockwaves.splice(i, 1);
+    }
+    for (let i = this.laserBeams.length - 1; i >= 0; i--) {
+      this.laserBeams[i].life -= dt;
+      if (this.laserBeams[i].life <= 0) this.laserBeams.splice(i, 1);
     }
     for (let i = this.ghosts.length - 1; i >= 0; i--) {
       this.ghosts[i].life -= dt;
@@ -3486,9 +3591,11 @@ export class ShooterGame {
     this.drawBlasts();
     this.drawDashGhosts();
     this.drawPlayer();
+    this.drawLaserCharge();
     this.drawStormDarts();
     this.drawFlamer();
     this.drawArcs();
+    this.drawLaserBeams();
     this.drawShockwaves();
     this.drawParticles();
     this.drawFloaters();
@@ -4105,6 +4212,39 @@ export class ShooterGame {
     ctx.restore();
   }
 
+  /** Piercing laser flashes: soft glow, colored core and white hot center. */
+  private drawLaserBeams() {
+    if (!this.laserBeams.length) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (const beam of this.laserBeams) {
+      const alpha = Math.pow(clamp(beam.life / beam.maxLife, 0, 1), 0.65);
+      const strokes: Array<[number, string]> = [
+        [beam.width * 3.4, withAlpha(beam.color, 0.14 * alpha)],
+        [beam.width, withAlpha(beam.color, 0.65 * alpha)],
+        [Math.max(1, beam.width * 0.32), `rgba(255, 255, 255, ${0.8 * alpha})`],
+      ];
+      for (const [lineWidth, strokeStyle] of strokes) {
+        ctx.strokeStyle = strokeStyle;
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        ctx.moveTo(beam.x1, beam.y1);
+        ctx.lineTo(beam.x2, beam.y2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = withAlpha(beam.color, 0.22 * alpha);
+      ctx.beginPath();
+      ctx.arc(beam.x1, beam.y1, beam.width * 2.2, 0, TAU);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(beam.x2, beam.y2, beam.width * 1.5, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   /** Crackling lightning bolts for the arc weapon. */
   private drawArcs() {
     if (!this.arcs.length) return;
@@ -4160,6 +4300,48 @@ export class ShooterGame {
       for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  /** Charge meter around the player while the laser is equipped. */
+  private drawLaserCharge() {
+    const player = this.player;
+    if (player.weapon !== 'laser' || player.dead) return;
+    const charge = clamp(this.laserCharge, 0, 1);
+    const color = WEAPONS.laser.color;
+    const ctx = this.ctx;
+    const radius = 34;
+    ctx.save();
+    ctx.strokeStyle = withAlpha(color, 0.14);
+    ctx.lineWidth = 1.4 / this.zoom;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, radius, 0, TAU);
+    ctx.stroke();
+    ctx.strokeStyle = withAlpha(color, 0.55 + charge * 0.35);
+    ctx.lineWidth = 2.4 / this.zoom;
+    ctx.beginPath();
+    ctx.arc(
+      player.x,
+      player.y,
+      radius,
+      -Math.PI / 2,
+      -Math.PI / 2 + TAU * charge,
+    );
+    ctx.stroke();
+    if (charge >= 0.999) {
+      const pulse = 0.5 + 0.5 * Math.sin(this.ambientTime * 9);
+      ctx.strokeStyle = withAlpha(color, 0.2 + pulse * 0.3);
+      ctx.lineWidth = 1.2 / this.zoom;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, radius + 4 + pulse * 2, 0, TAU);
+      ctx.stroke();
+    }
+    const mx = player.x + Math.cos(player.angle) * 22;
+    const my = player.y + Math.sin(player.angle) * 22;
+    ctx.fillStyle = withAlpha(color, 0.25 + charge * 0.6);
+    ctx.beginPath();
+    ctx.arc(mx, my, 2 + charge * 4, 0, TAU);
+    ctx.fill();
     ctx.restore();
   }
 
