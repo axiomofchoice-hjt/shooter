@@ -1,5 +1,8 @@
 import type { WeaponId } from './types';
 
+// Shared by the close-range weapons so the range circle and lock distance agree.
+const SHORT_RANGE = 240;
+
 export interface WeaponSpec {
   id: WeaponId;
   name: string;
@@ -21,9 +24,20 @@ export interface WeaponSpec {
   homing?: boolean;
   /** Steering rate in rad/s for homing shots. */
   turnRate?: number;
+  /** Continuous cone weapon: no bullets, damage is applied while firing. */
+  flame?: boolean;
+  /** Half-angle of the damage cone, in radians. */
+  cone?: number;
 }
 
-export const WEAPON_ORDER: WeaponId[] = ['pulse', 'smg', 'scatter', 'rail', 'seeker'];
+export const WEAPON_ORDER: WeaponId[] = [
+  'pulse',
+  'smg',
+  'scatter',
+  'rail',
+  'seeker',
+  'flamer',
+];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pulse: {
@@ -98,9 +112,29 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pellets: 1,
     spread: 0,
     pierce: 0,
-    range: 240,
+    range: SHORT_RANGE,
     homing: true,
     turnRate: 9,
+  },
+  // Short-range plasma projector: holds a cone of damage in front of the
+  // player. Same reach as the seeker, but it hits everything in the fan
+  // instead of locking one target.
+  flamer: {
+    id: 'flamer',
+    name: '等离子喷火器',
+    tag: 'PLASMA',
+    color: '#ffb347',
+    damage: 0.9,
+    cooldown: 0,
+    speed: 0,
+    radius: 0,
+    life: 0,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    range: SHORT_RANGE,
+    flame: true,
+    cone: 0.4,
   },
 };
 

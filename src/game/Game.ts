@@ -68,6 +68,9 @@ const HOMING_BLAST_RADIUS = 34;
 const HOMING_BLAST_DAMAGE = 6;
 const HOMING_TRAIL_POINTS = 9;
 
+// Flamer damage is applied on fixed ticks so its DPS does not depend on fps.
+const FLAME_TICK = 0.05;
+
 const SECONDARY_COOLDOWN = 3.4;
 const SECONDARY_PELLETS = 7;
 // Dodge: speed is 1.82x the walk speed (30% faster than the old 1.4x), while
@@ -652,6 +655,7 @@ export class ShooterGame {
   private autoTarget: Enemy | null = null;
   private secondaryCooldown = 0;
   private dodgeCooldown = 0;
+  private flameTick = 0;
   private sfx = new SoundFX();
 
   private bgGradient: CanvasGradient | null = null;
@@ -896,6 +900,7 @@ export class ShooterGame {
     this.autoTarget = null;
     this.secondaryCooldown = 0;
     this.dodgeCooldown = 0;
+    this.flameTick = 0;
     this.hudTimer = 0;
     this.clearInput();
   }
@@ -1180,8 +1185,16 @@ export class ShooterGame {
     }
 
     const firing = this.input.fireKey || this.input.touchFire;
-    if (firing && player.fireCooldown <= 0) {
-      this.firePlayerBullet();
+    if (firing) {
+      if (WEAPONS[player.weapon].flame) {
+        this.updateFlamer(dt);
+      } else if (player.fireCooldown <= 0) {
+        this.firePlayerBullet();
+      }
+    } else {
+      // Let the next held burst start on a fresh tick instead of waiting out
+      // the remainder of the last one.
+      this.flameTick = 0;
     }
   }
 
@@ -1341,6 +1354,84 @@ export class ShooterGame {
           }
         : undefined,
     });
+  }
+
+  /**
+   * Flamer: no projectiles, just a damage tick over the forward cone. Ticks
+   * are fixed in game time, so the DPS stays the same on any frame rate.
+   */
+  private updateFlamer(dt: number) {
+    const player = this.player;
+    const spec = WEAPONS[player.weapon];
+    const range = spec.range ?? 240;
+    const half = spec.cone ?? 0.4;
+    player.muzzle = 0.1;
+    player.muzzleColor = spec.color;
+
+    this.flameTick -= dt;
+    while (this.flameTick <= 0) {
+      this.flameTick += FLAME_TICK;
+      this.burnFlamerCone(spec, range, half);
+      this.spawnFlamerParticles(spec, range, half);
+      this.sfx.play('flame');
+    }
+  }
+
+  private burnFlamerCone(spec: WeaponSpec, range: number, half: number) {
+    const player = this.player;
+    for (const enemy of this.enemies) {
+      if (enemy.dead) continue;
+      const dx = enemy.x - player.x;
+      const dy = enemy.y - player.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance > range + enemy.radius) continue;
+      const spread = Math.abs(angleDelta(player.angle, Math.atan2(dy, dx)));
+      const edge = half + Math.atan2(enemy.radius, Math.max(1, distance));
+      if (spread > edge) continue;
+      // Quiet damage: a per-frame hit burst and sound would flood the screen.
+      this.damageEnemy(enemy, spec.damage, enemy.x, enemy.y, true);
+    }
+  }
+
+  private spawnFlamerParticles(spec: WeaponSpec, range: number, half: number) {
+    const player = this.player;
+    const colors = ['#fff3cf', '#ffd166', '#ff9a4d', spec.color];
+    for (let i = 0; i < 8; i++) {
+      const angle = player.angle + rand(-half, half) * rand(0.35, 1);
+      const distance = rand(16, range * 0.96);
+      const heat = clamp(
+        Math.floor((distance / range) * colors.length),
+        0,
+        colors.length - 1,
+      );
+      const outward = rand(60, 220);
+      this.particles.push({
+        x: player.x + Math.cos(angle) * distance,
+        y: player.y + Math.sin(angle) * distance,
+        vx: Math.cos(angle) * outward + rand(-35, 35),
+        vy: Math.sin(angle) * outward + rand(-35, 35),
+        life: rand(0.08, 0.22),
+        maxLife: 0.22,
+        size: rand(2.5, 7),
+        color: colors[heat],
+        drag: 4.5,
+      });
+    }
+    // White-hot puff right at the nozzle.
+    for (let i = 0; i < 2; i++) {
+      const angle = player.angle + rand(-half * 0.5, half * 0.5);
+      this.particles.push({
+        x: player.x + Math.cos(angle) * 24,
+        y: player.y + Math.sin(angle) * 24,
+        vx: Math.cos(angle) * rand(120, 260),
+        vy: Math.sin(angle) * rand(120, 260),
+        life: rand(0.06, 0.14),
+        maxLife: 0.14,
+        size: rand(3, 6),
+        color: '#ffffff',
+        drag: 5,
+      });
+    }
   }
 
   private fireSecondary() {
@@ -1533,11 +1624,19 @@ export class ShooterGame {
     this.enemies = this.enemies.filter((enemy) => !enemy.dead);
   }
 
-  private damageEnemy(enemy: Enemy, damage: number, hitX: number, hitY: number) {
+  private damageEnemy(
+    enemy: Enemy,
+    damage: number,
+    hitX: number,
+    hitY: number,
+    quiet = false,
+  ) {
     enemy.hp -= damage;
     enemy.hitFlash = 0.09;
-    this.spawnBurst(hitX, hitY, enemy.color, 5, 130, 0.28);
-    this.sfx.play('hit');
+    if (!quiet) {
+      this.spawnBurst(hitX, hitY, enemy.color, 5, 130, 0.28);
+      this.sfx.play('hit');
+    }
 
     if (enemy.hp <= 0) {
       enemy.dead = true;
@@ -3010,6 +3109,7 @@ export class ShooterGame {
     this.drawBlasts();
     this.drawDashGhosts();
     this.drawPlayer();
+    this.drawFlamer();
     this.drawParticles();
     this.drawFloaters();
     this.drawAutoTarget();
@@ -3334,8 +3434,8 @@ export class ShooterGame {
   }
 
   /**
-   * Faint ring for the equipped weapon's maximum range. Only the seeker has a
-   * range limit, so every other weapon draws nothing.
+   * Faint ring for the equipped weapon's maximum range. Range-limited weapons
+   * (seeker, flamer) draw it; the rest draw nothing.
    */
   private drawWeaponRange() {
     const spec = WEAPONS[this.player.weapon];
@@ -3511,6 +3611,113 @@ export class ShooterGame {
       ctx.arc(bullet.x, bullet.y, 2.8, 0, TAU);
       ctx.fill();
     }
+    ctx.restore();
+  }
+
+  /** Glowing damage cone while the flamer is being held. */
+  private drawFlamer() {
+    const player = this.player;
+    const spec = WEAPONS[player.weapon];
+    if (!spec.flame || player.dead || player.muzzle <= 0) return;
+    const range = spec.range ?? 240;
+    const half = spec.cone ?? 0.4;
+    const ctx = this.ctx;
+    const time = this.ambientTime;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    const conePath = (spread: number, length: number, wobbleScale: number) => {
+      const steps = 14;
+      ctx.beginPath();
+      ctx.moveTo(player.x, player.y);
+      for (let i = 0; i <= steps; i++) {
+        const angle = player.angle - spread + (i / steps) * spread * 2;
+        const wobble =
+          1 +
+          Math.sin(time * 24 + i * 1.9) * 0.03 * wobbleScale +
+          Math.sin(time * 43 + i * 0.7) * 0.015 * wobbleScale;
+        const radius = length * wobble;
+        ctx.lineTo(
+          player.x + Math.cos(angle) * radius,
+          player.y + Math.sin(angle) * radius,
+        );
+      }
+      ctx.closePath();
+    };
+
+    const gradient = ctx.createRadialGradient(
+      player.x,
+      player.y,
+      8,
+      player.x,
+      player.y,
+      range,
+    );
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.46)');
+    gradient.addColorStop(0.15, 'rgba(255, 238, 185, 0.28)');
+    gradient.addColorStop(0.5, 'rgba(255, 160, 75, 0.17)');
+    gradient.addColorStop(0.85, 'rgba(255, 90, 30, 0.06)');
+    gradient.addColorStop(1, 'rgba(255, 60, 20, 0)');
+    conePath(half, range, 1);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    // Overlapping flame tongues give the cone moving texture instead of a
+    // flat spotlight wedge.
+    for (let i = 0; i < 8; i++) {
+      const lane = i / 7 - 0.5;
+      const angle =
+        player.angle +
+        lane * half * 1.7 +
+        Math.sin(time * 6 + i * 1.7) * 0.025;
+      const length =
+        range *
+        (0.5 + 0.42 * (0.5 + 0.5 * Math.sin(time * 9 + i * 2.1))) *
+        (1 - Math.abs(lane) * 0.35);
+      const halfWidth = 7 + Math.sin(time * 15 + i) * 3;
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.rotate(angle);
+      const tongue = ctx.createLinearGradient(0, 0, length, 0);
+      tongue.addColorStop(0, 'rgba(255, 255, 255, 0.34)');
+      tongue.addColorStop(0.35, 'rgba(255, 210, 120, 0.22)');
+      tongue.addColorStop(0.75, 'rgba(255, 120, 40, 0.12)');
+      tongue.addColorStop(1, 'rgba(255, 60, 20, 0)');
+      ctx.fillStyle = tongue;
+      ctx.beginPath();
+      ctx.moveTo(16, -halfWidth);
+      ctx.quadraticCurveTo(
+        length * 0.45,
+        -halfWidth * 2.2 + Math.sin(time * 13 + i) * 6,
+        length,
+        0,
+      );
+      ctx.quadraticCurveTo(
+        length * 0.45,
+        halfWidth * 2.2 + Math.sin(time * 11 + i) * 6,
+        16,
+        halfWidth,
+      );
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Hotter inner tongue keeps the middle of the fan brighter.
+    const inner = ctx.createRadialGradient(
+      player.x,
+      player.y,
+      4,
+      player.x,
+      player.y,
+      range * 0.7,
+    );
+    inner.addColorStop(0, 'rgba(255, 255, 255, 0.38)');
+    inner.addColorStop(0.45, 'rgba(255, 232, 170, 0.14)');
+    inner.addColorStop(1, 'rgba(255, 170, 90, 0)');
+    conePath(half * 0.45, range * 0.72, 1.5);
+    ctx.fillStyle = inner;
+    ctx.fill();
     ctx.restore();
   }
 

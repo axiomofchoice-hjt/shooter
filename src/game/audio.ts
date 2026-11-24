@@ -16,6 +16,7 @@ type SoundName =
   | 'secondary'
   | 'scatter'
   | 'rail'
+  | 'flame'
   | 'dash'
   | 'bossIntro'
   | 'bossCharge'
@@ -29,6 +30,8 @@ export class SoundFX {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private lastShoot = 0;
+  private lastFlame = 0;
+  private noiseBuffer: AudioBuffer | null = null;
 
   constructor() {
     try {
@@ -138,6 +141,14 @@ export class SoundFX {
         this.tone(78, 30, 0.4, 'sine', 0.16, 0);
         this.tone(940, 280, 0.14, 'square', 0.05, 0.02);
         break;
+      case 'flame':
+        // Throttled hiss: the flamer asks every damage tick, but a puff ten
+        // times a second is enough to read as a continuous jet.
+        if (now - this.lastFlame < 0.09) return;
+        this.lastFlame = now;
+        this.hiss(0.13, 0.06);
+        this.tone(150, 80, 0.13, 'sawtooth', 0.02, 0);
+        break;
       case 'dash':
         this.tone(190, 720, 0.16, 'sine', 0.11, 0);
         this.tone(520, 160, 0.12, 'triangle', 0.05, 0.02);
@@ -162,6 +173,31 @@ export class SoundFX {
         this.tone(880, 220, 0.5, 'triangle', 0.06, 0);
         break;
     }
+  }
+
+  private hiss(duration: number, volume: number) {
+    if (!this.ctx || !this.master) return;
+    if (!this.noiseBuffer) {
+      const length = Math.floor(this.ctx.sampleRate * 0.2);
+      this.noiseBuffer = this.ctx.createBuffer(1, length, this.ctx.sampleRate);
+      const data = this.noiseBuffer.getChannelData(0);
+      for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+    }
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 850;
+    const gain = this.ctx.createGain();
+    const start = this.ctx.currentTime;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(volume, start + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.master);
+    source.start(start);
+    source.stop(start + duration + 0.02);
   }
 
   private tone(

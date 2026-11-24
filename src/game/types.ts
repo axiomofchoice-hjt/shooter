@@ -9,7 +9,7 @@ export type EnemyKind =
   | 'homing'
   | 'boss';
 
-export type WeaponId = 'pulse' | 'smg' | 'scatter' | 'rail' | 'seeker';
+export type WeaponId = 'pulse' | 'smg' | 'scatter' | 'rail' | 'seeker' | 'flamer';
 
 export type RoomKind = 'start' | 'combat' | 'portal';
 
