@@ -77,6 +77,22 @@ svg {
   touch-action: none;
 }
 
+/* Static screen-space darkening at the edges. It used to be a canvas radial
+   gradient painted every frame; as a layer the compositor rasterises it once. */
+.vignette-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(
+    circle farthest-corner at 50% 50%,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0) 19%,
+    rgba(0, 0, 0, 0.22) 93%,
+    rgba(0, 0, 0, 0.34) 100%
+  );
+}
+
 .scanline-overlay {
   position: absolute;
   inset: 0;
@@ -238,11 +254,10 @@ svg {
   border: 1px solid rgba(95, 246, 255, 0.28);
   border-color: color-mix(in srgb, var(--weapon-color) 38%, transparent);
   border-radius: 9px;
-  background: rgba(4, 17, 22, 0.74);
+  background: rgba(4, 17, 22, 0.87);
   color: rgba(226, 252, 255, 0.92);
   text-align: left;
   cursor: pointer;
-  backdrop-filter: blur(6px);
   box-shadow:
     0 0 0 1px rgba(2, 10, 14, 0.45),
     0 0 22px color-mix(in srgb, var(--weapon-color) 12%, transparent);
@@ -253,7 +268,7 @@ svg {
 
 .weapon-switch:hover {
   border-color: color-mix(in srgb, var(--weapon-color) 70%, transparent);
-  background: rgba(7, 27, 34, 0.86);
+  background: rgba(7, 27, 34, 0.94);
 }
 
 .weapon-switch:active {
@@ -313,12 +328,10 @@ svg {
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  background: linear-gradient(180deg, rgba(6, 21, 30, 0.9), rgba(4, 12, 18, 0.56));
+  background: linear-gradient(180deg, rgba(6, 21, 30, 0.96), rgba(4, 12, 18, 0.74));
   border-top: 1px solid rgba(95, 246, 255, 0.42);
   border-bottom: 1px solid rgba(95, 246, 255, 0.13);
   clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 0 100%, 0 9px);
-  backdrop-filter: blur(9px);
-  -webkit-backdrop-filter: blur(9px);
 }
 
 .wave-label {
@@ -428,12 +441,10 @@ svg {
   transform: translateX(-50%);
   padding: 7px 10px 8px;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(20, 5, 11, 0.82), rgba(8, 3, 6, 0.62));
+  background: linear-gradient(180deg, rgba(20, 5, 11, 0.9), rgba(8, 3, 6, 0.78));
   border: 1px solid rgba(255, 77, 125, 0.26);
   border-top-color: rgba(255, 92, 128, 0.52);
   clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
-  backdrop-filter: blur(7px);
-  -webkit-backdrop-filter: blur(7px);
   transition: opacity 0.3s ease;
 }
 
@@ -522,12 +533,10 @@ svg {
   display: grid;
   place-items: center;
   color: #bdeff5;
-  background: rgba(5, 17, 25, 0.72);
+  background: rgba(5, 17, 25, 0.84);
   border: 1px solid rgba(95, 246, 255, 0.22);
   border-radius: 2px;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   touch-action: manipulation;
   transition:
     border-color 0.16s ease,

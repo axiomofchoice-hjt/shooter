@@ -110,7 +110,15 @@ const ENEMY_LANE_PAD = 20;
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
 const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by);
+// Colours are rebuilt hundreds of times per frame; the conversion is pure, so
+// memoise it instead of allocating a handful of strings on every call. Alphas
+// are quantised to a thousandth so animated fades reuse the same entries.
+const alphaCache = new Map<string, string>();
 const withAlpha = (hex: string, alpha: number) => {
+  const a = Math.round(alpha * 1000) / 1000;
+  const key = `${hex}|${a}`;
+  const cached = alphaCache.get(key);
+  if (cached !== undefined) return cached;
   const value = hex.replace('#', '');
   const full =
     value.length === 3
@@ -122,7 +130,10 @@ const withAlpha = (hex: string, alpha: number) => {
   const r = parseInt(full.slice(0, 2), 16);
   const g = parseInt(full.slice(2, 4), 16);
   const b = parseInt(full.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  const result = `rgba(${r}, ${g}, ${b}, ${a})`;
+  if (alphaCache.size > 512) alphaCache.clear();
+  alphaCache.set(key, result);
+  return result;
 };
 
 interface EnemyDef {
@@ -743,7 +754,10 @@ export class ShooterGame {
   private sfx = new SoundFX();
 
   private bgGradient: CanvasGradient | null = null;
-  private vignette: CanvasGradient | null = null;
+  private dangerGlow: CanvasGradient | null = null;
+  // Small glows for static props, built once and reused with a translate
+  // instead of paying for a blurred shadow on every frame.
+  private glowCache = new Map<string, CanvasGradient>();
 
   constructor(canvas: HTMLCanvasElement, callbacks: GameCallbacks) {
     this.canvas = canvas;
@@ -2091,7 +2105,22 @@ export class ShooterGame {
         this.bullets.splice(i, 1);
       }
     }
-    this.enemies = this.enemies.filter((enemy) => !enemy.dead);
+    this.compactEnemies();
+  }
+
+  /**
+   * Drops dead enemies in place. Rebuilding the array with filter() every frame
+   * would allocate a new array (and garbage) at 60Hz for no reason.
+   */
+  private compactEnemies() {
+    const enemies = this.enemies;
+    let write = 0;
+    for (let read = 0; read < enemies.length; read++) {
+      const enemy = enemies[read];
+      if (enemy.dead) continue;
+      enemies[write++] = enemy;
+    }
+    if (write !== enemies.length) enemies.length = write;
   }
 
   /**
@@ -2350,7 +2379,7 @@ export class ShooterGame {
       }
     }
 
-    this.enemies = this.enemies.filter((enemy) => !enemy.dead);
+    this.compactEnemies();
   }
 
   /**
@@ -3486,6 +3515,15 @@ export class ShooterGame {
     if (!force && this.hudTimer > 0) return;
     const boss = this.boss;
     const bossHp = boss ? Math.max(0, Math.ceil(boss.hp)) : 0;
+    // Count the test-room enemies in one pass: filter() twice per HUD tick
+    // would allocate two arrays just to read their lengths.
+    let testSplitter = 0;
+    let testHoming = 0;
+    for (const enemy of this.enemies) {
+      if (enemy.dead) continue;
+      if (enemy.kind === 'splitter') testSplitter += 1;
+      else if (enemy.kind === 'homing') testHoming += 1;
+    }
     const hud: HudSnapshot = {
       mode: this.mode,
       weapon: this.player.weapon,
@@ -3510,12 +3548,8 @@ export class ShooterGame {
       bossMaxHp: boss?.maxHp ?? 0,
       bossPhase: boss && boss.hp <= boss.maxHp * 0.5 ? 2 : 1,
       wave: this.testWave,
-      testSplitter: this.enemies.filter(
-        (enemy) => !enemy.dead && enemy.kind === 'splitter',
-      ).length,
-      testHoming: this.enemies.filter(
-        (enemy) => !enemy.dead && enemy.kind === 'homing',
-      ).length,
+      testSplitter,
+      testHoming,
     };
     this.callbacks.onHud(hud);
   }
@@ -3552,18 +3586,17 @@ export class ShooterGame {
     bg.addColorStop(1, '#03060b');
     this.bgGradient = bg;
 
-    const vignette = this.ctx.createRadialGradient(
+    const danger = this.ctx.createRadialGradient(
       width * 0.5,
       height * 0.5,
-      Math.min(width, height) * 0.2,
+      Math.min(width, height) * 0.32,
       width * 0.5,
       height * 0.5,
       Math.max(width, height) * 0.72,
     );
-    vignette.addColorStop(0, 'rgba(0,0,0,0)');
-    vignette.addColorStop(0.7, 'rgba(0,0,0,0.22)');
-    vignette.addColorStop(1, 'rgba(0,0,0,0.72)');
-    this.vignette = vignette;
+    danger.addColorStop(0, 'rgba(255, 20, 60, 0)');
+    danger.addColorStop(1, 'rgba(255, 20, 60, 1)');
+    this.dangerGlow = danger;
   }
 
   private buildDecorations() {
@@ -3619,12 +3652,7 @@ export class ShooterGame {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-    if (this.bgGradient) {
-      ctx.fillStyle = this.bgGradient;
-    } else {
-      ctx.fillStyle = '#04070d';
-    }
-    ctx.fillRect(0, 0, width, height);
+    this.drawBackdrop(width, height);
 
     ctx.save();
     ctx.translate(width / 2 + shakeX, height / 2 + shakeY);
@@ -3660,6 +3688,46 @@ export class ShooterGame {
     if (this.banner) this.drawBanner();
     if (this.phase === 'idle') {
       this.drawMenuAtmosphere();
+    }
+  }
+
+  /**
+   * The dark gradient behind the world. The floor covers the view almost all
+   * the time, so only the strips that fall outside the world are painted —
+   * filling the whole canvas here was the most expensive pass of the frame on
+   * high-DPI screens.
+   */
+  private drawBackdrop(width: number, height: number) {
+    const ctx = this.ctx;
+    const halfW = width / (2 * this.zoom);
+    const halfH = height / (2 * this.zoom);
+    // Screen shake reveals a few pixels of previously painted frame, so shrink
+    // the world rect by the shake before deciding a strip is unnecessary.
+    const pad = Math.ceil(this.shake) + 2;
+    const viewLeft = this.camera.x - halfW;
+    const viewRight = this.camera.x + halfW;
+    const viewTop = this.camera.y - halfH;
+    const viewBottom = this.camera.y + halfH;
+    const leftIn = Math.max(viewLeft, pad);
+    const rightIn = Math.min(viewRight, this.worldW - pad);
+    const topIn = Math.max(viewTop, pad);
+    const bottomIn = Math.min(viewBottom, this.worldH - pad);
+
+    ctx.fillStyle = this.bgGradient ?? '#04070d';
+    if (leftIn >= rightIn || topIn >= bottomIn) {
+      ctx.fillRect(0, 0, width, height);
+      return;
+    }
+
+    const leftPx = (leftIn - viewLeft) * this.zoom;
+    const rightPx = (rightIn - viewLeft) * this.zoom;
+    const topPx = (topIn - viewTop) * this.zoom;
+    const bottomPx = (bottomIn - viewTop) * this.zoom;
+    if (topPx > 0) ctx.fillRect(0, 0, width, topPx);
+    if (bottomPx < height) ctx.fillRect(0, bottomPx, width, height - bottomPx);
+    if (leftPx > 0) ctx.fillRect(0, topPx, leftPx, Math.max(0, bottomPx - topPx));
+    if (rightPx < width) {
+      ctx.fillRect(rightPx, topPx, width - rightPx, Math.max(0, bottomPx - topPx));
     }
   }
 
@@ -3703,6 +3771,19 @@ export class ShooterGame {
     ctx.restore();
   }
 
+  /** Cached point glow: draw around (0,0) after translating to the spot. */
+  private glow(color: string, core: number, radius: number) {
+    const key = `${color}|${core}|${radius}`;
+    const cached = this.glowCache.get(key);
+    if (cached) return cached;
+    const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+    gradient.addColorStop(0, withAlpha(color, core));
+    gradient.addColorStop(0.45, withAlpha(color, core * 0.45));
+    gradient.addColorStop(1, withAlpha(color, 0));
+    this.glowCache.set(key, gradient);
+    return gradient;
+  }
+
   private drawFloor() {
     const ctx = this.ctx;
     const halfW = this.width / (2 * this.zoom);
@@ -3712,9 +3793,9 @@ export class ShooterGame {
     const viewTop = this.camera.y - halfH;
     const viewBottom = this.camera.y + halfH;
 
-    ctx.fillStyle = '#03060b';
-    ctx.fillRect(0, 0, this.worldW, this.worldH);
-
+    // No full-world backfill: the rooms and the wall strips between them cover
+    // the world exactly, and repainting the whole dungeon every frame was a
+    // wasted screen-sized fill.
     const rooms = this.mode === 'boss' ? 1 : DUNGEON_ROOMS;
     for (let room = 0; room < rooms; room++) {
       const roomLeft = room * ROOM_SIZE;
@@ -3733,27 +3814,41 @@ export class ShooterGame {
       ctx.rect(roomLeft + inset, inset, ROOM_SIZE - WALL_THICK, this.worldH - WALL_THICK);
       ctx.clip();
 
-      // Grid
+      // Grid: one path per alpha instead of one stroke per line, so a room
+      // costs two strokes no matter how many lines are on screen.
       const step = 80;
       ctx.lineWidth = 1 / this.zoom;
+      ctx.strokeStyle = withAlpha(accent, 0.04);
+      ctx.beginPath();
       for (let x = roomLeft + step; x < roomRight; x += step) {
         if (x < viewLeft - step || x > viewRight + step) continue;
-        const major = (x - roomLeft) % 400 === 0;
-        ctx.strokeStyle = withAlpha(accent, major ? 0.1 : 0.04);
-        ctx.beginPath();
+        if ((x - roomLeft) % 400 === 0) continue;
         ctx.moveTo(x, inset);
         ctx.lineTo(x, this.worldH - inset);
-        ctx.stroke();
       }
       for (let y = step; y < this.worldH - step; y += step) {
         if (y < viewTop - step || y > viewBottom + step) continue;
-        const major = y % 400 === 0;
-        ctx.strokeStyle = withAlpha(accent, major ? 0.1 : 0.04);
-        ctx.beginPath();
+        if (y % 400 === 0) continue;
         ctx.moveTo(roomLeft + inset, y);
         ctx.lineTo(roomRight - inset, y);
-        ctx.stroke();
       }
+      ctx.stroke();
+
+      ctx.strokeStyle = withAlpha(accent, 0.1);
+      ctx.beginPath();
+      for (let x = roomLeft + step; x < roomRight; x += step) {
+        if (x < viewLeft - step || x > viewRight + step) continue;
+        if ((x - roomLeft) % 400 !== 0) continue;
+        ctx.moveTo(x, inset);
+        ctx.lineTo(x, this.worldH - inset);
+      }
+      for (let y = step; y < this.worldH - step; y += step) {
+        if (y < viewTop - step || y > viewBottom + step) continue;
+        if (y % 400 !== 0) continue;
+        ctx.moveTo(roomLeft + inset, y);
+        ctx.lineTo(roomRight - inset, y);
+      }
+      ctx.stroke();
 
       // Faint room number etched into the floor.
       if (this.mode !== 'boss') {
@@ -3814,25 +3909,37 @@ export class ShooterGame {
         ctx.restore();
       }
 
-      // Sparse debris / stars
-      for (const decoration of this.decorations) {
-        if (
-          decoration.x < roomLeft + inset ||
-          decoration.x > roomRight - inset ||
-          decoration.y < inset ||
-          decoration.y > this.worldH - inset
-        ) {
-          continue;
+      // Sparse debris / stars. Their per-mote twinkle is quantised into a few
+      // alpha buckets so a room costs a handful of fills instead of ~30.
+      const bucketStep = 0.045;
+      const buckets = 6;
+      for (let bucket = 1; bucket <= buckets; bucket++) {
+        const alpha = bucket * bucketStep;
+        let any = false;
+        ctx.beginPath();
+        for (const decoration of this.decorations) {
+          if (
+            decoration.x < roomLeft + inset ||
+            decoration.x > roomRight - inset ||
+            decoration.y < inset ||
+            decoration.y > this.worldH - inset
+          ) {
+            continue;
+          }
+          if (decoration.x < viewLeft - 8 || decoration.x > viewRight + 8) continue;
+          if (decoration.y < viewTop - 8 || decoration.y > viewBottom + 8) continue;
+          const twinkle =
+            0.55 + Math.sin(this.ambientTime * 0.8 + decoration.phase) * 0.35;
+          const value = decoration.alpha * twinkle;
+          const index = Math.min(buckets, Math.max(1, Math.round(value / bucketStep)));
+          if (index !== bucket) continue;
+          const size = decoration.size / this.zoom + 0.7;
+          ctx.rect(decoration.x, decoration.y, size, size);
+          any = true;
         }
-        const twinkle =
-          0.55 + Math.sin(this.ambientTime * 0.8 + decoration.phase) * 0.35;
-        ctx.fillStyle = `rgba(126, 213, 232, ${decoration.alpha * twinkle})`;
-        ctx.fillRect(
-          decoration.x,
-          decoration.y,
-          decoration.size / this.zoom + 0.7,
-          decoration.size / this.zoom + 0.7,
-        );
+        if (!any) continue;
+        ctx.fillStyle = `rgba(126, 213, 232, ${alpha.toFixed(3)})`;
+        ctx.fill();
       }
 
       ctx.restore();
@@ -3861,11 +3968,14 @@ export class ShooterGame {
 
   private drawWalls() {
     const ctx = this.ctx;
+    // The four outer strips share one fill.
     ctx.fillStyle = '#0b141d';
-    ctx.fillRect(0, 0, this.worldW, WALL_PAD);
-    ctx.fillRect(0, this.worldH - WALL_PAD, this.worldW, WALL_PAD);
-    ctx.fillRect(0, 0, WALL_PAD, this.worldH);
-    ctx.fillRect(this.worldW - WALL_PAD, 0, WALL_PAD, this.worldH);
+    ctx.beginPath();
+    ctx.rect(0, 0, this.worldW, WALL_PAD);
+    ctx.rect(0, this.worldH - WALL_PAD, this.worldW, WALL_PAD);
+    ctx.rect(0, 0, WALL_PAD, this.worldH);
+    ctx.rect(this.worldW - WALL_PAD, 0, WALL_PAD, this.worldH);
+    ctx.fill();
 
     ctx.strokeStyle = 'rgba(120, 200, 220, 0.3)';
     ctx.lineWidth = 2 / this.zoom;
@@ -3874,11 +3984,15 @@ export class ShooterGame {
     if (this.mode === 'dungeon') {
       const doorTop = DOOR_Y - DOOR_HALF;
       const doorBottom = DOOR_Y + DOOR_HALF;
+      const halfW = this.width / (2 * this.zoom);
+      // Only the dividing walls inside the view are worth drawing; a room is
+      // 1000 wide, so most boundaries are off screen.
       for (let boundary = 1; boundary < DUNGEON_ROOMS; boundary++) {
-        const x = boundary * ROOM_SIZE - WALL_PAD;
-        this.drawWallSegment(x, WALL_PAD, WALL_THICK, doorTop - WALL_PAD);
+        const x = boundary * ROOM_SIZE;
+        if (x < this.camera.x - halfW - 80 || x > this.camera.x + halfW + 80) continue;
+        this.drawWallSegment(x - WALL_PAD, WALL_PAD, WALL_THICK, doorTop - WALL_PAD);
         this.drawWallSegment(
-          x,
+          x - WALL_PAD,
           doorBottom,
           WALL_THICK,
           this.worldH - WALL_PAD - doorBottom,
@@ -3913,6 +4027,12 @@ export class ShooterGame {
     const bottom = DOOR_Y + DOOR_HALF;
     const open = this.isDoorOpen(boundary);
     const pulse = 0.5 + Math.sin(this.ambientTime * 6.5) * 0.2;
+
+    // The gate sits inside the wall band, which no room fill covers. It needs
+    // an opaque base: the field below is translucent and would otherwise stack
+    // on top of the previous frame's pixels.
+    ctx.fillStyle = '#03060b';
+    ctx.fillRect(x - WALL_PAD, top, WALL_THICK, DOOR_HALF * 2);
 
     // Door posts
     ctx.fillStyle = '#16232f';
@@ -3963,12 +4083,16 @@ export class ShooterGame {
       ctx.stroke();
     }
 
+    // Lamp on top of the frame: a cached glow instead of a blurred shadow.
     ctx.save();
-    ctx.shadowColor = open ? PLAYER_COLOR : '#ff4d7d';
-    ctx.shadowBlur = 14;
+    ctx.translate(x, top - 28);
+    ctx.fillStyle = this.glow(open ? PLAYER_COLOR : '#ff4d7d', 0.75, 16);
+    ctx.beginPath();
+    ctx.arc(0, 0, 16, 0, TAU);
+    ctx.fill();
     ctx.fillStyle = open ? PLAYER_COLOR : '#ff4d7d';
     ctx.beginPath();
-    ctx.arc(x, top - 28, 3.6, 0, TAU);
+    ctx.arc(0, 0, 3.6, 0, TAU);
     ctx.fill();
     ctx.restore();
   }
@@ -5608,10 +5732,9 @@ export class ShooterGame {
     }
     ctx.restore();
 
-    if (this.vignette) {
-      ctx.fillStyle = this.vignette;
-      ctx.fillRect(0, 0, width, height);
-    }
+    // The dark edge vignette lives in CSS (`.vignette-overlay`): it is a static
+    // screen-space layer, so the compositor paints it once instead of the game
+    // evaluating a full-screen gradient every frame.
 
     // Chromatic-ish edge glow while hurt
     if (this.hurtFlash > 0) {
@@ -5622,20 +5745,15 @@ export class ShooterGame {
       ctx.fillStyle = `rgba(88, 255, 151, ${this.healFlash * 0.09})`;
       ctx.fillRect(0, 0, width, height);
     }
-    if (this.player.hp > 0 && this.player.hp < 34) {
-      const danger = (1 - this.player.hp / 34) * (0.14 + Math.sin(this.ambientTime * 5) * 0.05);
-      const grad = ctx.createRadialGradient(
-        width / 2,
-        height / 2,
-        Math.min(width, height) * 0.32,
-        width / 2,
-        height / 2,
-        Math.max(width, height) * 0.72,
-      );
-      grad.addColorStop(0, 'rgba(255, 20, 60, 0)');
-      grad.addColorStop(1, `rgba(255, 20, 60, ${Math.max(0, danger)})`);
-      ctx.fillStyle = grad;
+    if (this.player.hp > 0 && this.player.hp < 34 && this.dangerGlow) {
+      const danger =
+        (1 - this.player.hp / 34) * (0.14 + Math.sin(this.ambientTime * 5) * 0.05);
+      // The gradient is fixed per size; only its opacity pulses.
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, danger);
+      ctx.fillStyle = this.dangerGlow;
       ctx.fillRect(0, 0, width, height);
+      ctx.restore();
     }
 
     if (this.killFlash > 0) {

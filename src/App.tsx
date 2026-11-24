@@ -366,6 +366,7 @@ export default function App() {
         className="game-canvas"
         onContextMenu={(event) => event.preventDefault()}
       />
+      <div className="vignette-overlay" aria-hidden="true" />
       <div className="scanline-overlay" aria-hidden="true" />
 
       {(phase === 'playing' || phase === 'paused') && (
