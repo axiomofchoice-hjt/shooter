@@ -8,6 +8,13 @@
 - 提交前确保 `npm run build` 通过（类型检查 + 构建）。
 - **推送不自动执行**，仍需用户明确说「推送」后再 `git push`。
 
+### 版本号与 CHANGELOG
+
+- 平时改动只往 `CHANGELOG.md` 的 `## [Unreleased]` 小节里追加条目，**不动 `package.json` 的 `version`**。
+- 不要为单次改动新建版本小节，也不要单独提交 `chore(release)`；改动和它的 CHANGELOG 条目写在同一个提交里。
+- 只有用户说「发版」时才执行发版，一次做完：把 `## [Unreleased]` 改名为 `## [x.y.z] - YYYY-MM-DD`、bump `package.json`（`npm install --package-lock-only` 同步 lockfile）、新建空的 `## [Unreleased]`、单独提交 `chore(release): x.y.z <一句话主题>`、`git tag vX.Y.Z`（tag 同样不自动推送）。
+- 版本号选择：`feat` 提 minor，`fix` / `tune` / `perf` 提 patch，破坏性改动提 major；`docs` / `chore` 不改版本号。
+
 ## 代码
 
 - 游戏数值和敌人配置集中在 `src/game/Game.ts` 顶部；武器数值在 `src/game/weapons.ts`。

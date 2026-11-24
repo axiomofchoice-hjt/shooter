@@ -3,6 +3,14 @@
 本项目所有值得记录的改动都写在这里。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [Unreleased]
+
+<!-- 未发版的改动都写在这一节里。发版时才把本节改名为 `## [x.y.z] - YYYY-MM-DD`、bump package.json 并打 tag。 -->
+
+### 新增
+
+- GitHub Actions 自动构建并把 `dist/` 发布到 `gh-pages` 分支，推送 `main` 即触发；构建产物改用相对路径（`base: './'`），项目站点在 `/<repo>/` 子路径下也能直接打开
+
 ## [0.3.47] - 2026-11-24
 
 ### 修复
