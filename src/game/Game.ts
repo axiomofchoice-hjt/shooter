@@ -71,6 +71,9 @@ const HOMING_TRAIL_POINTS = 9;
 // Flamer damage is applied on fixed ticks so its DPS does not depend on fps.
 const FLAME_TICK = 0.05;
 
+// Storm dart zaps at 90%, 95%, 100%, 105% and 110% of the target distance.
+const STORM_PULSE_COUNT = 5;
+
 
 const SECONDARY_COOLDOWN = 3.4;
 const SECONDARY_PELLETS = 7;
@@ -506,9 +509,8 @@ interface StormDart {
   fastDistance: number;
   startSpeed: number;
   glideSpeed: number;
-  arrivalTime: number;
-  pulseTimer: number;
   pulseInterval: number;
+  pulseCount: number;
   aoeRadius: number;
   damage: number;
   color: string;
@@ -1416,9 +1418,7 @@ export class ShooterGame {
     const targetDistance = target
       ? dist(player.x, player.y, target.x, target.y)
       : 320;
-    const desiredDistance = target
-      ? targetDistance * (1 + storm.overshootRatio)
-      : 320;
+    const desiredDistance = targetDistance * (1 + storm.overshootRatio);
     const bounds = this.roomBounds();
     const endX = clamp(
       player.x + Math.cos(angle) * desiredDistance,
@@ -1430,21 +1430,15 @@ export class ShooterGame {
       bounds.top + 14,
       bounds.bottom - 14,
     );
-    const totalDistance = Math.hypot(endX - player.x, endY - player.y);
-    // Quick phase to 90% of the whole path, then a low-speed glide through the
-    // last 10%. The dart holds the end point after that, still zapping.
-    let fastTime = storm.fastTime;
-    let fastDistance = totalDistance * 0.9;
-    const glideSpeed = storm.glideSpeed;
-    let startSpeed = (2 * fastDistance) / fastTime - glideSpeed;
-    if (startSpeed < glideSpeed) {
-      // Very close target: skip the fast phase and just glide slowly.
-      fastTime = 0;
-      fastDistance = 0;
-      startSpeed = glideSpeed;
-    }
-    const arrivalTime =
-      fastTime + (totalDistance - fastDistance) / glideSpeed;
+    const totalDistance = Math.max(1, desiredDistance);
+    // The first 0.5s decelerates from fast to the glide speed and ends at 90%
+    // of the target distance. The remaining 20% (90 -> 110%) is crossed at a
+    // constant 10% of the target distance per second, so the five zap points
+    // are exactly 0.5s apart.
+    const fastTime = storm.fastTime;
+    const fastDistance = targetDistance * 0.9;
+    const glideSpeed = targetDistance * 0.1;
+    const startSpeed = (2 * fastDistance) / fastTime - glideSpeed;
     this.stormDarts.push({
       startX: player.x,
       startY: player.y,
@@ -1459,9 +1453,8 @@ export class ShooterGame {
       fastDistance,
       startSpeed,
       glideSpeed,
-      arrivalTime,
-      pulseTimer: storm.pulseInterval,
       pulseInterval: storm.pulseInterval,
+      pulseCount: 0,
       aoeRadius: storm.aoeRadius,
       damage: weapon.damage,
       color: weapon.color,
@@ -1492,10 +1485,14 @@ export class ShooterGame {
       dart.x = dart.startX + (dart.endX - dart.startX) * progress;
       dart.y = dart.startY + (dart.endY - dart.startY) * progress;
 
-      dart.pulseTimer -= dt;
-      if (dart.pulseTimer <= 0 && dart.age < dart.life) {
-        dart.pulseTimer += dart.pulseInterval;
+      // Zap exactly at 90%, 95%, 100%, 105% and 110%: the age thresholds and
+      // the constant glide speed are chosen so the five zaps are 0.5s apart.
+      while (
+        dart.pulseCount < STORM_PULSE_COUNT &&
+        dart.age >= (dart.pulseCount + 1) * dart.pulseInterval
+      ) {
         this.stormPulse(dart);
+        dart.pulseCount += 1;
       }
 
       if (dart.age >= dart.life) {
@@ -4178,12 +4175,10 @@ export class ShooterGame {
           ? clamp((dart.life - dart.age) / 0.25, 0, 1)
           : 1;
       const speed =
-        dart.age >= dart.arrivalTime
-          ? 0
-          : dart.age < dart.fastTime
-            ? dart.startSpeed +
-              ((dart.glideSpeed - dart.startSpeed) * dart.age) / dart.fastTime
-            : dart.glideSpeed;
+        dart.age < dart.fastTime
+          ? dart.startSpeed +
+            ((dart.glideSpeed - dart.startSpeed) * dart.age) / dart.fastTime
+          : dart.glideSpeed;
       const trailLength = 16 + Math.min(1, speed / 600) * 58;
       const tailX = dart.x - dart.dirX * trailLength;
       const tailY = dart.y - dart.dirY * trailLength;
@@ -4197,7 +4192,11 @@ export class ShooterGame {
       ctx.lineTo(dart.x, dart.y);
       ctx.stroke();
 
-      const charge = 1 - clamp(dart.pulseTimer / dart.pulseInterval, 0, 1);
+      const charge = clamp(
+        (dart.age % dart.pulseInterval) / dart.pulseInterval,
+        0,
+        1,
+      );
       ctx.save();
       ctx.translate(dart.x, dart.y);
       ctx.strokeStyle = withAlpha(dart.color, (0.22 + charge * 0.45) * fade);

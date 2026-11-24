@@ -48,10 +48,8 @@ export interface WeaponSpec {
   storm?: {
     /** End point distance as a multiple of the target distance (1.1 = 10% past). */
     overshootRatio: number;
-    /** Seconds to cover the first 90% of the total path. */
+    /** Seconds to cover the first 90% of the distance to the target. */
     fastTime: number;
-    /** Low speed used for the final 10% of the path. */
-    glideSpeed: number;
     /** Radius of each electric pulse. */
     aoeRadius: number;
     /** Seconds between pulses. */
@@ -203,16 +201,15 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     cooldown: 1,
     speed: 0,
     radius: 0,
-    life: 5,
+    life: 2.5,
     pellets: 1,
     spread: 0,
     pierce: 0,
     storm: {
       overshootRatio: 0.1,
-      fastTime: 0.8,
-      glideSpeed: 44,
+      fastTime: 0.5,
       aoeRadius: 150,
-      pulseInterval: 0.75,
+      pulseInterval: 0.5,
     },
   },
   // Concussion shell: explodes on contact and shoves the blast outward.
