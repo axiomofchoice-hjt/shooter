@@ -78,8 +78,6 @@ const DASH_SPEED_MULT = 1.82;
 const DASH_SPEED = PLAYER_SPEED * DASH_SPEED_MULT;
 const DASH_DISTANCE = 158.4;
 const DASH_TIME = DASH_DISTANCE / DASH_SPEED;
-// HUD sweep spans the slide plus the cooldown that follows it.
-const DODGE_CYCLE = DASH_TIME + DODGE_COOLDOWN;
 
 const BOSS_HP = 320;
 const BOSS_RADIUS = 58;
@@ -780,9 +778,6 @@ export class ShooterGame {
     player.invuln = Math.max(player.invuln, DASH_TIME + 0.05);
     player.vx = player.dashDirX * DASH_SPEED;
     player.vy = player.dashDirY * DASH_SPEED;
-    // Cooldown starts after the slide, so the gap between two dodges is
-    // DODGE_COOLDOWN plus the slide time.
-    this.dodgeCooldown = DODGE_CYCLE;
     this.dashRing.x = player.x;
     this.dashRing.y = player.y;
     this.dashRing.life = this.dashRing.maxLife;
@@ -1081,12 +1076,17 @@ export class ShooterGame {
       // Scale the last partial frame so the slide covers exactly DASH_DISTANCE.
       const dashStep = Math.min(dt, player.dashTime);
       player.dashTime = Math.max(0, player.dashTime - dt);
-      if (player.dashTime === 0 && this.dashTrail.life === 0) {
-        this.dashTrail.x1 = this.dashRing.x;
-        this.dashTrail.y1 = this.dashRing.y;
-        this.dashTrail.x2 = player.x;
-        this.dashTrail.y2 = player.y;
-        this.dashTrail.life = this.dashTrail.maxLife;
+      if (player.dashTime === 0) {
+        // The cooldown (and its HUD sweep) only starts once the slide is over,
+        // so the button reads as ready during the dash itself.
+        this.dodgeCooldown = DODGE_COOLDOWN;
+        if (this.dashTrail.life === 0) {
+          this.dashTrail.x1 = this.dashRing.x;
+          this.dashTrail.y1 = this.dashRing.y;
+          this.dashTrail.x2 = player.x;
+          this.dashTrail.y2 = player.y;
+          this.dashTrail.life = this.dashTrail.maxLife;
+        }
       }
       const stepScale = dt > 0 ? dashStep / dt : 0;
       player.vx = player.dashDirX * DASH_SPEED * stepScale;
@@ -2871,7 +2871,7 @@ export class ShooterGame {
       kills: this.kills,
       muted: this.sfx.muted,
       secondaryCooldown: clamp(this.secondaryCooldown / SECONDARY_COOLDOWN, 0, 1),
-      dodgeCooldown: clamp(this.dodgeCooldown / DODGE_CYCLE, 0, 1),
+      dodgeCooldown: clamp(this.dodgeCooldown / DODGE_COOLDOWN, 0, 1),
       bossHp,
       bossMaxHp: boss?.maxHp ?? 0,
       bossPhase: boss && boss.hp <= boss.maxHp * 0.5 ? 2 : 1,
