@@ -28,6 +28,15 @@ export interface WeaponSpec {
   flame?: boolean;
   /** Half-angle of the damage cone, in radians. */
   cone?: number;
+  /** Hitscan chain lightning: hits one target, then jumps to nearby ones. */
+  chain?: {
+    /** Maximum total targets, including the first. */
+    targets: number;
+    /** Search radius for each jump. */
+    jumpRange: number;
+    /** Damage multiplier applied on every jump. */
+    falloff: number;
+  };
 }
 
 export const WEAPON_ORDER: WeaponId[] = [
@@ -37,6 +46,7 @@ export const WEAPON_ORDER: WeaponId[] = [
   'rail',
   'seeker',
   'flamer',
+  'arc',
 ];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
@@ -135,6 +145,23 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     range: SHORT_RANGE,
     flame: true,
     cone: 0.4,
+  },
+  // Chain lightning: no projectile, one zap that walks through a cluster.
+  arc: {
+    id: 'arc',
+    name: '电弧炮',
+    tag: 'ARC',
+    color: '#8fd8ff',
+    damage: 8,
+    cooldown: 0.55,
+    speed: 0,
+    radius: 0,
+    life: 0,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    range: 520,
+    chain: { targets: 4, jumpRange: 190, falloff: 0.62 },
   },
 };
 

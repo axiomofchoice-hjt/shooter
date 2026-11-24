@@ -481,6 +481,16 @@ interface Blast {
   color: string;
 }
 
+// One chain-lightning zap, kept briefly so the bolt can be drawn.
+interface ArcBolt {
+  /** Player muzzle followed by every enemy the chain reached. */
+  nodes: Array<{ x: number; y: number }>;
+  life: number;
+  maxLife: number;
+  color: string;
+  seed: number;
+}
+
 interface Particle {
   x: number;
   y: number;
@@ -602,6 +612,7 @@ export class ShooterGame {
   private shells: EnemyShell[] = [];
   private homings: EnemyHoming[] = [];
   private blasts: Blast[] = [];
+  private arcs: ArcBolt[] = [];
   private particles: Particle[] = [];
   private ghosts: DashGhost[] = [];
   private dashGhostTimer = 0;
@@ -868,6 +879,7 @@ export class ShooterGame {
     this.shells = [];
     this.homings = [];
     this.blasts = [];
+    this.arcs = [];
     this.particles = [];
     this.ghosts = [];
     this.dashGhostTimer = 0;
@@ -1242,36 +1254,47 @@ export class ShooterGame {
     player.muzzleColor = weapon.color;
 
     const offset = 26;
-    for (let i = 0; i < weapon.pellets; i++) {
-      if (weapon.homing) {
-        this.spawnMissile(weapon, offset);
-        continue;
+    if (weapon.chain) {
+      this.fireArc(weapon);
+    } else {
+      for (let i = 0; i < weapon.pellets; i++) {
+        if (weapon.homing) {
+          this.spawnMissile(weapon, offset);
+          continue;
+        }
+        const fan =
+          weapon.pellets > 1
+            ? (i / (weapon.pellets - 1) - 0.5) * weapon.spread
+            : 0;
+        const jitter =
+          weapon.pellets > 1 ? weapon.spread * 0.08 : weapon.spread / 2;
+        const angle = player.angle + fan + rand(-jitter, jitter);
+        const x = player.x + Math.cos(angle) * offset;
+        const y = player.y + Math.sin(angle) * offset;
+        this.bullets.push({
+          x,
+          y,
+          prevX: x,
+          prevY: y,
+          vx: Math.cos(angle) * weapon.speed,
+          vy: Math.sin(angle) * weapon.speed,
+          radius: weapon.radius,
+          damage: weapon.damage,
+          life: weapon.life,
+          color: weapon.color,
+          pierce: weapon.pierce,
+          hitIds: [],
+        });
       }
-      const fan =
-        weapon.pellets > 1
-          ? (i / (weapon.pellets - 1) - 0.5) * weapon.spread
-          : 0;
-      const jitter = weapon.pellets > 1 ? weapon.spread * 0.08 : weapon.spread / 2;
-      const angle = player.angle + fan + rand(-jitter, jitter);
-      const x = player.x + Math.cos(angle) * offset;
-      const y = player.y + Math.sin(angle) * offset;
-      this.bullets.push({
-        x,
-        y,
-        prevX: x,
-        prevY: y,
-        vx: Math.cos(angle) * weapon.speed,
-        vy: Math.sin(angle) * weapon.speed,
-        radius: weapon.radius,
-        damage: weapon.damage,
-        life: weapon.life,
-        color: weapon.color,
-        pierce: weapon.pierce,
-        hitIds: [],
-      });
     }
 
-    const muzzleCount = weapon.pellets > 1 ? 10 : weapon.id === 'rail' ? 12 : 4;
+    const muzzleCount = weapon.chain
+      ? 8
+      : weapon.pellets > 1
+        ? 10
+        : weapon.id === 'rail'
+          ? 12
+          : 4;
     for (let i = 0; i < muzzleCount; i++) {
       const spread = player.angle + Math.PI + rand(-0.6, 0.6);
       const velocity = rand(40, weapon.id === 'rail' ? 320 : 150);
@@ -1289,11 +1312,80 @@ export class ShooterGame {
     }
     this.shake = Math.max(
       this.shake,
-      weapon.id === 'rail' ? 4.2 : weapon.pellets > 1 ? 2.6 : 0.9,
+      weapon.id === 'rail'
+        ? 4.2
+        : weapon.chain
+          ? 2.2
+          : weapon.pellets > 1
+            ? 2.6
+            : 0.9,
     );
     this.sfx.play(
-      weapon.id === 'rail' ? 'rail' : weapon.id === 'scatter' ? 'scatter' : 'shoot',
+      weapon.chain
+        ? 'arc'
+        : weapon.id === 'rail'
+          ? 'rail'
+          : weapon.id === 'scatter'
+            ? 'scatter'
+            : 'shoot',
     );
+  }
+
+  /**
+   * Chain lightning: zaps the nearest visible enemy in range, then jumps to
+   * the closest not-yet-hit enemy within the jump radius. Walls do not stop a
+   * jump. Damage falls off with every link.
+   */
+  private fireArc(weapon: WeaponSpec) {
+    const player = this.player;
+    const chain = weapon.chain;
+    if (!chain) return;
+    let target = this.findNearestEnemy(
+      player.x,
+      player.y,
+      weapon.range ?? 520,
+      true,
+    );
+    if (!target) return;
+
+    const hit = new Set<number>();
+    const nodes = [{ x: player.x, y: player.y }];
+    let damage = weapon.damage;
+    for (let i = 0; i < chain.targets && target; i++) {
+      hit.add(target.id);
+      nodes.push({ x: target.x, y: target.y });
+      this.damageEnemy(target, damage, target.x, target.y, true);
+      this.spawnBurst(target.x, target.y, weapon.color, 10, 190, 0.3);
+      this.spawnBurst(target.x, target.y, '#ffffff', 4, 120, 0.2);
+      damage *= chain.falloff;
+      target = this.pickChainTarget(target.x, target.y, chain.jumpRange, hit);
+    }
+    this.arcs.push({
+      nodes,
+      life: 0.18,
+      maxLife: 0.18,
+      color: weapon.color,
+      seed: rand(0, 100),
+    });
+  }
+
+  private pickChainTarget(
+    x: number,
+    y: number,
+    maxDistance: number,
+    exclude: Set<number>,
+  ): Enemy | null {
+    let nearest: Enemy | null = null;
+    let nearestDist = maxDistance;
+    for (const enemy of this.enemies) {
+      if (enemy.dead || exclude.has(enemy.id)) continue;
+      const d = dist(x, y, enemy.x, enemy.y);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = enemy;
+      }
+    }
+    return nearest;
   }
 
   /**
@@ -1517,6 +1609,7 @@ export class ShooterGame {
       this.shells = [];
       this.homings = [];
       this.blasts = [];
+      this.arcs = [];
       this.sfx.play('death');
       this.emitHud(true);
       this.callbacks.onGameOver(
@@ -2733,6 +2826,7 @@ export class ShooterGame {
     this.shells = [];
     this.homings = [];
     this.blasts = [];
+    this.arcs = [];
     this.bullets = [];
     this.pickups = [];
     this.player.x = ROOM_SIZE / 2;
@@ -2903,6 +2997,10 @@ export class ShooterGame {
     for (let i = this.blasts.length - 1; i >= 0; i--) {
       this.blasts[i].life -= dt;
       if (this.blasts[i].life <= 0) this.blasts.splice(i, 1);
+    }
+    for (let i = this.arcs.length - 1; i >= 0; i--) {
+      this.arcs[i].life -= dt;
+      if (this.arcs[i].life <= 0) this.arcs.splice(i, 1);
     }
     for (let i = this.ghosts.length - 1; i >= 0; i--) {
       this.ghosts[i].life -= dt;
@@ -3110,6 +3208,7 @@ export class ShooterGame {
     this.drawDashGhosts();
     this.drawPlayer();
     this.drawFlamer();
+    this.drawArcs();
     this.drawParticles();
     this.drawFloaters();
     this.drawAutoTarget();
@@ -3718,6 +3817,64 @@ export class ShooterGame {
     conePath(half * 0.45, range * 0.72, 1.5);
     ctx.fillStyle = inner;
     ctx.fill();
+    ctx.restore();
+  }
+
+  /** Crackling lightning bolts for the arc weapon. */
+  private drawArcs() {
+    if (!this.arcs.length) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (const arc of this.arcs) {
+      const alpha = clamp(arc.life / arc.maxLife, 0, 1);
+      const points: Array<[number, number]> = [];
+      for (let i = 0; i < arc.nodes.length - 1; i++) {
+        const a = arc.nodes[i];
+        const b = arc.nodes[i + 1];
+        points.push([a.x, a.y]);
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const length = Math.hypot(dx, dy) || 1;
+        const nx = -dy / length;
+        const ny = dx / length;
+        const steps = 4;
+        for (let step = 1; step < steps; step++) {
+          const t = step / steps;
+          const jitter =
+            Math.sin(arc.seed + i * 7.3 + step * 3.1 + this.ambientTime * 55) * 9 +
+            rand(-4, 4);
+          points.push([
+            a.x + dx * t + nx * jitter,
+            a.y + dy * t + ny * jitter,
+          ]);
+        }
+        points.push([b.x, b.y]);
+      }
+
+      ctx.strokeStyle = withAlpha(arc.color, 0.22 * alpha);
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+      ctx.stroke();
+
+      ctx.strokeStyle = withAlpha(arc.color, 0.85 * alpha);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+      ctx.stroke();
+
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * alpha})`;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
