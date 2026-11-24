@@ -716,6 +716,9 @@ export class ShooterGame {
   private homings: EnemyHoming[] = [];
   private blasts: Blast[] = [];
   private arcs: ArcBolt[] = [];
+  // Flat x/y pairs for the bolt polyline, reused every frame: a zap lives for
+  // ~11 frames and allocating a fresh point list each one was pure GC churn.
+  private arcPoints: number[] = [];
   private shockwaves: Shockwave[] = [];
   private stormDarts: StormDart[] = [];
   private laserBeams: LaserBeam[] = [];
@@ -818,6 +821,7 @@ export class ShooterGame {
     this.buildDecorations();
     this.sfx.unlock();
     this.resetWorld();
+    if (this.weaponPool.includes('arc')) this.warmArcStroke();
     this.phase = 'playing';
     this.paused = false;
     if (mode === 'boss') {
@@ -4479,11 +4483,12 @@ export class ShooterGame {
     ctx.lineCap = 'round';
     for (const arc of this.arcs) {
       const alpha = clamp(arc.life / arc.maxLife, 0, 1);
-      const points: Array<[number, number]> = [];
+      const points = this.arcPoints;
+      points.length = 0;
       for (let i = 0; i < arc.nodes.length - 1; i++) {
         const a = arc.nodes[i];
         const b = arc.nodes[i + 1];
-        points.push([a.x, a.y]);
+        points.push(a.x, a.y);
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const length = Math.hypot(dx, dy) || 1;
@@ -4495,33 +4500,66 @@ export class ShooterGame {
           const jitter =
             Math.sin(arc.seed + i * 7.3 + step * 3.1 + this.ambientTime * 55) * 9 +
             rand(-4, 4);
-          points.push([
-            a.x + dx * t + nx * jitter,
-            a.y + dy * t + ny * jitter,
-          ]);
+          points.push(a.x + dx * t + nx * jitter, a.y + dy * t + ny * jitter);
         }
-        points.push([b.x, b.y]);
+        points.push(b.x, b.y);
       }
 
-      ctx.strokeStyle = withAlpha(arc.color, 0.22 * alpha);
+      // Build the bolt once, then stroke it three times. Folding the fade into
+      // globalAlpha also keeps the alpha cache from filling up with one entry
+      // per frame, since the life-based alpha changes on every draw.
+      ctx.beginPath();
+      ctx.moveTo(points[0], points[1]);
+      for (let i = 2; i < points.length; i += 2) ctx.lineTo(points[i], points[i + 1]);
+
+      ctx.strokeStyle = arc.color;
+      ctx.globalAlpha = 0.22 * alpha;
       ctx.lineWidth = 10;
-      ctx.beginPath();
-      ctx.moveTo(points[0][0], points[0][1]);
-      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
       ctx.stroke();
 
-      ctx.strokeStyle = withAlpha(arc.color, 0.85 * alpha);
+      ctx.globalAlpha = 0.85 * alpha;
       ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(points[0][0], points[0][1]);
-      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
       ctx.stroke();
 
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * alpha})`;
+      ctx.strokeStyle = '#ffffff';
+      ctx.globalAlpha = 0.9 * alpha;
       ctx.lineWidth = 1.1;
-      ctx.beginPath();
-      ctx.moveTo(points[0][0], points[0][1]);
-      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * The first zap of a run is the first wide, round-joined polyline the canvas
+   * has to stroke, and the rasterizer pays its one-off setup for that stroke on
+   * whichever frame it shows up — which is why the arc cannon used to hitch the
+   * first time it fired. Stroke one almost invisible bolt while the room is
+   * still loading, so the setup cost lands behind the scene change instead of
+   * on a shot. The bolt is 0.4% opaque and the next frame repaints the floor
+   * over it.
+   */
+  private warmArcStroke() {
+    const ctx = this.ctx;
+    const { x, y } = this.player;
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.translate(this.width / 2, this.height / 2);
+    ctx.scale(this.zoom, this.zoom);
+    ctx.translate(-this.camera.x, -this.camera.y);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = WEAPONS.arc.color;
+    ctx.globalAlpha = 0.004;
+    // Same shape as a real bolt: a long, sharply angled polyline, so the
+    // stroke tessellator builds the same kind of geometry it will need later.
+    ctx.beginPath();
+    ctx.moveTo(x - 240, y);
+    for (let i = 1; i <= 24; i++) {
+      ctx.lineTo(x - 240 + i * 20, y + (i % 2 ? 11 : -11));
+    }
+    for (const width of [10, 3, 1.1]) {
+      ctx.lineWidth = width;
       ctx.stroke();
     }
     ctx.restore();
