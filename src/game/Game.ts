@@ -1269,11 +1269,14 @@ export class ShooterGame {
     const laserSpec = WEAPONS[player.weapon].laser;
     if (laserSpec) {
       // The charge ring stays empty until the attack cooldown is over; only
-      // then does idle time start filling it.
+      // the part of this frame after the cooldown ends counts.
       if (player.fireCooldown <= 0) {
+        const cooldownBefore = player.fireCooldown + dt;
+        const chargeDt =
+          cooldownBefore > 0 ? Math.max(0, -player.fireCooldown) : dt;
         this.laserCharge = Math.min(
           1,
-          this.laserCharge + dt / laserSpec.chargeTime,
+          this.laserCharge + chargeDt / laserSpec.chargeTime,
         );
       }
     } else {
