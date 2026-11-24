@@ -4174,6 +4174,18 @@ export class ShooterGame {
         dart.age > dart.life - 0.25
           ? clamp((dart.life - dart.age) / 0.25, 0, 1)
           : 1;
+
+      // Static AOE range indicator; the zap itself is only the arcs/sparks.
+      ctx.strokeStyle = withAlpha(dart.color, 0.3 * fade);
+      ctx.lineWidth = 1.4 / this.zoom;
+      ctx.setLineDash([9, 12]);
+      ctx.beginPath();
+      ctx.arc(dart.x, dart.y, dart.aoeRadius, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = withAlpha(dart.color, 0.025 * fade);
+      ctx.fill();
+
       const speed =
         dart.age < dart.fastTime
           ? dart.startSpeed +
