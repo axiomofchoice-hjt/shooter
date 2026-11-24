@@ -46,7 +46,7 @@ export interface WeaponSpec {
   };
 }
 
-export const WEAPON_ORDER: WeaponId[] = [
+const ALL_WEAPONS: WeaponId[] = [
   'pulse',
   'smg',
   'scatter',
@@ -56,6 +56,13 @@ export const WEAPON_ORDER: WeaponId[] = [
   'arc',
   'shock',
 ];
+
+// Temporarily expose only the first weapon. The other seven stay implemented
+// and fully specced, but cannot be reached from the in-game weapon cycle.
+// Raise this count to bring them back without restoring any deleted code.
+const VISIBLE_WEAPONS = 1;
+
+export const WEAPON_ORDER: WeaponId[] = ALL_WEAPONS.slice(0, VISIBLE_WEAPONS);
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pulse: {

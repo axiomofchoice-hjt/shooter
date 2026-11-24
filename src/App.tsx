@@ -9,6 +9,7 @@ import { INITIAL_HUD, type GameStats, type HudSnapshot } from './game/types';
 import { Hud } from './components/Hud';
 import { TouchControls } from './components/TouchControls';
 import { WeaponSwitch } from './components/WeaponSwitch';
+import { WEAPON_ORDER } from './game/weapons';
 import {
   GameOverOverlay,
   PauseOverlay,
@@ -312,7 +313,7 @@ export default function App() {
         <Hud hud={hud} onPause={pauseGame} onMute={toggleMute} />
       )}
 
-      {phase === 'playing' && (
+      {phase === 'playing' && WEAPON_ORDER.length > 1 && (
         <WeaponSwitch weapon={hud.weapon} onCycle={cycleWeapon} />
       )}
 
