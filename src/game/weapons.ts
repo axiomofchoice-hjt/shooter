@@ -13,9 +13,17 @@ export interface WeaponSpec {
   pellets: number;
   spread: number;
   pierce: number;
+  /**
+   * Homing weapons lock a target at launch and steer toward it. `range` is the
+   * lock-on distance; it also caps how far a shot with no target flies.
+   */
+  range?: number;
+  homing?: boolean;
+  /** Steering rate in rad/s for homing shots. */
+  turnRate?: number;
 }
 
-export const WEAPON_ORDER: WeaponId[] = ['pulse', 'smg', 'scatter', 'rail'];
+export const WEAPON_ORDER: WeaponId[] = ['pulse', 'smg', 'scatter', 'rail', 'seeker'];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pulse: {
@@ -73,6 +81,26 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pellets: 1,
     spread: 0,
     pierce: 2,
+  },
+  // Lock-on missile: the target is picked at the trigger pull and never
+  // changes, so a dead target still gets a missile flown to its last spot.
+  // Walls are not part of the lock or the flight path.
+  seeker: {
+    id: 'seeker',
+    name: '追猎炮',
+    tag: 'SEEKER',
+    color: '#b28dff',
+    damage: 8,
+    cooldown: 0.5,
+    speed: 1500,
+    radius: 4.5,
+    life: 0.8,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    range: 320,
+    homing: true,
+    turnRate: 9,
   },
 };
 

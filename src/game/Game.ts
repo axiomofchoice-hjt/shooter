@@ -7,7 +7,7 @@ import {
   type HudSnapshot,
   type WeaponId,
 } from './types';
-import { WEAPONS, nextWeapon } from './weapons';
+import { WEAPONS, nextWeapon, type WeaponSpec } from './weapons';
 
 const TAU = Math.PI * 2;
 
@@ -401,6 +401,21 @@ interface Bullet {
   color: string;
   pierce: number;
   hitIds: number[];
+  /**
+   * Homing shot: the id and point are snapshotted when the trigger is pulled.
+   * A dead target keeps its death position here, so the missile flies on to
+   * that spot instead of switching to somebody else.
+   */
+  missile?: {
+    targetId: number;
+    x: number;
+    y: number;
+    dead: boolean;
+    angle: number;
+    turnRate: number;
+  };
+  /** Short curved trail, so the visual offset reads as a homing turn. */
+  trail?: Array<{ x: number; y: number }>;
 }
 
 interface EnemyBullet {
@@ -1208,6 +1223,10 @@ export class ShooterGame {
 
     const offset = 26;
     for (let i = 0; i < weapon.pellets; i++) {
+      if (weapon.homing) {
+        this.spawnMissile(weapon, offset);
+        continue;
+      }
       const fan =
         weapon.pellets > 1
           ? (i / (weapon.pellets - 1) - 0.5) * weapon.spread
@@ -1255,6 +1274,66 @@ export class ShooterGame {
     this.sfx.play(
       weapon.id === 'rail' ? 'rail' : weapon.id === 'scatter' ? 'scatter' : 'shoot',
     );
+  }
+
+  /**
+   * Fires one seeker missile. The target is chosen now and never swapped: on
+   * death, damageEnemy rewrites the lock to the death spot, and the missile
+   * flies there before fizzling out. With nobody in range it simply flies
+   * straight ahead. The launch offset is cosmetic — the steering corrects it.
+   */
+  private spawnMissile(weapon: WeaponSpec, offset: number) {
+    const player = this.player;
+    const range = weapon.range ?? 320;
+    const target = this.findNearestEnemy(player.x, player.y, range, false);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const lateral = 15 * side;
+    // The angled launch only exists to show the homing turn. Without a target
+    // there is nothing to correct it, so the shot goes straight forward.
+    const launchAngle = target ? player.angle + side * 0.18 : player.angle;
+    const x =
+      player.x +
+      Math.cos(player.angle) * offset +
+      Math.cos(player.angle + Math.PI / 2) * lateral;
+    const y =
+      player.y +
+      Math.sin(player.angle) * offset +
+      Math.sin(player.angle + Math.PI / 2) * lateral;
+    const speed = weapon.speed;
+    // Give the curved path a little cushion, but keep the projectile close to
+    // the advertised range; a shot with no target ends exactly at that range.
+    const life = target
+      ? Math.min(
+          weapon.life,
+          Math.max(0.22, dist(player.x, player.y, target.x, target.y) / speed + 0.04),
+        )
+      : range / speed;
+
+    this.bullets.push({
+      x,
+      y,
+      prevX: x,
+      prevY: y,
+      vx: Math.cos(launchAngle) * speed,
+      vy: Math.sin(launchAngle) * speed,
+      radius: weapon.radius,
+      damage: weapon.damage,
+      life,
+      color: weapon.color,
+      pierce: 0,
+      hitIds: [],
+      trail: [{ x, y }],
+      missile: target
+        ? {
+            targetId: target.id,
+            x: target.x,
+            y: target.y,
+            dead: false,
+            angle: launchAngle,
+            turnRate: weapon.turnRate ?? 8,
+          }
+        : undefined,
+    });
   }
 
   private fireSecondary() {
@@ -1366,6 +1445,32 @@ export class ShooterGame {
       const bullet = this.bullets[i];
       bullet.prevX = bullet.x;
       bullet.prevY = bullet.y;
+
+      const missile = bullet.missile;
+      const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
+      if (missile) {
+        // Refresh the lock point only while the locked target is alive. A dead
+        // target leaves the last point (its death spot) in place.
+        if (!missile.dead) {
+          const target = this.enemies.find(
+            (enemy) => enemy.id === missile.targetId && !enemy.dead,
+          );
+          if (target) {
+            missile.x = target.x;
+            missile.y = target.y;
+          } else {
+            missile.dead = true;
+          }
+        }
+        const want = Math.atan2(missile.y - bullet.y, missile.x - bullet.x);
+        const maxTurn = missile.turnRate * dt;
+        missile.angle += clamp(angleDelta(missile.angle, want), -maxTurn, maxTurn);
+        bullet.vx = Math.cos(missile.angle) * speed;
+        bullet.vy = Math.sin(missile.angle) * speed;
+        bullet.trail?.push({ x: bullet.x, y: bullet.y });
+        if (bullet.trail && bullet.trail.length > 10) bullet.trail.shift();
+      }
+
       bullet.x += bullet.vx * dt;
       bullet.y += bullet.vy * dt;
       bullet.life -= dt;
@@ -1396,10 +1501,24 @@ export class ShooterGame {
         }
       }
 
+      // Reached the spot where its locked target died: pop instead of
+      // continuing on to an unrelated enemy.
+      if (
+        !consumed &&
+        missile &&
+        missile.dead &&
+        dist(bullet.x, bullet.y, missile.x, missile.y) <=
+          speed * dt + bullet.radius + 4
+      ) {
+        this.spawnBurst(missile.x, missile.y, bullet.color, 6, 110, 0.3);
+        consumed = true;
+      }
+
       if (
         consumed ||
         bullet.life <= 0 ||
-        this.outOfRoom(bullet.x, bullet.y, 24)
+        // Seeker missiles are not stopped by room walls, only by their range.
+        (!missile && this.outOfRoom(bullet.x, bullet.y, 24))
       ) {
         this.bullets.splice(i, 1);
       }
@@ -1415,6 +1534,16 @@ export class ShooterGame {
 
     if (enemy.hp <= 0) {
       enemy.dead = true;
+      // Missiles already in the air keep their locked target; they get the
+      // death spot as their final waypoint and never pick a new enemy.
+      for (const bullet of this.bullets) {
+        const missile = bullet.missile;
+        if (missile && !missile.dead && missile.targetId === enemy.id) {
+          missile.dead = true;
+          missile.x = enemy.x;
+          missile.y = enemy.y;
+        }
+      }
       this.kills += 1;
       this.combo += 1;
       this.comboTimer = 3;
@@ -2862,6 +2991,7 @@ export class ShooterGame {
     ctx.translate(-this.camera.x, -this.camera.y);
 
     this.drawFloor();
+    this.drawWeaponRange();
     this.drawPortal();
     this.drawTelegraphs();
     this.drawPickups();
@@ -3196,6 +3326,29 @@ export class ShooterGame {
     ctx.restore();
   }
 
+  /**
+   * Faint ring for the equipped weapon's maximum range. Only the seeker has a
+   * range limit, so every other weapon draws nothing.
+   */
+  private drawWeaponRange() {
+    const spec = WEAPONS[this.player.weapon];
+    if (!spec.range || this.player.dead) return;
+    const ctx = this.ctx;
+    const player = this.player;
+    const breathe = 0.5 + Math.sin(this.ambientTime * 2.2) * 0.5;
+    ctx.save();
+    ctx.fillStyle = withAlpha(spec.color, 0.025);
+    ctx.strokeStyle = withAlpha(spec.color, 0.2 + breathe * 0.08);
+    ctx.lineWidth = 2 / this.zoom;
+    ctx.setLineDash([12, 14]);
+    ctx.lineDashOffset = -this.ambientTime * 16;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, spec.range, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   private drawPortal() {
     if (this.mode !== 'dungeon') return;
     const ctx = this.ctx;
@@ -3326,6 +3479,10 @@ export class ShooterGame {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const bullet of this.bullets) {
+      if (bullet.missile) {
+        this.drawMissile(bullet);
+        continue;
+      }
       const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
       const tailLength = bullet.pierce > 0 || bullet.hitIds.length > 0 ? 62 : 27;
       const tailX = bullet.x - (bullet.vx / speed) * tailLength;
@@ -3347,6 +3504,49 @@ export class ShooterGame {
       ctx.arc(bullet.x, bullet.y, 2.8, 0, TAU);
       ctx.fill();
     }
+    ctx.restore();
+  }
+
+  /** Seeker missile: curved trail plus a small arrowhead pointing where it flies. */
+  private drawMissile(bullet: Bullet) {
+    const ctx = this.ctx;
+    const trail = bullet.trail ?? [];
+    if (trail.length > 1) {
+      ctx.strokeStyle = withAlpha(bullet.color, 0.16);
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(trail[0].x, trail[0].y);
+      for (let i = 1; i < trail.length; i++) ctx.lineTo(trail[i].x, trail[i].y);
+      ctx.lineTo(bullet.x, bullet.y);
+      ctx.stroke();
+      ctx.strokeStyle = withAlpha(bullet.color, 0.55);
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(trail[0].x, trail[0].y);
+      for (let i = 1; i < trail.length; i++) ctx.lineTo(trail[i].x, trail[i].y);
+      ctx.lineTo(bullet.x, bullet.y);
+      ctx.stroke();
+    }
+    const angle = Math.atan2(bullet.vy, bullet.vx);
+    ctx.save();
+    ctx.translate(bullet.x, bullet.y);
+    ctx.rotate(angle);
+    ctx.fillStyle = withAlpha(bullet.color, 0.35);
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = bullet.color;
+    ctx.beginPath();
+    ctx.moveTo(9, 0);
+    ctx.lineTo(-4, 4.5);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-4, -4.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(1, 0, 2.2, 0, TAU);
+    ctx.fill();
     ctx.restore();
   }
 
