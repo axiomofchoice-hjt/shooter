@@ -1,4 +1,7 @@
-import type { GameStats } from '../game/types';
+import type { CSSProperties } from 'react';
+import type { GameStats, TestEnemyKind, TestRoomConfig, WeaponId } from '../game/types';
+import { ENEMY_LABELS, TEST_ENEMY_KINDS } from '../game/types';
+import { ALL_WEAPONS, WEAPONS, WEAPON_ORDER } from '../game/weapons';
 import {
   ArrowIcon,
   BossIcon,
@@ -14,18 +17,22 @@ interface StartScreenProps {
   isTouch: boolean;
   isFullscreen: boolean;
   fullscreenSupported: boolean;
+  testWeaponCount: number;
+  testEnemyCount: number;
   onToggleFullscreen: () => void;
   onStart: () => void;
-  onStartBoss: () => void;
+  onOpenTest: () => void;
 }
 
 export function StartScreen({
   isTouch,
   isFullscreen,
   fullscreenSupported,
+  testWeaponCount,
+  testEnemyCount,
   onToggleFullscreen,
   onStart,
-  onStartBoss,
+  onOpenTest,
 }: StartScreenProps) {
   return (
     <div className="overlay menu-overlay">
@@ -86,15 +93,17 @@ export function StartScreen({
               type="button"
               tabIndex={-1}
               className="boss-button"
-              onClick={onStartBoss}
-              title="进入测试房（分裂者 / 追踪者）"
+              onClick={onOpenTest}
+              title="测试房设置（选择武器与敌人）"
             >
               <span className="boss-button-icon">
                 <BossIcon />
               </span>
               <span className="boss-button-copy">
                 <strong>进入测试房</strong>
-                <small>TEST ROOM · 分裂者 / 追踪者无限续波</small>
+                <small>
+                  TEST ROOM · 已选 {testWeaponCount} 把武器 / {testEnemyCount} 种敌人
+                </small>
               </span>
               <span className="boss-button-key">
                 {isTouch ? 'TAP' : 'B'}
@@ -202,6 +211,125 @@ export function StartScreen({
           <span>WASD 移动 &nbsp;·&nbsp; J 开火 &nbsp;·&nbsp; K 副武器 &nbsp;·&nbsp; L 闪避 &nbsp;·&nbsp; B 测试房</span>
         </footer>
       </main>
+    </div>
+  );
+}
+
+interface TestRoomSetupProps {
+  config: TestRoomConfig;
+  onToggleWeapon: (id: WeaponId) => void;
+  onToggleEnemy: (kind: TestEnemyKind) => void;
+  onStart: () => void;
+  onClose: () => void;
+}
+
+export function TestRoomSetup({
+  config,
+  onToggleWeapon,
+  onToggleEnemy,
+  onStart,
+  onClose,
+}: TestRoomSetupProps) {
+  return (
+    <div className="overlay modal-overlay setup-overlay">
+      <section
+        className="modal-panel setup-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="setup-title"
+      >
+        <span className="modal-eyebrow">TEST ROOM · LOADOUT</span>
+        <h2 id="setup-title" className="modal-title">
+          测试房设置
+        </h2>
+        <p className="modal-copy">
+          勾选要带进测试房的武器和要刷新的敌人；清空一波后 1.6 秒自动续波。
+          未开放的武器也能在这里试用。
+        </p>
+
+        <div className="setup-group">
+          <div className="setup-group-head">
+            <h3>
+              武器 <span>{config.weapons.length} / {ALL_WEAPONS.length}</span>
+            </h3>
+            <span>进入后按武器按钮或 LB / RB 切换</span>
+          </div>
+          <div className="setup-chips">
+            {ALL_WEAPONS.map((id) => {
+              const spec = WEAPONS[id];
+              const selected = config.weapons.includes(id);
+              const hidden = !WEAPON_ORDER.includes(id);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  tabIndex={0}
+                  aria-pressed={selected}
+                  className={`setup-chip ${selected ? 'is-on' : ''} ${
+                    hidden ? 'is-hidden-weapon' : ''
+                  }`}
+                  style={{ '--chip-color': spec.color } as CSSProperties}
+                  onClick={() => onToggleWeapon(id)}
+                >
+                  <span className="setup-chip-copy">
+                    <strong>{spec.name}</strong>
+                    <em>{spec.tag}</em>
+                  </span>
+                  {hidden && <i className="setup-chip-note">未开放</i>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="setup-group">
+          <div className="setup-group-head">
+            <h3>
+              敌人 <span>{config.enemies.length} / {TEST_ENEMY_KINDS.length}</span>
+            </h3>
+            <span>每波按勾选顺序轮换出场</span>
+          </div>
+          <div className="setup-chips">
+            {TEST_ENEMY_KINDS.map((kind) => {
+              const selected = config.enemies.includes(kind);
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  tabIndex={0}
+                  aria-pressed={selected}
+                  className={`setup-chip setup-chip-enemy ${selected ? 'is-on' : ''}`}
+                  onClick={() => onToggleEnemy(kind)}
+                >
+                  <span className="setup-chip-copy">
+                    <strong>{ENEMY_LABELS[kind]}</strong>
+                    <em>{kind.toUpperCase()}</em>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="modal-actions row-actions">
+          <button
+            type="button"
+            tabIndex={-1}
+            className="primary-button"
+            onClick={onStart}
+            disabled={config.weapons.length === 0 || config.enemies.length === 0}
+          >
+            <PlayIcon />
+            开始测试
+          </button>
+          <button type="button" tabIndex={-1} className="ghost-button" onClick={onClose}>
+            返回主界面
+          </button>
+        </div>
+        <span className="modal-hint">
+          Enter / B 开始 · Esc 返回 · 手柄 A 开始 / B 返回 · 至少各选一项
+        </span>
+      </section>
     </div>
   );
 }

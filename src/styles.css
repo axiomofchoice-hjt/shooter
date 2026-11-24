@@ -1365,6 +1365,165 @@ kbd.accent,
   color: rgba(100, 139, 152, 0.7);
 }
 
+/* test-room loadout picker */
+
+.setup-overlay {
+  align-items: flex-start;
+}
+
+.setup-panel {
+  width: min(760px, 100%);
+  margin: auto 0;
+}
+
+.setup-panel .modal-title {
+  font-size: clamp(32px, 5.4vw, 44px);
+}
+
+.setup-group {
+  margin-top: 22px;
+}
+
+.setup-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(95, 246, 255, 0.1);
+}
+
+.setup-group-head h3 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: rgba(208, 247, 255, 0.9);
+}
+
+.setup-group-head h3 span {
+  margin-left: 6px;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: rgba(95, 246, 255, 0.62);
+}
+
+.setup-group-head > span {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-align: right;
+  color: rgba(108, 148, 160, 0.8);
+}
+
+.setup-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.setup-chip {
+  --chip-color: var(--cyan);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 10px;
+  color: rgba(168, 204, 214, 0.82);
+  background: rgba(255, 255, 255, 0.018);
+  border: 1px solid rgba(116, 172, 188, 0.18);
+  cursor: pointer;
+  touch-action: manipulation;
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% calc(100% - 6px),
+    calc(100% - 6px) 100%,
+    0 100%
+  );
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.setup-chip:hover {
+  border-color: rgba(95, 246, 255, 0.38);
+  background: rgba(95, 246, 255, 0.04);
+}
+
+.setup-chip.is-on {
+  color: #eafeff;
+  border-color: var(--chip-color);
+  background: rgba(95, 246, 255, 0.07);
+}
+
+.setup-chip.is-on::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--chip-color);
+  box-shadow: 0 0 12px var(--chip-color);
+}
+
+.setup-chip-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.setup-chip-copy strong {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+}
+
+.setup-chip-copy em {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 7px;
+  letter-spacing: 0.14em;
+  color: rgba(120, 164, 177, 0.7);
+}
+
+.setup-chip.is-on .setup-chip-copy em {
+  color: var(--chip-color);
+}
+
+.setup-chip-note {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  padding: 2px 4px;
+  color: rgba(255, 159, 67, 0.82);
+  border: 1px solid rgba(255, 159, 67, 0.32);
+}
+
+.setup-chip.is-hidden-weapon:not(.is-on) {
+  border-style: dashed;
+}
+
+.setup-chip-enemy {
+  min-width: 92px;
+}
+
+.setup-chip-enemy.is-on {
+  --chip-color: var(--pink);
+}
+
+.primary-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .game-over-head {
   display: flex;
   align-items: center;
@@ -2011,6 +2170,23 @@ kbd.accent,
     padding: 24px 20px;
   }
 
+  .setup-panel .modal-title {
+    font-size: clamp(28px, 8vw, 36px);
+  }
+
+  .setup-group-head > span {
+    display: none;
+  }
+
+  .setup-chip {
+    min-height: 34px;
+    padding: 6px 9px;
+  }
+
+  .setup-chips {
+    gap: 6px;
+  }
+
   .stat-block {
     padding: 11px 8px;
   }
@@ -2067,6 +2243,46 @@ kbd.accent,
   .overlay {
     padding-top: calc(10px + var(--safe-top));
     padding-bottom: calc(10px + var(--safe-bottom));
+  }
+
+  .setup-panel {
+    padding: 14px 18px;
+  }
+
+  .setup-panel .modal-title {
+    margin-top: 4px;
+    font-size: 26px;
+  }
+
+  .setup-panel .modal-copy {
+    display: none;
+  }
+
+  .setup-group {
+    margin-top: 12px;
+  }
+
+  .setup-chips {
+    margin-top: 7px;
+    gap: 5px;
+  }
+
+  .setup-chip {
+    min-height: 32px;
+    padding: 4px 8px;
+  }
+
+  .setup-panel .row-actions {
+    margin-top: 14px;
+  }
+
+  .setup-panel .primary-button,
+  .setup-panel .ghost-button {
+    min-height: 40px;
+  }
+
+  .setup-panel .modal-hint {
+    margin-top: 8px;
   }
 
   .menu-panel {

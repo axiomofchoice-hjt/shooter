@@ -6,16 +6,26 @@ import {
 } from 'react';
 import { ShooterGame } from './game/Game';
 import { createGamepadPoller, PAD_BUTTON } from './game/gamepad';
-import { INITIAL_HUD, type GameStats, type HudSnapshot } from './game/types';
+import {
+  DEFAULT_TEST_CONFIG,
+  TEST_ENEMY_KINDS,
+  INITIAL_HUD,
+  type GameStats,
+  type HudSnapshot,
+  type TestEnemyKind,
+  type TestRoomConfig,
+  type WeaponId,
+} from './game/types';
 import { Hud } from './components/Hud';
 import { TouchControls } from './components/TouchControls';
 import { WeaponSwitch } from './components/WeaponSwitch';
-import { WEAPON_ORDER } from './game/weapons';
+import { ALL_WEAPONS } from './game/weapons';
 import {
   GameOverOverlay,
   PauseOverlay,
   RotateOverlay,
   StartScreen,
+  TestRoomSetup,
 } from './components/Overlays';
 
 type Phase = 'menu' | 'playing' | 'paused' | 'gameover';
@@ -41,6 +51,8 @@ export default function App() {
   const [victory, setVictory] = useState(false);
   const [isTouch, setIsTouch] = useState(detectTouchDevice);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [testConfig, setTestConfig] = useState<TestRoomConfig>(DEFAULT_TEST_CONFIG);
+  const [testSetupOpen, setTestSetupOpen] = useState(false);
   const [fullscreenSupported] = useState(() => {
     if (typeof document === 'undefined') return false;
     const doc = document as Document & { webkitFullscreenEnabled?: boolean };
@@ -79,6 +91,7 @@ export default function App() {
     if (phaseRef.current === 'playing' || phaseRef.current === 'paused') return;
     setStats(null);
     setVictory(false);
+    setTestSetupOpen(false);
     gameRef.current?.start('dungeon');
     commitPhase('playing');
   }, [commitPhase]);
@@ -87,9 +100,51 @@ export default function App() {
     if (phaseRef.current === 'playing' || phaseRef.current === 'paused') return;
     setStats(null);
     setVictory(false);
-    gameRef.current?.start('boss');
+    setTestSetupOpen(false);
+    gameRef.current?.start('boss', testConfig);
     commitPhase('playing');
-  }, [commitPhase]);
+  }, [commitPhase, testConfig]);
+
+  const openTestSetup = useCallback(() => {
+    if (phaseRef.current !== 'menu') return;
+    setTestSetupOpen(true);
+  }, []);
+
+  const closeTestSetup = useCallback(() => {
+    setTestSetupOpen(false);
+  }, []);
+
+  const toggleTestWeapon = useCallback((id: WeaponId) => {
+    setTestConfig((prev) => {
+      if (prev.weapons.includes(id)) {
+        // Keep at least one gun in the loadout.
+        if (prev.weapons.length === 1) return prev;
+        return { ...prev, weapons: prev.weapons.filter((weapon) => weapon !== id) };
+      }
+      return {
+        ...prev,
+        // Store in canonical order so the starting gun and the cycle are stable.
+        weapons: ALL_WEAPONS.filter(
+          (weapon) => weapon === id || prev.weapons.includes(weapon),
+        ),
+      };
+    });
+  }, []);
+
+  const toggleTestEnemy = useCallback((kind: TestEnemyKind) => {
+    setTestConfig((prev) => {
+      if (prev.enemies.includes(kind)) {
+        if (prev.enemies.length === 1) return prev;
+        return { ...prev, enemies: prev.enemies.filter((enemy) => enemy !== kind) };
+      }
+      return {
+        ...prev,
+        enemies: TEST_ENEMY_KINDS.filter(
+          (enemy) => enemy === kind || prev.enemies.includes(enemy),
+        ),
+      };
+    });
+  }, []);
 
   const retryGame = useCallback(() => {
     if (stats?.mode === 'boss') startBossGame();
@@ -261,6 +316,24 @@ export default function App() {
         }
       }
 
+      if (testSetupOpen) {
+        if (event.code === 'Escape') {
+          event.preventDefault();
+          closeTestSetup();
+          return;
+        }
+        if (event.code === 'Enter' || event.code === 'KeyB') {
+          // A focused chip handles Enter itself; everything else confirms.
+          const onControl =
+            event.target instanceof Element && event.target.closest('button');
+          if (!onControl) {
+            event.preventDefault();
+            startBossGame();
+          }
+          return;
+        }
+      }
+
       if (event.code === 'KeyP' || event.code === 'Escape') {
         event.preventDefault();
         togglePause();
@@ -269,7 +342,7 @@ export default function App() {
 
       if (event.code === 'KeyB' && phaseRef.current === 'menu') {
         event.preventDefault();
-        startBossGame();
+        openTestSetup();
         return;
       }
 
@@ -300,7 +373,7 @@ export default function App() {
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
     };
-  }, [retryGame, startBossGame, startGame, togglePause]);
+  }, [closeTestSetup, openTestSetup, retryGame, startBossGame, startGame, testSetupOpen, togglePause]);
 
   useEffect(() => {
     let raf = 0;
@@ -325,6 +398,20 @@ export default function App() {
         }
       }
 
+      if (testSetupOpen) {
+        // The loadout picker is a confirm dialog: A / Start starts the test
+        // room with the saved config, B backs out.
+        if (pad.pressed.has(PAD_BUTTON.back)) closeTestSetup();
+        else if (
+          pad.pressed.has(PAD_BUTTON.pause) ||
+          pad.pressed.has(PAD_BUTTON.dodge)
+        ) {
+          startBossGame();
+        }
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+
       if (pad.pressed.has(PAD_BUTTON.pause)) {
         if (phase === 'menu') startGame();
         else if (phase === 'gameover') retryGame();
@@ -336,7 +423,7 @@ export default function App() {
         else if (phase === 'gameover') retryGame();
       }
       if (pad.pressed.has(PAD_BUTTON.back)) {
-        if (phase === 'menu') startBossGame();
+        if (phase === 'menu') openTestSetup();
         else if (phase === 'paused' || phase === 'gameover') returnToMenu();
       }
 
@@ -345,7 +432,17 @@ export default function App() {
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [retryGame, resumeGame, returnToMenu, startBossGame, startGame, togglePause]);
+  }, [
+    closeTestSetup,
+    openTestSetup,
+    retryGame,
+    resumeGame,
+    returnToMenu,
+    startBossGame,
+    startGame,
+    testSetupOpen,
+    togglePause,
+  ]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -373,7 +470,7 @@ export default function App() {
         <Hud hud={hud} onPause={pauseGame} onMute={toggleMute} />
       )}
 
-      {phase === 'playing' && WEAPON_ORDER.length > 1 && (
+      {phase === 'playing' && hud.weaponCount > 1 && (
         <WeaponSwitch weapon={hud.weapon} onCycle={cycleWeapon} />
       )}
 
@@ -393,9 +490,21 @@ export default function App() {
           isTouch={isTouch}
           isFullscreen={isFullscreen}
           fullscreenSupported={fullscreenSupported}
+          testWeaponCount={testConfig.weapons.length}
+          testEnemyCount={testConfig.enemies.length}
           onToggleFullscreen={toggleFullscreen}
           onStart={startGame}
-          onStartBoss={startBossGame}
+          onOpenTest={openTestSetup}
+        />
+      )}
+
+      {phase === 'menu' && testSetupOpen && (
+        <TestRoomSetup
+          config={testConfig}
+          onToggleWeapon={toggleTestWeapon}
+          onToggleEnemy={toggleTestEnemy}
+          onStart={startBossGame}
+          onClose={closeTestSetup}
         />
       )}
 

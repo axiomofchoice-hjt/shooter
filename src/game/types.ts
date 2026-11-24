@@ -21,6 +21,43 @@ export type WeaponId =
   | 'storm'
   | 'laser';
 
+/** Everything the test room can spawn; the dungeon boss stays out of it. */
+export type TestEnemyKind = Exclude<EnemyKind, 'boss'>;
+
+/** Canonical order for the enemy picker and the HUD roster. */
+export const TEST_ENEMY_KINDS: TestEnemyKind[] = [
+  'grunt',
+  'runner',
+  'tank',
+  'spitter',
+  'splitter',
+  'homing',
+];
+
+export const ENEMY_LABELS: Record<EnemyKind, string> = {
+  grunt: '突击者',
+  runner: '疾行者',
+  tank: '重甲',
+  spitter: '喷吐者',
+  splitter: '分裂者',
+  homing: '追踪者',
+  boss: '压制核心',
+};
+
+/**
+ * What the test room opens with. Both lists are multi-select in the setup
+ * panel; only the first weapon and the first enemy start out checked.
+ */
+export interface TestRoomConfig {
+  weapons: WeaponId[];
+  enemies: TestEnemyKind[];
+}
+
+export const DEFAULT_TEST_CONFIG: TestRoomConfig = {
+  weapons: ['pulse'],
+  enemies: ['grunt'],
+};
+
 export type RoomKind = 'start' | 'combat' | 'portal';
 
 export const ROOM_COUNT = 5;
@@ -49,8 +86,9 @@ export interface HudSnapshot {
   /** Test-room wave counter (boss mode only). */
   wave: number;
   /** Live test-room roster, so the HUD can name what is left. */
-  testSplitter: number;
-  testHoming: number;
+  testRoster: { kind: TestEnemyKind; count: number }[];
+  /** Main weapons reachable with the switch button in the current mode. */
+  weaponCount: number;
   floor: number;
   room: number;
   roomKind: RoomKind;
@@ -92,8 +130,8 @@ export const INITIAL_HUD: HudSnapshot = {
   bossMaxHp: 0,
   bossPhase: 1,
   wave: 0,
-  testSplitter: 0,
-  testHoming: 0,
+  testRoster: [],
+  weaponCount: 1,
   floor: 1,
   room: 0,
   roomKind: 'start',

@@ -1,13 +1,24 @@
 import { SoundFX } from './audio';
 import {
+  ENEMY_LABELS,
+  TEST_ENEMY_KINDS,
   roomKindAt,
   type EnemyKind,
   type GameCallbacks,
   type GameMode,
   type HudSnapshot,
+  type TestEnemyKind,
+  type TestRoomConfig,
   type WeaponId,
 } from './types';
-import { WEAPONS, nextWeapon, previousWeapon, type WeaponSpec } from './weapons';
+import {
+  ALL_WEAPONS,
+  WEAPONS,
+  WEAPON_ORDER,
+  nextWeapon,
+  previousWeapon,
+  type WeaponSpec,
+} from './weapons';
 
 const TAU = Math.PI * 2;
 
@@ -134,6 +145,21 @@ const withAlpha = (hex: string, alpha: number) => {
   if (alphaCache.size > 512) alphaCache.clear();
   alphaCache.set(key, result);
   return result;
+};
+
+// The test room can carry any subset of the implemented guns and grunts.
+// Filtering through the canonical orders both validates the config and keeps
+// the starting weapon / spawn rotation predictable.
+const pickTestWeapons = (list?: WeaponId[]): WeaponId[] => {
+  const selected = list ?? [];
+  const pool = ALL_WEAPONS.filter((id) => selected.includes(id));
+  return pool.length > 0 ? pool : ['pulse'];
+};
+
+const pickTestEnemies = (list?: TestEnemyKind[]): TestEnemyKind[] => {
+  const selected = list ?? [];
+  const pool = TEST_ENEMY_KINDS.filter((kind) => selected.includes(kind));
+  return pool.length > 0 ? pool : ['grunt'];
 };
 
 interface EnemyDef {
@@ -713,9 +739,12 @@ export class ShooterGame {
   private bossWindup = 0;
   private bossAttackKind: BossAttack = 'radial';
   private victoryTimer = 0;
-  // Test room (the old boss arena): endless splitter waves for playtesting.
+  // Test room (the old boss arena): endless waves of whichever enemies the
+  // player picked on the start screen.
   private testWave = 0;
   private testWaveTimer = 0;
+  private testEnemies: TestEnemyKind[] = ['grunt'];
+  private weaponPool: WeaponId[] = WEAPON_ORDER;
 
   private input: InputState = {
     keys: new Set(),
@@ -777,8 +806,12 @@ export class ShooterGame {
 
   // ---------------------------------------------------------------- public API
 
-  start(mode: GameMode = 'dungeon') {
+  start(mode: GameMode = 'dungeon', config?: TestRoomConfig) {
     this.mode = mode;
+    // The dungeon keeps its curated 3-weapon cycle; the test room uses the
+    // loadout picked on the start screen, hidden guns included.
+    this.weaponPool = mode === 'boss' ? pickTestWeapons(config?.weapons) : WEAPON_ORDER;
+    this.testEnemies = mode === 'boss' ? pickTestEnemies(config?.enemies) : ['grunt'];
     this.worldW = mode === 'boss' ? BOSS_SIZE : DUNGEON_WIDTH;
     this.worldH = mode === 'boss' ? BOSS_SIZE : ROOM_SIZE;
     this.updateZoom();
@@ -799,6 +832,8 @@ export class ShooterGame {
     this.phase = 'idle';
     this.paused = false;
     this.mode = 'dungeon';
+    this.weaponPool = WEAPON_ORDER;
+    this.testEnemies = ['grunt'];
     this.worldW = DUNGEON_WIDTH;
     this.worldH = ROOM_SIZE;
     this.updateZoom();
@@ -972,7 +1007,7 @@ export class ShooterGame {
       dashTime: 0,
       dashDirX: 0,
       dashDirY: 0,
-      weapon: 'pulse',
+      weapon: this.mode === 'boss' ? (this.weaponPool[0] ?? 'pulse') : 'pulse',
       dead: false,
     };
     this.camera.x = this.player.x;
@@ -1375,8 +1410,11 @@ export class ShooterGame {
 
   cycleWeapon(direction: 1 | -1 = 1) {
     if (this.phase !== 'playing' || this.paused || this.player.dead) return;
+    if (this.weaponPool.length < 2) return;
     const next =
-      direction > 0 ? nextWeapon(this.player.weapon) : previousWeapon(this.player.weapon);
+      direction > 0
+        ? nextWeapon(this.player.weapon, this.weaponPool)
+        : previousWeapon(this.player.weapon, this.weaponPool);
     this.player.weapon = next;
     const spec = WEAPONS[next];
     this.floaters.push({
@@ -2984,9 +3022,13 @@ export class ShooterGame {
     this.testWave = 0;
     this.testWaveTimer = 0;
     this.spawnTestWave();
+    const roster = this.testEnemies.map((kind) => ENEMY_LABELS[kind]).join(' · ');
     this.banner = {
       title: 'TEST ROOM',
-      sub: '分裂者 · 追踪者测试场 · 清空自动续波',
+      sub:
+        this.testEnemies.length <= 3
+          ? `${roster} · 清空自动续波`
+          : `测试场 · 已选 ${this.testEnemies.length} 种敌人 · 清空自动续波`,
       time: 2,
       duration: 2,
       color: TEST_COLOR,
@@ -3004,8 +3046,8 @@ export class ShooterGame {
     for (let i = 0; i < count; i++) {
       const angle = (TAU * i) / count + this.testWave * 0.45 + rand(-0.12, 0.12);
       const radius = 280 + rand(0, 90);
-      // Both test enemies share the room so a wave always shows the mix.
-      const kind: EnemyKind = i % 2 === 0 ? 'splitter' : 'homing';
+      // Round-robin the picked enemies so a wave always shows the mix.
+      const kind = this.testEnemies[i % this.testEnemies.length];
       this.spawnEnemy(
         kind,
         clamp(cx + Math.cos(angle) * radius, 80, this.worldW - 80),
@@ -3515,14 +3557,19 @@ export class ShooterGame {
     if (!force && this.hudTimer > 0) return;
     const boss = this.boss;
     const bossHp = boss ? Math.max(0, Math.ceil(boss.hp)) : 0;
-    // Count the test-room enemies in one pass: filter() twice per HUD tick
-    // would allocate two arrays just to read their lengths.
-    let testSplitter = 0;
-    let testHoming = 0;
-    for (const enemy of this.enemies) {
-      if (enemy.dead) continue;
-      if (enemy.kind === 'splitter') testSplitter += 1;
-      else if (enemy.kind === 'homing') testHoming += 1;
+    // Test-room roster: one pass over the live enemies, then read the counts in
+    // the configured order so the HUD names exactly what the player picked.
+    const testRoster: { kind: TestEnemyKind; count: number }[] = [];
+    if (this.mode === 'boss') {
+      const counts = new Map<EnemyKind, number>();
+      for (const enemy of this.enemies) {
+        if (enemy.dead || enemy.kind === 'boss') continue;
+        counts.set(enemy.kind, (counts.get(enemy.kind) ?? 0) + 1);
+      }
+      for (const kind of this.testEnemies) {
+        const count = counts.get(kind) ?? 0;
+        if (count > 0) testRoster.push({ kind, count });
+      }
     }
     const hud: HudSnapshot = {
       mode: this.mode,
@@ -3548,8 +3595,8 @@ export class ShooterGame {
       bossMaxHp: boss?.maxHp ?? 0,
       bossPhase: boss && boss.hp <= boss.maxHp * 0.5 ? 2 : 1,
       wave: this.testWave,
-      testSplitter,
-      testHoming,
+      testRoster,
+      weaponCount: this.weaponPool.length,
     };
     this.callbacks.onHud(hud);
   }

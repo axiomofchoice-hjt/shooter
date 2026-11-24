@@ -1,4 +1,4 @@
-import type { HudSnapshot } from '../game/types';
+import { ENEMY_LABELS, type HudSnapshot } from '../game/types';
 import { WEAPONS } from '../game/weapons';
 import { PauseIcon, SoundOffIcon, SoundOnIcon } from './Icons';
 
@@ -29,11 +29,17 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
     return `已清 ${hud.roomsCleared}/3 · 门已开`;
   })();
 
-  // Test room names what is still alive, since both test enemies can share a wave.
-  const testParts: string[] = [];
-  if (hud.testSplitter > 0) testParts.push(`分裂者 ${hud.testSplitter}`);
-  if (hud.testHoming > 0) testParts.push(`追踪者 ${hud.testHoming}`);
-  const testStatus = testParts.length ? testParts.join(' · ') : '下一波准备中';
+  // Test room names what is still alive for the selected enemy types. Keep it
+  // compact once several types are mixed in the same wave.
+  const testTotal = hud.testRoster.reduce((sum, entry) => sum + entry.count, 0);
+  const testStatus =
+    testTotal === 0
+      ? '下一波准备中'
+      : hud.testRoster.length <= 2
+        ? hud.testRoster
+            .map((entry) => `${ENEMY_LABELS[entry.kind]} ${entry.count}`)
+            .join(' · ')
+        : `敌人 ${testTotal} · ${ENEMY_LABELS[hud.testRoster[0].kind]} ${hud.testRoster[0].count} 等 ${hud.testRoster.length} 种`;
 
   return (
     <>

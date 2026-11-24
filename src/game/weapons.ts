@@ -67,7 +67,7 @@ export interface WeaponSpec {
   };
 }
 
-const ALL_WEAPONS: WeaponId[] = [
+export const ALL_WEAPONS: WeaponId[] = [
   'pulse',
   'storm',
   'laser',
@@ -263,12 +263,20 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   },
 };
 
-export function previousWeapon(current: WeaponId): WeaponId {
-  const index = WEAPON_ORDER.indexOf(current);
-  return WEAPON_ORDER[(index - 1 + WEAPON_ORDER.length) % WEAPON_ORDER.length];
+export function previousWeapon(
+  current: WeaponId,
+  order: WeaponId[] = WEAPON_ORDER,
+): WeaponId {
+  const index = order.indexOf(current);
+  if (index < 0) return current;
+  return order[(index - 1 + order.length) % order.length];
 }
 
-export function nextWeapon(current: WeaponId): WeaponId {
-  const index = WEAPON_ORDER.indexOf(current);
-  return WEAPON_ORDER[(index + 1) % WEAPON_ORDER.length];
+export function nextWeapon(
+  current: WeaponId,
+  order: WeaponId[] = WEAPON_ORDER,
+): WeaponId {
+  const index = order.indexOf(current);
+  if (index < 0) return current;
+  return order[(index + 1) % order.length];
 }
