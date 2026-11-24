@@ -78,11 +78,11 @@ const STORM_PULSE_COUNT = 5;
 
 const SECONDARY_COOLDOWN = 3.4;
 const SECONDARY_PELLETS = 7;
-// Dodge: a fixed 170px slide covered in 0.25s (~680px/s, 2.52x the walk
+// Dodge: a fixed 170px slide covered in 0.33s (~515px/s, 1.91x the walk
 // speed). The 0.8s cooldown only starts counting once the slide is over.
 const DODGE_COOLDOWN = 0.8;
 const DASH_DISTANCE = 170;
-const DASH_TIME = 0.25;
+const DASH_TIME = 0.33;
 const DASH_SPEED = DASH_DISTANCE / DASH_TIME;
 
 const BOSS_HP = 320;
