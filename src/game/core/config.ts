@@ -20,7 +20,7 @@ export const LOB_LATERAL_MAX = 240;
 // Speed cap for the item, applied after each acceleration step. Long shots
 // would otherwise build up thousands of px/s while returning; at the cap the
 // pull keeps pulling but the item holds a steady, readable line.
-export const LOB_MAX_SPEED = 800;
+export const LOB_MAX_SPEED = 600;
 export const LOB_RADIUS = 7;
 export const LOB_LIFE = 4.5;
 export const LOB_MAX = 16;
