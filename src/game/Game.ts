@@ -39,7 +39,6 @@ const DUMMY_Y = ROOM_SIZE / 2 + 150;
 // random sideways kick and an initial outward kick, so it loops away and back.
 const LOB_ACCEL = 1200;
 const LOB_OUTWARD_SPEED = 320;
-const LOB_LATERAL_MIN = 140;
 const LOB_LATERAL_MAX = 240;
 const LOB_RADIUS = 7;
 const LOB_LIFE = 4.5;
@@ -2334,7 +2333,7 @@ export class ShooterGame {
 
     // Perpendicular left/right is (-dy, dx); away from the player is (-dx, -dy).
     const side = Math.random() < 0.5 ? -1 : 1;
-    const lateral = rand(LOB_LATERAL_MIN, LOB_LATERAL_MAX) * side;
+    const lateral = rand(0, LOB_LATERAL_MAX) * side;
     const vx = -dy * lateral - dx * LOB_OUTWARD_SPEED;
     const vy = dx * lateral - dy * LOB_OUTWARD_SPEED;
 
