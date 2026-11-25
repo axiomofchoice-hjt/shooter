@@ -19,7 +19,8 @@ export type WeaponId =
   | 'arc'
   | 'shock'
   | 'storm'
-  | 'laser';
+  | 'laser'
+  | 'carom';
 
 /** Everything the test room can spawn; the dungeon boss stays out of it. */
 export type TestEnemyKind = Exclude<EnemyKind, 'boss'>;

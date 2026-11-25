@@ -469,6 +469,10 @@ interface Bullet {
     damage: number;
     knockback: number;
   };
+  /** Ricochet shot: wall bounces left before it breaks on the wall. */
+  bounce?: {
+    left: number;
+  };
 }
 
 interface EnemyBullet {
@@ -814,7 +818,7 @@ export class ShooterGame {
 
   start(mode: GameMode = 'dungeon', config?: TestRoomConfig) {
     this.mode = mode;
-    // The dungeon keeps its curated 3-weapon cycle; the test room uses the
+    // The dungeon keeps its curated 4-weapon cycle; the test room uses the
     // loadout picked on the start screen, hidden guns included.
     this.weaponPool = mode === 'boss' ? pickTestWeapons(config?.weapons) : WEAPON_ORDER;
     this.testEnemies = mode === 'boss' ? pickTestEnemies(config?.enemies) : ['grunt'];
@@ -1490,7 +1494,9 @@ export class ShooterGame {
             : 0;
         const jitter =
           weapon.pellets > 1 ? weapon.spread * 0.08 : weapon.spread / 2;
-        const angle = player.angle + fan + rand(-jitter, jitter);
+        const angle = weapon.ring
+          ? player.angle + (i / weapon.pellets) * TAU
+          : player.angle + fan + rand(-jitter, jitter);
         const x = player.x + Math.cos(angle) * offset;
         const y = player.y + Math.sin(angle) * offset;
         this.bullets.push({
@@ -1513,6 +1519,7 @@ export class ShooterGame {
                 knockback: weapon.shock.knockback,
               }
             : undefined,
+          bounce: weapon.bounces ? { left: weapon.bounces } : undefined,
         });
       }
     }
@@ -2150,6 +2157,50 @@ export class ShooterGame {
             clamp(bullet.y, bounds.top, bounds.bottom),
           );
           consumed = true;
+        }
+      }
+
+      // Ricochet shots reflect off the room walls. Each contact spends one
+      // bounce; after the last one the shot breaks on the wall instead of
+      // passing through it. Clamping into the room keeps the shot alive for
+      // the next frame, unlike normal bullets which are dropped once outside.
+      // A shot abandoned in the previous room is far past the wall and is left
+      // to the regular out-of-room cleanup instead of being snapped over here.
+      const bounce = bullet.bounce;
+      if (
+        !consumed &&
+        bounce &&
+        !this.outOfRoom(bullet.x, bullet.y, speed * dt + 32)
+      ) {
+        const bounds = this.roomBounds();
+        const r = bullet.radius;
+        let hitWall = false;
+        if (bullet.x < bounds.left + r) {
+          bullet.x = bounds.left + r;
+          bullet.vx = Math.abs(bullet.vx);
+          hitWall = true;
+        } else if (bullet.x > bounds.right - r) {
+          bullet.x = bounds.right - r;
+          bullet.vx = -Math.abs(bullet.vx);
+          hitWall = true;
+        }
+        if (bullet.y < bounds.top + r) {
+          bullet.y = bounds.top + r;
+          bullet.vy = Math.abs(bullet.vy);
+          hitWall = true;
+        } else if (bullet.y > bounds.bottom - r) {
+          bullet.y = bounds.bottom - r;
+          bullet.vy = -Math.abs(bullet.vy);
+          hitWall = true;
+        }
+        if (hitWall) {
+          // A corner hit is still one bounce: both axes flip together.
+          if (bounce.left > 0) {
+            bounce.left -= 1;
+            this.spawnBurst(bullet.x, bullet.y, bullet.color, 2, 80, 0.18);
+          } else {
+            consumed = true;
+          }
         }
       }
 

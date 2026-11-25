@@ -55,6 +55,14 @@ export interface WeaponSpec {
     /** Seconds between pulses. */
     pulseInterval: number;
   };
+  /**
+   * Fires `pellets` shots evenly around the full circle, the first one along
+   * the aim heading. Used by the ricochet gun, so the aim heading is always one
+   * of the directions when a target is locked.
+   */
+  ring?: boolean;
+  /** Wall bounces a shot survives; it breaks on the wall after the last one. */
+  bounces?: number;
   /** Hitscan piercing beam that grows stronger while idle. */
   laser?: {
     /** Seconds of idle time to reach full charge. */
@@ -71,6 +79,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'pulse',
   'storm',
   'laser',
+  'carom',
   'smg',
   'scatter',
   'rail',
@@ -80,10 +89,10 @@ export const ALL_WEAPONS: WeaponId[] = [
   'shock',
 ];
 
-// Temporarily expose the pulse rifle, storm dart and laser. The other seven
-// stay implemented and fully specced, but cannot be reached from the in-game
-// weapon cycle. Raise this count to bring them back.
-const VISIBLE_WEAPONS = 3;
+// Temporarily expose the pulse rifle, storm dart, laser and ricochet gun. The
+// other seven stay implemented and fully specced, but cannot be reached from
+// the in-game weapon cycle. Raise this count to bring them back.
+const VISIBLE_WEAPONS = 4;
 
 export const WEAPON_ORDER: WeaponId[] = ALL_WEAPONS.slice(0, VISIBLE_WEAPONS);
 
@@ -244,6 +253,25 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       minWidth: 3,
       maxWidth: 32,
     },
+  },
+  // Ricochet ring: ten shots evenly around the player, one of them on the aim
+  // heading (the locked enemy, or the move direction when nothing is locked).
+  // Shots bounce off room walls up to five times, then break on the next wall.
+  carom: {
+    id: 'carom',
+    name: '跳弹枪',
+    tag: 'CAROM',
+    color: '#7fb2ff',
+    damage: 2,
+    cooldown: 0.4,
+    speed: 900,
+    radius: 4,
+    life: 4.5,
+    pellets: 10,
+    spread: 0,
+    pierce: 0,
+    ring: true,
+    bounces: 5,
   },
   // Concussion shell: explodes on contact and shoves the blast outward.
   shock: {
