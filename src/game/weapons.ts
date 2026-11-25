@@ -97,6 +97,15 @@ export interface WeaponSpec {
    * of the directions when a target is locked.
    */
   ring?: boolean;
+  /**
+   * Fires a hitscan lane along one of the four cardinal axes only. The aim
+   * picks an axis with a hittable enemy first, then the axis closest to the
+   * nearest enemy, then the axis closest to the movement direction.
+   */
+  cardinal?: {
+    /** Half-width of the damage lane, in world px. */
+    halfWidth: number;
+  };
   /** Wall bounces a shot survives; it breaks on the wall after the last one. */
   bounces?: number;
   /** Mother shot that bursts into `count` children the moment it lands on an
@@ -194,6 +203,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'flamer',
   'arc',
   'shock',
+  'ortho',
 ];
 
 /**
@@ -205,7 +215,7 @@ export const ALL_WEAPONS: WeaponId[] = [
  * it can be tried in the dungeon; when the player asks to carry only the first
  * gun again, trim the list back to ['pulse'].
  */
-export const DUNGEON_LOADOUT: WeaponId[] = ['pulse'];
+export const DUNGEON_LOADOUT: WeaponId[] = ['pulse', 'ortho'];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pulse: {
@@ -520,6 +530,25 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     spread: 0,
     pierce: 0,
     shock: { blastRadius: 150, knockback: 430 },
+  },
+  // Orthogonal cannon: the hull locks to the four cardinal axes and fires a
+  // hitscan lane along one of them. The aim prefers an axis with a hittable
+  // enemy, then snaps the nearest enemy's angle to the closest axis, then snaps
+  // the movement direction when nothing is in sight.
+  ortho: {
+    id: 'ortho',
+    name: '正交炮',
+    tag: 'ORTHO',
+    color: '#e6f6ff',
+    damage: 14,
+    cooldown: 0.55,
+    speed: 0,
+    radius: 0,
+    life: 0,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    cardinal: { halfWidth: 18 },
   },
 };
 
