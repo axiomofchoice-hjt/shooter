@@ -6255,7 +6255,7 @@ export class ShooterGame {
     ctx.restore();
   }
 
-  /** Sentry turrets: range hint, body, remaining life and remaining HP. */
+  /** Sentry turrets: range hint, body and remaining HP. */
   private drawTurrets() {
     if (this.turrets.length === 0) return;
     const ctx = this.ctx;
@@ -6276,19 +6276,6 @@ export class ShooterGame {
       ctx.fill();
       ctx.stroke();
       ctx.setLineDash([]);
-
-      // Life ring around the base.
-      ctx.strokeStyle = withAlpha(color, 0.5);
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.arc(
-        0,
-        0,
-        TURRET.radius + 4,
-        -Math.PI / 2,
-        -Math.PI / 2 + (turret.life / turret.maxLife) * TAU,
-      );
-      ctx.stroke();
 
       // Base.
       ctx.fillStyle = turret.hitFlash > 0 ? '#ffffff' : 'rgba(12, 16, 20, 0.95)';
