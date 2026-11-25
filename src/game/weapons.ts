@@ -588,7 +588,9 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       missiles: 3,
       missileDamage: 6,
       missileSpeed: 900,
-      missileTurnRate: 9,
+      // Gentler than the seeker (5.5 rad/s at 900 px/s): the volley draws a
+      // wide arc instead of snapping onto the target.
+      missileTurnRate: 5.5,
       missileRadius: 4,
       blastRadius: 48,
       blastDamage: 5,
