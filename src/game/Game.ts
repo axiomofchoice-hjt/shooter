@@ -37,7 +37,7 @@ const DUMMY_X = ROOM_SIZE / 2;
 const DUMMY_Y = ROOM_SIZE / 2 + 150;
 // Parabola-gun item: a fixed pull toward the player at the hit moment, plus a
 // random sideways kick and an initial outward kick, so it loops away and back.
-const LOB_ACCEL = 1200;
+const LOB_ACCEL = 900;
 const LOB_OUTWARD_SPEED = 320;
 const LOB_LATERAL_MAX = 240;
 const LOB_RADIUS = 7;
