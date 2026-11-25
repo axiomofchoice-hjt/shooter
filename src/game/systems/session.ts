@@ -1,3 +1,5 @@
+/** Starting a run and returning to the menu. */
+
 import { BOSS_SIZE, DUNGEON_WIDTH, ROOM_SIZE } from '../core/config';
 import { pickTestEnemies, pickTestWeapons } from '../core/testRoom';
 import type { GameWorld } from '../core/world';

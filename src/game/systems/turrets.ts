@@ -1,3 +1,5 @@
+/** Sentry turrets summoned by the hive gun. */
+
 import type { Enemy, Turret } from '../core/entities';
 import { TAU, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
@@ -29,7 +31,7 @@ export function registerSummonHit(
 }
 
 /** Plants a turret one body away from the enemy, always inside the room. */
-export function summonTurret(
+function summonTurret(
   world: GameWorld,
   x: number,
   y: number,

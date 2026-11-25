@@ -35,9 +35,9 @@ import type {
 
 /** Shared mutable game state. Systems read and write this directly. */
 export class GameWorld {
-  canvas: HTMLCanvasElement;
-  ctx: CanvasRenderingContext2D;
-  callbacks: GameCallbacks;
+  readonly canvas: HTMLCanvasElement;
+  readonly ctx: CanvasRenderingContext2D;
+  readonly callbacks: GameCallbacks;
   dpr = 1;
   width = 1;
   height = 1;
@@ -77,11 +77,11 @@ export class GameWorld {
   ghosts: DashGhost[] = [];
   dashGhostTimer = 0;
   // Expanding ring left at the launch point so a dodge reads even at a glance.
-  dashRing = { x: 0, y: 0, life: 0, maxLife: 0.36 };
+  readonly dashRing = { x: 0, y: 0, life: 0, maxLife: 0.36 };
   dashFlash = 0;
   // Light streak left behind by the finished slide, fading for a moment so the
   // dash stays readable even after it ends.
-  dashTrail = { x1: 0, y1: 0, x2: 0, y2: 0, life: 0, maxLife: 0.34 };
+  readonly dashTrail = { x1: 0, y1: 0, x2: 0, y2: 0, life: 0, maxLife: 0.34 };
   floaters: Floater[] = [];
   pickups: Pickup[] = [];
   telegraphs: Telegraph[] = [];
@@ -100,7 +100,7 @@ export class GameWorld {
   testEnemies: TestEnemyKind[] = ['grunt'];
   weaponPool: WeaponId[] = DUNGEON_LOADOUT;
 
-  input: InputState = {
+  readonly input: InputState = {
     keys: new Set(),
     touchX: 0,
     touchY: 0,
@@ -111,7 +111,7 @@ export class GameWorld {
     fireKey: false,
   };
 
-  camera = { x: ROOM_SIZE / 2, y: ROOM_SIZE / 2 };
+  readonly camera = { x: ROOM_SIZE / 2, y: ROOM_SIZE / 2 };
   zoom = 1;
   shake = 0;
   hurtFlash = 0;
@@ -157,13 +157,13 @@ export class GameWorld {
   orbitRadius = 0;
   orbitExpand = 0;
   orbitActive = 0;
-  sfx = new SoundFX();
+  readonly sfx = new SoundFX();
 
   bgGradient: CanvasGradient | null = null;
   dangerGlow: CanvasGradient | null = null;
   // Small glows for static props, built once and reused with a translate
   // instead of paying for a blurred shadow on every frame.
-  glowCache = new Map<string, CanvasGradient>();
+  readonly glowCache = new Map<string, CanvasGradient>();
 
   constructor(canvas: HTMLCanvasElement, callbacks: GameCallbacks) {
     this.canvas = canvas;

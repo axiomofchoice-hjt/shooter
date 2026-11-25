@@ -1,3 +1,5 @@
+/** Main-weapon firing, lasers, arcs and missiles. */
+
 import {
   AUTOAIM_RANGE,
   SECONDARY_COLOR,
@@ -28,6 +30,14 @@ export function firePlayerBullet(world: GameWorld) {
   if (weapon.volley) world.volleyShots += 1;
 
   const offset = 26;
+  fireWeapon(world, weapon, offset);
+  spawnMuzzleParticles(world, weapon, offset);
+  world.shake = Math.max(world.shake, shotShake(weapon));
+  world.sfx.play(shotSound(weapon));
+}
+
+/** Special weapons resolve immediately; everything else spawns bullets. */
+function fireWeapon(world: GameWorld, weapon: WeaponSpec, offset: number) {
   if (weapon.bomber) {
     launchBomber(world, weapon);
   } else if (weapon.laser) {
@@ -37,62 +47,78 @@ export function firePlayerBullet(world: GameWorld) {
   } else if (weapon.chain) {
     fireArc(world, weapon);
   } else {
-    for (let i = 0; i < weapon.pellets; i++) {
-      if (weapon.recycle) {
-        spawnRecycleBolt(world, weapon, offset);
-        continue;
-      }
-      if (weapon.homing) {
-        spawnMissile(world, weapon, offset);
-        continue;
-      }
-      const fan =
-        weapon.pellets > 1
-          ? (i / (weapon.pellets - 1) - 0.5) * weapon.spread
-          : 0;
-      const jitter =
-        weapon.pellets > 1 ? weapon.spread * 0.08 : weapon.spread / 2;
-      const angle = weapon.ring
-        ? player.angle + (i / weapon.pellets) * TAU
-        : player.angle + fan + rand(-jitter, jitter);
-      const x = player.x + Math.cos(angle) * offset;
-      const y = player.y + Math.sin(angle) * offset;
-      world.bullets.push({
-        x,
-        y,
-        prevX: x,
-        prevY: y,
-        vx: Math.cos(angle) * weapon.speed,
-        vy: Math.sin(angle) * weapon.speed,
-        radius: weapon.radius,
-        damage: weapon.damage,
-        life: weapon.life,
-        color: weapon.color,
-        pierce: weapon.pierce,
-        hitIds: [],
-        shock: weapon.shock
-          ? {
-              blastRadius: weapon.shock.blastRadius,
-              damage: weapon.damage,
-              knockback: weapon.shock.knockback,
-            }
-          : undefined,
-        bounce: weapon.bounces ? { left: weapon.bounces } : undefined,
-        split: weapon.split
-          ? {
-              count: weapon.split.count,
-              damage: weapon.split.childDamage,
-              speed: weapon.split.childSpeed,
-              life: weapon.split.childLife,
-              radius: weapon.split.childRadius,
-            }
-          : undefined,
-        summonEvery: weapon.summon ? TURRET.hitsPerSummon : undefined,
-        dropEvery: weapon.dropEvery,
-      });
-    }
+    spawnStandardBullets(world, weapon, offset);
   }
+}
 
+function spawnStandardBullets(
+  world: GameWorld,
+  weapon: WeaponSpec,
+  offset: number,
+) {
+  const player = world.player;
+  for (let i = 0; i < weapon.pellets; i++) {
+    if (weapon.recycle) {
+      spawnRecycleBolt(world, weapon, offset);
+      continue;
+    }
+    if (weapon.homing) {
+      spawnMissile(world, weapon, offset);
+      continue;
+    }
+    const fan =
+      weapon.pellets > 1
+        ? (i / (weapon.pellets - 1) - 0.5) * weapon.spread
+        : 0;
+    const jitter =
+      weapon.pellets > 1 ? weapon.spread * 0.08 : weapon.spread / 2;
+    const angle = weapon.ring
+      ? player.angle + (i / weapon.pellets) * TAU
+      : player.angle + fan + rand(-jitter, jitter);
+    const x = player.x + Math.cos(angle) * offset;
+    const y = player.y + Math.sin(angle) * offset;
+    world.bullets.push({
+      x,
+      y,
+      prevX: x,
+      prevY: y,
+      vx: Math.cos(angle) * weapon.speed,
+      vy: Math.sin(angle) * weapon.speed,
+      radius: weapon.radius,
+      damage: weapon.damage,
+      life: weapon.life,
+      color: weapon.color,
+      pierce: weapon.pierce,
+      hitIds: [],
+      shock: weapon.shock
+        ? {
+            blastRadius: weapon.shock.blastRadius,
+            damage: weapon.damage,
+            knockback: weapon.shock.knockback,
+          }
+        : undefined,
+      bounce: weapon.bounces ? { left: weapon.bounces } : undefined,
+      split: weapon.split
+        ? {
+            count: weapon.split.count,
+            damage: weapon.split.childDamage,
+            speed: weapon.split.childSpeed,
+            life: weapon.split.childLife,
+            radius: weapon.split.childRadius,
+          }
+        : undefined,
+      summonEvery: weapon.summon ? TURRET.hitsPerSummon : undefined,
+      dropEvery: weapon.dropEvery,
+    });
+  }
+}
+
+function spawnMuzzleParticles(
+  world: GameWorld,
+  weapon: WeaponSpec,
+  offset: number,
+) {
+  const player = world.player;
   const muzzleCount = weapon.laser
     ? 10
     : weapon.storm
@@ -119,33 +145,24 @@ export function firePlayerBullet(world: GameWorld) {
       drag: 8,
     });
   }
-  world.shake = Math.max(
-    world.shake,
-    weapon.id === 'rail'
-      ? 4.2
-      : weapon.laser
-        ? 3
-        : weapon.storm
-          ? 1.6
-          : weapon.chain
-            ? 2.2
-            : weapon.pellets > 1
-              ? 2.6
-              : 0.9,
-  );
-  world.sfx.play(
-    weapon.bomber
-      ? 'airstrike'
-      : weapon.laser
-        ? 'laser'
-        : weapon.storm || weapon.chain
-          ? 'arc'
-          : weapon.id === 'rail'
-            ? 'rail'
-            : weapon.id === 'scatter'
-              ? 'scatter'
-              : 'shoot',
-  );
+}
+
+function shotShake(weapon: WeaponSpec) {
+  if (weapon.id === 'rail') return 4.2;
+  if (weapon.laser) return 3;
+  if (weapon.storm) return 1.6;
+  if (weapon.chain) return 2.2;
+  if (weapon.pellets > 1) return 2.6;
+  return 0.9;
+}
+
+function shotSound(weapon: WeaponSpec) {
+  if (weapon.bomber) return 'airstrike';
+  if (weapon.laser) return 'laser';
+  if (weapon.storm || weapon.chain) return 'arc';
+  if (weapon.id === 'rail') return 'rail';
+  if (weapon.id === 'scatter') return 'scatter';
+  return 'shoot';
 }
 
 /**
@@ -153,7 +170,7 @@ export function firePlayerBullet(world: GameWorld) {
  * thicker and stronger with idle charge, but firing at the 0.75s cadence
  * always beats waiting for a full charge in DPS.
  */
-export function fireLaser(world: GameWorld, weapon: WeaponSpec) {
+function fireLaser(world: GameWorld, weapon: WeaponSpec) {
   const spec = weapon.laser;
   if (!spec) return;
   const player = world.player;
@@ -215,7 +232,7 @@ export function fireLaser(world: GameWorld, weapon: WeaponSpec) {
  * within the (larger) jump radius. Walls do not stop a jump. Damage falls
  * off with every link.
  */
-export function fireArc(world: GameWorld, weapon: WeaponSpec) {
+function fireArc(world: GameWorld, weapon: WeaponSpec) {
   const player = world.player;
   const chain = weapon.chain;
   if (!chain) return;
@@ -248,7 +265,7 @@ export function fireArc(world: GameWorld, weapon: WeaponSpec) {
   });
 }
 
-export function pickChainTarget(
+function pickChainTarget(
   world: GameWorld,
   x: number,
   y: number,
@@ -274,7 +291,7 @@ export function pickChainTarget(
  * flies there before fizzling out. With nobody in range it simply flies
  * straight ahead. The launch offset is cosmetic — the steering corrects it.
  */
-export function spawnMissile(world: GameWorld, weapon: WeaponSpec, offset: number) {
+function spawnMissile(world: GameWorld, weapon: WeaponSpec, offset: number) {
   const player = world.player;
   const range = weapon.range ?? 240;
   const target = findNearestEnemy(world, player.x, player.y, range, false);
@@ -405,7 +422,7 @@ export function fireVolleyMissiles(world: GameWorld, weapon: WeaponSpec) {
  * ahead and comes home after hitting a wall. A locked shot ignores walls,
  * like the seeker; the bolt blocks the next shot for the whole round trip.
  */
-export function spawnRecycleBolt(world: GameWorld, weapon: WeaponSpec, offset: number) {
+function spawnRecycleBolt(world: GameWorld, weapon: WeaponSpec, offset: number) {
   const player = world.player;
   const target = world.autoTarget;
   const angle = target

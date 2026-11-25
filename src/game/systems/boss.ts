@@ -1,3 +1,5 @@
+/** Boss attacks, defeat and run-end handling. */
+
 import { BOSS_COLOR, BOSS_VICTORY_DELAY } from '../core/config';
 import type { Enemy } from '../core/entities';
 import { TAU, clamp, rand } from '../core/math';
@@ -28,7 +30,7 @@ export function updateBossAttack(world: GameWorld, enemy: Enemy, dt: number) {
   world.sfx.play('bossCharge');
 }
 
-export function releaseBossAttack(world: GameWorld, enemy: Enemy) {
+function releaseBossAttack(world: GameWorld, enemy: Enemy) {
   const phase2 = enemy.hp <= enemy.maxHp * 0.5;
   const player = world.player;
 

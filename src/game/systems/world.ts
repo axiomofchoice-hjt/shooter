@@ -1,3 +1,5 @@
+/** Camera, room geometry, decorations and targeting helpers. */
+
 import {
   DUNGEON_ROOMS,
   ROOM_SIZE,
@@ -36,7 +38,7 @@ export function updateZoom(world: GameWorld) {
   clampCamera(world);
 }
 
-export function roomLeft(_world: GameWorld, index: number) {
+function roomLeft(index: number) {
   return index * ROOM_SIZE;
 }
 
@@ -46,7 +48,7 @@ export function clampCamera(world: GameWorld) {
   // Dungeon rooms are viewed one at a time: the camera never leaves the
   // current room, which also makes the room transition read as a clean cut.
   const viewW = world.mode === 'boss' ? world.worldW : ROOM_SIZE;
-  const left = world.mode === 'boss' ? 0 : roomLeft(world, world.roomIndex);
+  const left = world.mode === 'boss' ? 0 : roomLeft(world.roomIndex);
   if (halfW * 2 < viewW) {
     world.camera.x = clamp(world.camera.x, left + halfW, left + viewW - halfW);
   } else {
@@ -75,8 +77,15 @@ export function isDoorOpen(world: GameWorld, boundary: number) {
   return world.roomCleared[boundary - 1];
 }
 
-export function roomBounds(world: GameWorld) {
-  const left = roomLeft(world, world.roomIndex);
+export interface RoomBounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+export function roomBounds(world: GameWorld): RoomBounds {
+  const left = roomLeft(world.roomIndex);
   return {
     left: left + WALL_PAD,
     right: left + ROOM_SIZE - WALL_PAD,

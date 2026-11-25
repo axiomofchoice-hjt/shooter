@@ -1,3 +1,5 @@
+/** Particles, floaters and short-lived visual effects. */
+
 import { TAU, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 

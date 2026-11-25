@@ -25,6 +25,7 @@
 ### 调整
 
 - 拆分 8000 行的 `src/game/Game.ts`：可变状态集中到 `GameWorld`，模拟按子系统拆进 `systems/`，渲染拆进 `render/`，`Game.ts` 只保留画布生命周期、主循环与输入门面；数值、配置与行为不变
+- 继续拆分系统内的超长函数：`updatePlayer`、`updateBullets`、`updateEnemies`、`updateHomings`、`drawEnemies`、`drawPlayer`、`drawFloor`、`drawBombers`、`drawFlamer` 等按单一职责拆成小函数，单个函数控制在 80 行以内；行为与数值不变
 - 抛物枪的抛物物品加速度从 1200px/s² 降到 900px/s²：弧线更平缓、物品能飞得更远一点，回到玩家身边也更慢
 - 连射追踪炮的 3 枚追踪弹初始朝向改为相隔 60°（左右各偏 60°，合计 120° 扇形）
 - 连射追踪炮的追踪弹速度降到 700px/s，转向曲率调大：保留明显弧线的同时，外侧两枚能收拢到目标，不再绕着目标打转

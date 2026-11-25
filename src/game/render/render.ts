@@ -1,8 +1,11 @@
+/** Frame render orchestration. */
+
 import { rand } from '../core/math';
 import type { GameWorld } from '../core/world';
-import { drawDashGhosts, drawEnemies, drawOrbs, drawPlayer, drawTurrets } from './entities';
+import { drawEnemies } from './enemies';
 import { drawAutoTarget, drawFloaters, drawOverlayEffects, drawParticles } from './fx';
 import { drawBanner, drawMenuAtmosphere } from './overlay';
+import { drawDashGhosts, drawPlayer } from './player';
 import {
   drawBlasts,
   drawBullets,
@@ -13,15 +16,15 @@ import {
   drawStormDarts,
 } from './projectiles';
 import {
-  drawBackdrop,
   drawBomberShadows,
   drawFireRings,
-  drawFloor,
   drawPickups,
   drawPortal,
   drawTelegraphs,
   drawWeaponRange,
-} from './scene';
+} from './props';
+import { drawBackdrop, drawFloor } from './scene';
+import { drawOrbs, drawTurrets } from './turrets';
 import {
   drawArcs,
   drawBomberStatus,

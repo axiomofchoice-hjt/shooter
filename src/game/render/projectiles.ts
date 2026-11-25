@@ -1,3 +1,5 @@
+/** Bullets, missiles and shockwaves. */
+
 import type { Bullet } from '../core/entities';
 import { TAU, clamp, withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';
@@ -126,7 +128,7 @@ export function drawStormDarts(world: GameWorld) {
 }
 
 /** Concussion shell: a glowing orb with a spinning containment ring. */
-export function drawShockShot(world: GameWorld, bullet: Bullet) {
+function drawShockShot(world: GameWorld, bullet: Bullet) {
   const ctx = world.ctx;
   const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
   const dirX = bullet.vx / speed;
@@ -207,7 +209,7 @@ export function drawShockwaves(world: GameWorld) {
 }
 
 /** Seeker missile: curved trail plus a small arrowhead pointing where it flies. */
-export function drawMissile(world: GameWorld, bullet: Bullet) {
+function drawMissile(world: GameWorld, bullet: Bullet) {
   const ctx = world.ctx;
   const trail = bullet.trail ?? [];
   if (trail.length > 1) {

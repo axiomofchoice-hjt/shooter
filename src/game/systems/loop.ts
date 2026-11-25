@@ -1,8 +1,11 @@
+/** Per-frame update scheduling and FPS sampling. */
+
 import { PLAYER_START_ANGLE, ROOM_SIZE } from '../core/config';
 import type { GameWorld } from '../core/world';
 import { finishBossFight } from './boss';
 import { updateBullets, updateEnemyBullets } from './combat';
-import { updateEnemies, updateHomings, updateShells } from './enemies';
+import { updateEnemies } from './enemies';
+import { updateHomings, updateShells } from './enemyProjectiles';
 import { updateFloaters, updateFx, updateParticles } from './fx';
 import { emitHud } from './hud';
 import { updatePickups } from './pickups';

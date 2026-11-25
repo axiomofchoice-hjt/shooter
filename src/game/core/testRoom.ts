@@ -1,3 +1,5 @@
+/** Validates the weapon / enemy selections for the test room. */
+
 import type { TestEnemyKind, WeaponId } from '../types';
 import { TEST_ENEMY_KINDS } from '../types';
 import { ALL_WEAPONS } from '../weapons';

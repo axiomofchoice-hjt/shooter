@@ -1,3 +1,6 @@
+/** Weapon effects, bombers and readiness rings. */
+
+import type { Bomb, Bomber, Player } from '../core/entities';
 import { TAU, clamp, rand, withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';
 import { recycleBoltInFlight } from '../systems/world';
@@ -31,120 +34,132 @@ export function drawRecycleStatus(world: GameWorld) {
 /** Falling bombs and the plane itself, above the battlefield. */
 export function drawBombers(world: GameWorld) {
   if (!world.bombers.length && !world.bombs.length) return;
+  for (const bomb of world.bombs) drawBomb(world, bomb);
+  for (const bomber of world.bombers) drawBomber(world, bomber);
+}
+
+function drawBomb(world: GameWorld, bomb: Bomb) {
   const ctx = world.ctx;
+  const t = clamp(bomb.age / Math.max(0.001, bomb.fuse), 0, 1);
+  const x = bomb.startX + (bomb.x - bomb.startX) * t;
+  const y = bomb.startY + (bomb.y - bomb.startY) * t;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+  ctx.beginPath();
+  ctx.ellipse(bomb.x, bomb.y, 4, 2.2, 0, 0, TAU);
+  ctx.fill();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = withAlpha('#ffd166', 0.8);
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(bomb.x, bomb.y, 5 + t * 4, 0, TAU);
+  ctx.stroke();
+  ctx.fillStyle = '#ffe9a8';
+  ctx.beginPath();
+  ctx.arc(x, y, 2.2, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
 
-  for (const bomb of world.bombs) {
-    const t = clamp(bomb.age / Math.max(0.001, bomb.fuse), 0, 1);
-    const x = bomb.startX + (bomb.x - bomb.startX) * t;
-    const y = bomb.startY + (bomb.y - bomb.startY) * t;
-    ctx.save();
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+function drawBomber(world: GameWorld, bomber: Bomber) {
+  if (bomber.elapsed < bomber.callIn) return;
+  const travelled = (bomber.elapsed - bomber.callIn) * bomber.speed;
+  if (travelled > bomber.length) return;
+  const ctx = world.ctx;
+  const x = bomber.startX + bomber.dirX * travelled;
+  const y = bomber.startY + bomber.dirY * travelled;
+  const angle = Math.atan2(bomber.dirY, bomber.dirX);
+  const bob = Math.sin(world.ambientTime * 7 + bomber.seed) * 1.6;
+
+  ctx.save();
+  ctx.translate(x, y - 22 + bob);
+  ctx.rotate(angle);
+  drawBomberExhaust(world, bomber);
+  drawBomberBody(world, bomber);
+  ctx.restore();
+}
+
+function drawBomberExhaust(world: GameWorld, bomber: Bomber) {
+  const ctx = world.ctx;
+  ctx.globalCompositeOperation = 'lighter';
+  const exhaust = ctx.createLinearGradient(-58, 0, -16, 0);
+  exhaust.addColorStop(0, 'rgba(255, 159, 28, 0)');
+  exhaust.addColorStop(1, withAlpha(bomber.color, 0.3));
+  ctx.fillStyle = exhaust;
+  for (const side of [-1, 1]) {
     ctx.beginPath();
-    ctx.ellipse(bomb.x, bomb.y, 4, 2.2, 0, 0, TAU);
+    ctx.moveTo(-18, side * 10 - 2);
+    ctx.lineTo(
+      -58,
+      side * 10 + Math.sin(world.ambientTime * 20 + bomber.seed) * 2,
+    );
+    ctx.lineTo(-18, side * 10 + 3);
+    ctx.closePath();
     ctx.fill();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.strokeStyle = withAlpha('#ffd166', 0.8);
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.arc(bomb.x, bomb.y, 5 + t * 4, 0, TAU);
-    ctx.stroke();
-    ctx.fillStyle = '#ffe9a8';
-    ctx.beginPath();
-    ctx.arc(x, y, 2.2, 0, TAU);
-    ctx.fill();
-    ctx.restore();
   }
+  ctx.globalCompositeOperation = 'source-over';
+}
 
-  for (const bomber of world.bombers) {
-    if (bomber.elapsed < bomber.callIn) continue;
-    const travelled = (bomber.elapsed - bomber.callIn) * bomber.speed;
-    if (travelled > bomber.length) continue;
-    const x = bomber.startX + bomber.dirX * travelled;
-    const y = bomber.startY + bomber.dirY * travelled;
-    const angle = Math.atan2(bomber.dirY, bomber.dirX);
-    const bob = Math.sin(world.ambientTime * 7 + bomber.seed) * 1.6;
-
-    ctx.save();
-    ctx.translate(x, y - 22 + bob);
-    ctx.rotate(angle);
-    ctx.globalCompositeOperation = 'lighter';
-    const exhaust = ctx.createLinearGradient(-58, 0, -16, 0);
-    exhaust.addColorStop(0, 'rgba(255, 159, 28, 0)');
-    exhaust.addColorStop(1, withAlpha(bomber.color, 0.3));
-    ctx.fillStyle = exhaust;
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(-18, side * 10 - 2);
-      ctx.lineTo(
-        -58,
-        side * 10 + Math.sin(world.ambientTime * 20 + bomber.seed) * 2,
-      );
-      ctx.lineTo(-18, side * 10 + 3);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.globalCompositeOperation = 'source-over';
-
-    ctx.fillStyle = '#252a36';
-    ctx.strokeStyle = withAlpha(bomber.color, 0.9);
-    ctx.lineWidth = 1.4;
-    // Swept wings.
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(8, side * 4);
-      ctx.lineTo(-18, side * 30);
-      ctx.lineTo(-28, side * 30);
-      ctx.lineTo(-12, side * 4);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    }
-
-    // Tail fins.
-    ctx.fillStyle = '#2e3441';
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(-22, side * 4);
-      ctx.lineTo(-34, side * 14);
-      ctx.lineTo(-38, side * 13);
-      ctx.lineTo(-28, side * 3);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    }
-
-    // Fuselage.
-    ctx.fillStyle = '#343b4a';
+function drawBomberBody(world: GameWorld, bomber: Bomber) {
+  const ctx = world.ctx;
+  ctx.fillStyle = '#252a36';
+  ctx.strokeStyle = withAlpha(bomber.color, 0.9);
+  ctx.lineWidth = 1.4;
+  // Swept wings.
+  for (const side of [-1, 1]) {
     ctx.beginPath();
-    ctx.moveTo(34, 0);
-    ctx.lineTo(12, -7);
-    ctx.lineTo(-22, -6);
-    ctx.lineTo(-30, 0);
-    ctx.lineTo(-22, 6);
-    ctx.lineTo(12, 7);
+    ctx.moveTo(8, side * 4);
+    ctx.lineTo(-18, side * 30);
+    ctx.lineTo(-28, side * 30);
+    ctx.lineTo(-12, side * 4);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+  }
 
-    // Cockpit and engine lights.
-    ctx.fillStyle = '#bfe8ff';
+  // Tail fins.
+  ctx.fillStyle = '#2e3441';
+  for (const side of [-1, 1]) {
     ctx.beginPath();
-    ctx.ellipse(15, 0, 7, 3.2, 0, 0, TAU);
+    ctx.moveTo(-22, side * 4);
+    ctx.lineTo(-34, side * 14);
+    ctx.lineTo(-38, side * 13);
+    ctx.lineTo(-28, side * 3);
+    ctx.closePath();
     ctx.fill();
-    ctx.globalCompositeOperation = 'lighter';
-    for (const side of [-1, 1]) {
-      ctx.fillStyle = withAlpha(bomber.color, 0.9);
-      ctx.beginPath();
-      ctx.arc(-19, side * 12, 2.6, 0, TAU);
-      ctx.fill();
-    }
-    if (Math.sin(world.ambientTime * 9 + bomber.seed) > 0.2) {
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(-30, 0, 1.6, 0, TAU);
-      ctx.fill();
-    }
-    ctx.restore();
+    ctx.stroke();
+  }
+
+  // Fuselage.
+  ctx.fillStyle = '#343b4a';
+  ctx.beginPath();
+  ctx.moveTo(34, 0);
+  ctx.lineTo(12, -7);
+  ctx.lineTo(-22, -6);
+  ctx.lineTo(-30, 0);
+  ctx.lineTo(-22, 6);
+  ctx.lineTo(12, 7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Cockpit and engine lights.
+  ctx.fillStyle = '#bfe8ff';
+  ctx.beginPath();
+  ctx.ellipse(15, 0, 7, 3.2, 0, 0, TAU);
+  ctx.fill();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = withAlpha(bomber.color, 0.9);
+    ctx.beginPath();
+    ctx.arc(-19, side * 12, 2.6, 0, TAU);
+    ctx.fill();
+  }
+  if (Math.sin(world.ambientTime * 9 + bomber.seed) > 0.2) {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(-30, 0, 1.6, 0, TAU);
+    ctx.fill();
   }
 }
 
@@ -269,26 +284,46 @@ export function drawFlamer(world: GameWorld) {
   const time = world.ambientTime;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
+  drawFlameCone(world, player, half, range, time);
+  drawFlameTongues(world, player, half, range, time);
+  drawFlameCore(world, player, half, range, time);
+  ctx.restore();
+}
 
-  const conePath = (spread: number, length: number, wobbleScale: number) => {
-    const steps = 14;
-    ctx.beginPath();
-    ctx.moveTo(player.x, player.y);
-    for (let i = 0; i <= steps; i++) {
-      const angle = player.angle - spread + (i / steps) * spread * 2;
-      const wobble =
-        1 +
-        Math.sin(time * 24 + i * 1.9) * 0.03 * wobbleScale +
-        Math.sin(time * 43 + i * 0.7) * 0.015 * wobbleScale;
-      const radius = length * wobble;
-      ctx.lineTo(
-        player.x + Math.cos(angle) * radius,
-        player.y + Math.sin(angle) * radius,
-      );
-    }
-    ctx.closePath();
-  };
+function flameConePath(
+  ctx: CanvasRenderingContext2D,
+  player: Player,
+  time: number,
+  spread: number,
+  length: number,
+  wobbleScale: number,
+) {
+  const steps = 14;
+  ctx.beginPath();
+  ctx.moveTo(player.x, player.y);
+  for (let i = 0; i <= steps; i++) {
+    const angle = player.angle - spread + (i / steps) * spread * 2;
+    const wobble =
+      1 +
+      Math.sin(time * 24 + i * 1.9) * 0.03 * wobbleScale +
+      Math.sin(time * 43 + i * 0.7) * 0.015 * wobbleScale;
+    const radius = length * wobble;
+    ctx.lineTo(
+      player.x + Math.cos(angle) * radius,
+      player.y + Math.sin(angle) * radius,
+    );
+  }
+  ctx.closePath();
+}
 
+function drawFlameCone(
+  world: GameWorld,
+  player: Player,
+  half: number,
+  range: number,
+  time: number,
+) {
+  const ctx = world.ctx;
   const gradient = ctx.createRadialGradient(
     player.x,
     player.y,
@@ -302,12 +337,21 @@ export function drawFlamer(world: GameWorld) {
   gradient.addColorStop(0.5, 'rgba(255, 160, 75, 0.17)');
   gradient.addColorStop(0.85, 'rgba(255, 90, 30, 0.06)');
   gradient.addColorStop(1, 'rgba(255, 60, 20, 0)');
-  conePath(half, range, 1);
+  flameConePath(ctx, player, time, half, range, 1);
   ctx.fillStyle = gradient;
   ctx.fill();
+}
 
-  // Overlapping flame tongues give the cone moving texture instead of a
-  // flat spotlight wedge.
+/** Overlapping flame tongues give the cone moving texture instead of a flat
+ * spotlight wedge. */
+function drawFlameTongues(
+  world: GameWorld,
+  player: Player,
+  half: number,
+  range: number,
+  time: number,
+) {
+  const ctx = world.ctx;
   for (let i = 0; i < 8; i++) {
     const lane = i / 7 - 0.5;
     const angle =
@@ -346,8 +390,17 @@ export function drawFlamer(world: GameWorld) {
     ctx.fill();
     ctx.restore();
   }
+}
 
-  // Hotter inner tongue keeps the middle of the fan brighter.
+/** Hotter inner tongue keeps the middle of the fan brighter. */
+function drawFlameCore(
+  world: GameWorld,
+  player: Player,
+  half: number,
+  range: number,
+  time: number,
+) {
+  const ctx = world.ctx;
   const inner = ctx.createRadialGradient(
     player.x,
     player.y,
@@ -359,10 +412,9 @@ export function drawFlamer(world: GameWorld) {
   inner.addColorStop(0, 'rgba(255, 255, 255, 0.38)');
   inner.addColorStop(0.45, 'rgba(255, 232, 170, 0.14)');
   inner.addColorStop(1, 'rgba(255, 170, 90, 0)');
-  conePath(half * 0.45, range * 0.72, 1.5);
+  flameConePath(ctx, player, time, half * 0.45, range * 0.72, 1.5);
   ctx.fillStyle = inner;
   ctx.fill();
-  ctx.restore();
 }
 
 /** Piercing laser flashes: soft glow, colored core and white hot center. */

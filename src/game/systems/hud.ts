@@ -1,3 +1,5 @@
+/** Builds the HUD snapshot for React. */
+
 import { DODGE_COOLDOWN, DUNGEON_ROOMS, SECONDARY_COOLDOWN } from '../core/config';
 import { clamp } from '../core/math';
 import type { GameWorld } from '../core/world';

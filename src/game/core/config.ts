@@ -1,3 +1,5 @@
+/** Gameplay tuning and visual constants. */
+
 // Dungeon layout: five 1000x1000 rooms in a straight horizontal line.
 export const ROOM_SIZE = 1000;
 export const DUNGEON_ROOMS = 5;

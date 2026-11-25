@@ -1,3 +1,5 @@
+/** Input normalisation and reset. */
+
 import type { GameWorld } from '../core/world';
 
 export function resetInputState(world: GameWorld) {

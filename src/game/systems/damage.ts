@@ -1,3 +1,5 @@
+/** Damage application, deaths, pickups and player hits. */
+
 import { PLAYER_COLOR } from '../core/config';
 import type { Enemy, Turret } from '../core/entities';
 import { rand } from '../core/math';
@@ -81,6 +83,18 @@ export function damageTurret(world: GameWorld, turret: Turret, damage: number) {
   world.shake = Math.max(world.shake, 3);
 }
 
+function killShake(enemy: Enemy) {
+  if (enemy.kind === 'boss') return 20;
+  if (enemy.kind === 'tank') return 7;
+  return 3.2;
+}
+
+function killBurstCount(enemy: Enemy) {
+  if (enemy.kind === 'boss') return 60;
+  if (enemy.kind === 'tank') return 34;
+  return 18;
+}
+
 export function damageEnemy(
   world: GameWorld,
   enemy: Enemy,
@@ -119,16 +133,14 @@ export function damageEnemy(
     const points = Math.round(enemy.score * multiplier);
     world.score += points;
     world.killFlash = Math.max(world.killFlash, 0.35);
-    world.shake = Math.max(
-      world.shake,
-      enemy.kind === 'boss' ? 20 : enemy.kind === 'tank' ? 7 : 3.2,
-    );
+    world.shake = Math.max(world.shake, killShake(enemy));
     world.sfx.play('kill');
-    spawnBurst(world,
+    spawnBurst(
+      world,
       enemy.x,
       enemy.y,
       enemy.color,
-      enemy.kind === 'boss' ? 60 : enemy.kind === 'tank' ? 34 : 18,
+      killBurstCount(enemy),
       250,
       0.65,
     );
@@ -154,7 +166,7 @@ export function damageEnemy(
  * Training dummy: takes visible damage but never awards kills, score, combo
  * or loot. When it breaks it simply waits, then a fresh one is set up.
  */
-export function damageDummy(
+function damageDummy(
   world: GameWorld,
   enemy: Enemy,
   damage: number,

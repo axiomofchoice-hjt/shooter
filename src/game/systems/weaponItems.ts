@@ -1,3 +1,5 @@
+/** Storm darts, lobbed items, bombers and recycler bolts. */
+
 import {
   AUTOAIM_RANGE,
   LOB_ACCEL,
@@ -121,7 +123,7 @@ export function updateStormDarts(world: GameWorld, dt: number) {
   }
 }
 
-export function stormPulse(world: GameWorld, dart: StormDart) {
+function stormPulse(world: GameWorld, dart: StormDart) {
   // No expanding blast ring here: the zap itself is the electric arcs and
   // sparks, not a shockwave.
   spawnBurst(world, dart.x, dart.y, dart.color, 7, 120, 0.22);
@@ -172,7 +174,7 @@ export function registerDropHit(
  * position at the hit moment then bends the path into a parabola and pulls
  * the item back. The actual pickup effect is still being designed.
  */
-export function spawnLobItem(world: GameWorld, x: number, y: number, color: string) {
+function spawnLobItem(world: GameWorld, x: number, y: number, color: string) {
   if (world.lobItems.length >= LOB_MAX) return;
   const player = world.player;
   let dx = player.x - x;
@@ -213,7 +215,7 @@ export function spawnLobItem(world: GameWorld, x: number, y: number, color: stri
   spawnBurst(world, x, y, color, 10, 150, 0.35);
 }
 
-export function collectLobItem(world: GameWorld, item: LobItem) {
+function collectLobItem(world: GameWorld, item: LobItem) {
   spawnBurst(world, item.x, item.y, item.color, 18, 220, 0.45);
   spawnBurst(world, item.x, item.y, '#fff4cf', 6, 140, 0.3);
   world.shockwaves.push({
@@ -417,7 +419,7 @@ export function updateBombers(world: GameWorld, dt: number) {
 }
 
 /** Drop one bomb from the plane, with a little lateral scatter. */
-export function dropBomb(world: GameWorld, bomber: Bomber, x: number, y: number) {
+function dropBomb(world: GameWorld, bomber: Bomber, x: number, y: number) {
   const spec = bomber.spec;
   // Bombs keep the plane's forward speed, so their impact point is slightly
   // ahead of where they were released.
@@ -438,7 +440,7 @@ export function dropBomb(world: GameWorld, bomber: Bomber, x: number, y: number)
   });
 }
 
-export function explodeBomb(world: GameWorld, bomb: Bomb) {
+function explodeBomb(world: GameWorld, bomb: Bomb) {
   const spec = bomb.spec;
   world.shockwaves.push({
     x: bomb.x,
@@ -479,7 +481,7 @@ export function explodeBomb(world: GameWorld, bomb: Bomb) {
   world.sfx.play('bomb');
 }
 
-export function tickFireRing(world: GameWorld, ring: FireRing) {
+function tickFireRing(world: GameWorld, ring: FireRing) {
   ring.pulse = 1;
   for (const enemy of world.enemies) {
     if (enemy.dead) continue;

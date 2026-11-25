@@ -1,13 +1,18 @@
+/** Small math and colour helpers shared by simulation and rendering. */
+
 export const TAU = Math.PI * 2;
 
-export const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-export const rand = (min: number, max: number) => min + Math.random() * (max - min);
-export const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by);
+export const clamp = (v: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, v));
+export const rand = (min: number, max: number) =>
+  min + Math.random() * (max - min);
+export const dist = (ax: number, ay: number, bx: number, by: number) =>
+  Math.hypot(ax - bx, ay - by);
 
 // Colours are rebuilt hundreds of times per frame; the conversion is pure, so
 // memoise it instead of allocating a handful of strings on every call. Alphas
 // are quantised to a thousandth so animated fades reuse the same entries.
-export const alphaCache = new Map<string, string>();
+const alphaCache = new Map<string, string>();
 export const withAlpha = (hex: string, alpha: number) => {
   const a = Math.round(alpha * 1000) / 1000;
   const key = `${hex}|${a}`;

@@ -1,3 +1,5 @@
+/** Flamer cone damage and particles. */
+
 import { FLAME_TICK } from '../core/config';
 import { angleDelta, clamp, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
@@ -26,7 +28,7 @@ export function updateFlamer(world: GameWorld, dt: number) {
   }
 }
 
-export function burnFlamerCone(
+function burnFlamerCone(
   world: GameWorld,
   spec: WeaponSpec,
   range: number,
@@ -47,7 +49,7 @@ export function burnFlamerCone(
   }
 }
 
-export function spawnFlamerParticles(
+function spawnFlamerParticles(
   world: GameWorld,
   spec: WeaponSpec,
   range: number,

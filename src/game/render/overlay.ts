@@ -1,3 +1,5 @@
+/** Banner and menu atmosphere overlays. */
+
 import { withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';
 
@@ -38,7 +40,9 @@ export function drawBanner(world: GameWorld) {
   ctx.fillStyle = withAlpha(banner.color, 0.16);
   ctx.fillRect(world.width / 2 - 3, y - 3, 6, 6);
 
-  ctx.font = `800 ${titleSize}px "Arial Narrow", "DIN Condensed", ui-sans-serif, system-ui, sans-serif`;
+  ctx.font =
+    `800 ${titleSize}px "Arial Narrow", "DIN Condensed", ` +
+    'ui-sans-serif, system-ui, sans-serif';
   ctx.fillStyle = '#eaffff';
   ctx.shadowColor = banner.color;
   ctx.shadowBlur = 24;

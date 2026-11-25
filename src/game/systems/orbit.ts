@@ -1,3 +1,5 @@
+/** Orbit guards: radius, spin-up and contact damage. */
+
 import { TAU, dist } from '../core/math';
 import type { GameWorld } from '../core/world';
 import type { WeaponSpec } from '../weapons';

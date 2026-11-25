@@ -1,3 +1,5 @@
+/** Enemy stats, attack definitions and behaviour tables. */
+
 import type { EnemyKind } from '../types';
 import {
   BOSS_COLOR,
@@ -9,7 +11,7 @@ import {
   TEST_COLOR,
 } from './config';
 
-export interface EnemyDef {
+interface EnemyDef {
   radius: number;
   hp: number;
   speed: number;
@@ -60,7 +62,7 @@ export interface EnemyAttackDef {
   interval: number;
 }
 
-export interface EnemyBehaviorDef {
+interface EnemyBehaviorDef {
   /** Preferred distance to the player: melee hugs, ranged keeps its space. */
   range: number;
   /** Deliberately slow shuffle speed (px/s) for the straight-line hops. */

@@ -1,3 +1,5 @@
+/** Dungeon rooms, encounters, portal and test-room waves. */
+
 import {
   CLEAR_HEAL,
   DUNGEON_ROOMS,
@@ -11,6 +13,7 @@ import {
   ROOM_SIZE,
   TEST_COLOR,
 } from '../core/config';
+import type { Player } from '../core/entities';
 import { TAU, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 import type { EnemyKind } from '../types';
@@ -23,7 +26,17 @@ import { pickSpawnPoint, spawnDummy, spawnEnemy, updateDummy } from './spawn';
 import { buildDecorations, clampCamera, countCleared, roomBounds } from './world';
 
 export function resetWorld(world: GameWorld) {
-  world.player = {
+  world.player = createPlayer(world);
+  world.camera.x = world.player.x;
+  world.camera.y = world.player.y;
+  resetCombatState(world);
+  resetRunState(world);
+  world.hudTimer = 0;
+  resetInputState(world);
+}
+
+function createPlayer(world: GameWorld): Player {
+  return {
     x: world.mode === 'boss' ? world.worldW / 2 : ROOM_SIZE / 2,
     y: world.worldH / 2,
     vx: 0,
@@ -49,9 +62,10 @@ export function resetWorld(world: GameWorld) {
     weapon: world.mode === 'boss' ? (world.weaponPool[0] ?? 'pulse') : 'pulse',
     dead: false,
   };
-  world.camera.x = world.player.x;
-  world.camera.y = world.player.y;
+}
 
+/** Clear every projectile, effect and summon from the previous run. */
+function resetCombatState(world: GameWorld) {
   world.enemies = [];
   world.dummy = null;
   world.dummyRespawn = 0;
@@ -93,6 +107,10 @@ export function resetWorld(world: GameWorld) {
   world.bossWindup = 0;
   world.bossAttackKind = 'radial';
   world.victoryTimer = 0;
+}
+
+/** Reset score, floor progress and screen-effect timers for a new run. */
+function resetRunState(world: GameWorld) {
   world.score = 0;
   world.kills = 0;
   world.combo = 0;
@@ -113,8 +131,6 @@ export function resetWorld(world: GameWorld) {
   world.dodgeCooldown = 0;
   world.bomberCooldown = 0;
   world.flameTick = 0;
-  world.hudTimer = 0;
-  resetInputState(world);
 }
 
 export function beginTestRoom(world: GameWorld) {
@@ -140,7 +156,7 @@ export function beginTestRoom(world: GameWorld) {
   emitHud(world, true);
 }
 
-export function spawnTestWave(world: GameWorld) {
+function spawnTestWave(world: GameWorld) {
   world.testWave += 1;
   // Wave 1 opens with two, then one more per wave up to a ceiling.
   const count = Math.min(6, world.testWave + 1);
@@ -205,9 +221,9 @@ export function updateDungeon(world: GameWorld, dt: number) {
   updatePortal(world);
 }
 
-export function startEncounter(world: GameWorld, room: number) {
+function startEncounter(world: GameWorld, room: number) {
   world.encounterActive = true;
-  world.spawnQueue = buildEncounter(world, world.floor, room);
+  world.spawnQueue = buildEncounter(world.floor, room);
   world.spawnTimer = 0.55;
   world.telegraphs = [];
   world.banner = {
@@ -221,7 +237,7 @@ export function startEncounter(world: GameWorld, room: number) {
   emitHud(world, true);
 }
 
-export function buildEncounter(_world: GameWorld, floor: number, room: number): EnemyKind[] {
+function buildEncounter(floor: number, room: number): EnemyKind[] {
   const count = Math.min(
     32,
     6 + (floor - 1) * 3 + room * 2 + Math.floor(Math.random() * 3),
@@ -257,7 +273,7 @@ export function buildEncounter(_world: GameWorld, floor: number, room: number): 
   return list;
 }
 
-export function updateEncounter(world: GameWorld, dt: number) {
+function updateEncounter(world: GameWorld, dt: number) {
   world.spawnTimer -= dt;
   if (world.spawnQueue.length > 0 && world.spawnTimer <= 0) {
     const groupSize = Math.min(
@@ -297,7 +313,7 @@ export function updateEncounter(world: GameWorld, dt: number) {
   }
 }
 
-export function clearRoom(world: GameWorld) {
+function clearRoom(world: GameWorld) {
   world.encounterActive = false;
   world.roomCleared[world.roomIndex] = true;
   const cleared = countCleared(world);
@@ -326,7 +342,7 @@ export function clearRoom(world: GameWorld) {
   emitHud(world, true);
 }
 
-export function updatePortal(world: GameWorld) {
+function updatePortal(world: GameWorld) {
   if (countCleared(world) < DUNGEON_ROOMS - 2) return;
   if (world.roomIndex !== DUNGEON_ROOMS - 1) return;
   const reach = PORTAL_RADIUS + world.player.radius;
@@ -335,7 +351,7 @@ export function updatePortal(world: GameWorld) {
   }
 }
 
-export function nextFloor(world: GameWorld) {
+function nextFloor(world: GameWorld) {
   world.floor += 1;
   world.roomCleared = [false, false, false, false, false];
   world.roomIndex = 0;

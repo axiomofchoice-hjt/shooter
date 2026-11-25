@@ -1,3 +1,5 @@
+/** Loot drops and pickup collection. */
+
 import type { Enemy } from '../core/entities';
 import { clamp, dist } from '../core/math';
 import type { GameWorld } from '../core/world';

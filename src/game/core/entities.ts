@@ -1,3 +1,5 @@
+/** Data shapes for the entities, projectiles and effects in GameWorld. */
+
 import type { EnemyKind, WeaponId } from '../types';
 import type { WeaponSpec } from '../weapons';
 import type { AttackPhase, EnemyAction } from './enemyDefs';
@@ -29,7 +31,7 @@ export interface Player {
   dead: boolean;
 }
 
-export interface EnemyBrain {
+interface EnemyBrain {
   /** Current rotation of actions, re-rolled once it is played through. */
   queue: EnemyAction[];
   index: number;
@@ -329,7 +331,7 @@ export interface Shockwave {
   color: string;
 }
 
-export type BomberSpec = NonNullable<WeaponSpec['bomber']>;
+type BomberSpec = NonNullable<WeaponSpec['bomber']>;
 
 // Plane called in by the carpet bomber. It crosses the room along the aim line
 // and drops bombs the whole way.

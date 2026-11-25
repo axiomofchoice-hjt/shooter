@@ -1,3 +1,5 @@
+/** Player movement, aiming, dodge and trigger dispatch. */
+
 import {
   AUTOAIM_RANGE,
   CARDINAL_DIRS,
@@ -10,7 +12,7 @@ import {
   PLAYER_COLOR,
   ROOM_SIZE,
 } from '../core/config';
-import type { Enemy } from '../core/entities';
+import type { Enemy, Player } from '../core/entities';
 import { angleDelta, clamp, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 import { WEAPONS, nextWeapon, previousWeapon } from '../weapons';
@@ -67,7 +69,8 @@ export function beginDodge(world: GameWorld) {
   world.dashGhostTimer = 0;
   world.shake = Math.max(world.shake, 3.5);
   world.sfx.play('dash');
-  spawnBurst(world,
+  spawnBurst(
+    world,
     player.x - player.dashDirX * 12,
     player.y - player.dashDirY * 12,
     PLAYER_COLOR,
@@ -78,7 +81,7 @@ export function beginDodge(world: GameWorld) {
   emitHud(world, true);
 }
 
-export function confinePlayer(world: GameWorld) {
+function confinePlayer(world: GameWorld) {
   const player = world.player;
   const bounds = roomBounds(world);
   player.y = clamp(player.y, bounds.top + 24, bounds.bottom - 24);
@@ -116,104 +119,14 @@ export function confinePlayer(world: GameWorld) {
 export function updatePlayer(world: GameWorld, dt: number) {
   const player = world.player;
   if (player.dead) return;
-
   const move = readMoveInput(world);
+
   world.secondaryCooldown = Math.max(0, world.secondaryCooldown - dt);
   world.dodgeCooldown = Math.max(0, world.dodgeCooldown - dt);
   player.trailTimer -= dt;
 
-  if (player.dashTime > 0) {
-    // Dash locks the launch direction, even if the stick is released mid-dash.
-    // Scale the last partial frame so the slide covers exactly DASH_DISTANCE.
-    const dashStep = Math.min(dt, player.dashTime);
-    player.dashTime = Math.max(0, player.dashTime - dt);
-    if (player.dashTime === 0) {
-      // The cooldown (and its HUD sweep) only starts once the slide is over,
-      // so the button reads as ready during the dash itself.
-      world.dodgeCooldown = DODGE_COOLDOWN;
-      if (world.dashTrail.life === 0) {
-        world.dashTrail.x1 = world.dashRing.x;
-        world.dashTrail.y1 = world.dashRing.y;
-        world.dashTrail.x2 = player.x;
-        world.dashTrail.y2 = player.y;
-        world.dashTrail.life = world.dashTrail.maxLife;
-      }
-    }
-    const stepScale = dt > 0 ? dashStep / dt : 0;
-    player.vx = player.dashDirX * DASH_SPEED * stepScale;
-    player.vy = player.dashDirY * DASH_SPEED * stepScale;
-    // The slide is movement too: release the stick mid-dodge and the next
-    // dodge still heads where the ship actually travelled.
-    player.lastMoveX = player.dashDirX;
-    player.lastMoveY = player.dashDirY;
-    world.dashGhostTimer -= dt;
-    if (world.dashGhostTimer <= 0) {
-      world.dashGhostTimer = 0.045;
-      world.ghosts.push({
-        x: player.x,
-        y: player.y,
-        angle: player.angle,
-        dirX: player.dashDirX,
-        dirY: player.dashDirY,
-        life: 0.26,
-        maxLife: 0.26,
-      });
-    }
-    if (player.trailTimer <= 0) {
-      player.trailTimer = 0.018;
-      world.particles.push({
-        x: player.x + rand(-4, 4),
-        y: player.y + rand(-4, 4),
-        vx: -player.dashDirX * rand(30, 70) + rand(-10, 10),
-        vy: -player.dashDirY * rand(30, 70) + rand(-10, 10),
-        life: rand(0.16, 0.3),
-        maxLife: 0.3,
-        size: rand(2.5, 5),
-        color: PLAYER_COLOR,
-        drag: 3,
-      });
-    }
-  } else {
-    let moveX = move.x;
-    let moveY = move.y;
-    if (move.magnitude > 1) {
-      moveX /= move.magnitude;
-      moveY /= move.magnitude;
-    }
-
-    // Remember where the player is actually travelling, so a dodge from a
-    // standstill can reuse it after the stick is released.
-    if (move.magnitude > 0.12) {
-      const length = Math.hypot(moveX, moveY);
-      player.lastMoveX = moveX / length;
-      player.lastMoveY = moveY / length;
-    }
-
-    const targetVx = moveX * player.speed;
-    const targetVy = moveY * player.speed;
-    // No inertia: velocity follows the stick exactly, so releasing it stops
-    // the character in the same frame instead of sliding on.
-    player.vx = targetVx;
-    player.vy = targetVy;
-
-    if (
-      (Math.abs(player.vx) > 60 || Math.abs(player.vy) > 60) &&
-      player.trailTimer <= 0
-    ) {
-      player.trailTimer = 0.055;
-      world.particles.push({
-        x: player.x - player.vx * 0.03 + rand(-5, 5),
-        y: player.y - player.vy * 0.03 + rand(-5, 5),
-        vx: -player.vx * 0.08 + rand(-12, 12),
-        vy: -player.vy * 0.08 + rand(-12, 12),
-        life: rand(0.18, 0.36),
-        maxLife: 0.36,
-        size: rand(1.5, 3.2),
-        color: PLAYER_COLOR,
-        drag: 2.5,
-      });
-    }
-  }
+  if (player.dashTime > 0) updateDash(world, player, dt);
+  else updateWalk(world, player, move);
 
   // External impulses (contact hits, blasts) are tracked separately from the
   // stick velocity so they can shove the player without reintroducing drift.
@@ -232,6 +145,116 @@ export function updatePlayer(world: GameWorld, dt: number) {
   player.invuln = Math.max(0, player.invuln - dt);
   player.muzzle = Math.max(0, player.muzzle - dt);
 
+  updateAim(world, player, move, dt);
+  updateTrigger(world, player, dt);
+}
+
+/**
+ * The dash locks the launch direction, even if the stick is released mid-slide.
+ * The last partial frame is scaled so the slide covers exactly DASH_DISTANCE.
+ */
+function updateDash(world: GameWorld, player: Player, dt: number) {
+  const dashStep = Math.min(dt, player.dashTime);
+  player.dashTime = Math.max(0, player.dashTime - dt);
+  if (player.dashTime === 0) {
+    // The cooldown (and its HUD sweep) only starts once the slide is over,
+    // so the button reads as ready during the dash itself.
+    world.dodgeCooldown = DODGE_COOLDOWN;
+    if (world.dashTrail.life === 0) {
+      world.dashTrail.x1 = world.dashRing.x;
+      world.dashTrail.y1 = world.dashRing.y;
+      world.dashTrail.x2 = player.x;
+      world.dashTrail.y2 = player.y;
+      world.dashTrail.life = world.dashTrail.maxLife;
+    }
+  }
+  const stepScale = dt > 0 ? dashStep / dt : 0;
+  player.vx = player.dashDirX * DASH_SPEED * stepScale;
+  player.vy = player.dashDirY * DASH_SPEED * stepScale;
+  // The slide is movement too: release the stick mid-dodge and the next
+  // dodge still heads where the ship actually travelled.
+  player.lastMoveX = player.dashDirX;
+  player.lastMoveY = player.dashDirY;
+  world.dashGhostTimer -= dt;
+  if (world.dashGhostTimer <= 0) {
+    world.dashGhostTimer = 0.045;
+    world.ghosts.push({
+      x: player.x,
+      y: player.y,
+      angle: player.angle,
+      dirX: player.dashDirX,
+      dirY: player.dashDirY,
+      life: 0.26,
+      maxLife: 0.26,
+    });
+  }
+  if (player.trailTimer <= 0) {
+    player.trailTimer = 0.018;
+    world.particles.push({
+      x: player.x + rand(-4, 4),
+      y: player.y + rand(-4, 4),
+      vx: -player.dashDirX * rand(30, 70) + rand(-10, 10),
+      vy: -player.dashDirY * rand(30, 70) + rand(-10, 10),
+      life: rand(0.16, 0.3),
+      maxLife: 0.3,
+      size: rand(2.5, 5),
+      color: PLAYER_COLOR,
+      drag: 3,
+    });
+  }
+}
+
+function updateWalk(
+  world: GameWorld,
+  player: Player,
+  move: { x: number; y: number; magnitude: number },
+) {
+  let moveX = move.x;
+  let moveY = move.y;
+  if (move.magnitude > 1) {
+    moveX /= move.magnitude;
+    moveY /= move.magnitude;
+  }
+
+  // Remember where the player is actually travelling, so a dodge from a
+  // standstill can reuse it after the stick is released.
+  if (move.magnitude > 0.12) {
+    const length = Math.hypot(moveX, moveY);
+    player.lastMoveX = moveX / length;
+    player.lastMoveY = moveY / length;
+  }
+
+  // No inertia: velocity follows the stick exactly, so releasing it stops
+  // the character in the same frame instead of sliding on.
+  player.vx = moveX * player.speed;
+  player.vy = moveY * player.speed;
+
+  if (
+    (Math.abs(player.vx) > 60 || Math.abs(player.vy) > 60) &&
+    player.trailTimer <= 0
+  ) {
+    player.trailTimer = 0.055;
+    world.particles.push({
+      x: player.x - player.vx * 0.03 + rand(-5, 5),
+      y: player.y - player.vy * 0.03 + rand(-5, 5),
+      vx: -player.vx * 0.08 + rand(-12, 12),
+      vy: -player.vy * 0.08 + rand(-12, 12),
+      life: rand(0.18, 0.36),
+      maxLife: 0.36,
+      size: rand(1.5, 3.2),
+      color: PLAYER_COLOR,
+      drag: 2.5,
+    });
+  }
+}
+
+/** Auto-aim, cardinal snapping and laser charge. */
+function updateAim(
+  world: GameWorld,
+  player: Player,
+  move: { x: number; y: number; magnitude: number },
+  dt: number,
+) {
   // Range-limited weapons only auto-aim at targets they can actually lock.
   // Past that ring there is no reticle and no turn: the shot just goes
   // wherever the player is already facing. The salvage cannon has no range
@@ -251,23 +274,25 @@ export function updatePlayer(world: GameWorld, dt: number) {
     player.angle = Math.atan2(move.y, move.x);
   }
 
-  const laserSpec = WEAPONS[player.weapon].laser;
-  if (laserSpec) {
-    // The charge ring stays empty until the attack cooldown is over; only
-    // the part of this frame after the cooldown ends counts.
-    if (player.fireCooldown <= 0) {
-      const cooldownBefore = player.fireCooldown + dt;
-      const chargeDt =
-        cooldownBefore > 0 ? Math.max(0, -player.fireCooldown) : dt;
-      world.laserCharge = Math.min(
-        1,
-        world.laserCharge + chargeDt / laserSpec.chargeTime,
-      );
-    }
-  } else {
+  const laserSpec = equipped.laser;
+  if (!laserSpec) {
     world.laserCharge = 0;
+    return;
   }
+  // The charge ring stays empty until the attack cooldown is over; only
+  // the part of this frame after the cooldown ends counts.
+  if (player.fireCooldown <= 0) {
+    const cooldownBefore = player.fireCooldown + dt;
+    const chargeDt = cooldownBefore > 0 ? Math.max(0, -player.fireCooldown) : dt;
+    world.laserCharge = Math.min(
+      1,
+      world.laserCharge + chargeDt / laserSpec.chargeTime,
+    );
+  }
+}
 
+/** Firing, volley release and the orbit spin-up. */
+function updateTrigger(world: GameWorld, player: Player, dt: number) {
   const firing = world.input.fireKey || world.input.touchFire || world.input.padFire;
   const activeWeapon = WEAPONS[player.weapon];
   if (activeWeapon.volley) {
@@ -284,32 +309,33 @@ export function updatePlayer(world: GameWorld, dt: number) {
     world.volleyShots = 0;
     world.volleyFiring = false;
   }
+
   if (activeWeapon.orbit) {
     // The orbit guards keep circling after the trigger is released: a press
     // starts a timed spin-up, holding simply keeps refilling it.
     updateOrbit(world, dt, firing, activeWeapon);
-  } else {
-    // Leaving the orbit weapon drops whatever spin-up was left.
-    world.orbitActive = 0;
-    world.orbitExpand = Math.max(0, world.orbitExpand - dt * 4);
-    if (firing) {
-      if (activeWeapon.flame) {
-        updateFlamer(world, dt);
-      } else if (player.fireCooldown <= 0) {
-        // The salvage cannon cannot fire again until its bolt has flown all
-        // the way home. `fireCooldown` keeps the minimum interval.
-        const waitingForBolt =
-          activeWeapon.recycle && recycleBoltInFlight(world);
-        const waitingForBomber =
-          activeWeapon.bomber && world.bomberCooldown > 0;
-        if (!waitingForBolt && !waitingForBomber) firePlayerBullet(world);
-      }
-    } else {
-      // Let the next held burst start on a fresh tick instead of waiting out
-      // the remainder of the last one.
-      world.flameTick = 0;
-    }
+    return;
   }
+
+  // Leaving the orbit weapon drops whatever spin-up was left.
+  world.orbitActive = 0;
+  world.orbitExpand = Math.max(0, world.orbitExpand - dt * 4);
+  if (!firing) {
+    // Let the next held burst start on a fresh tick instead of waiting out
+    // the remainder of the last one.
+    world.flameTick = 0;
+    return;
+  }
+  if (activeWeapon.flame) {
+    updateFlamer(world, dt);
+    return;
+  }
+  if (player.fireCooldown > 0) return;
+  // The salvage cannon cannot fire again until its bolt has flown all
+  // the way home. `fireCooldown` keeps the minimum interval.
+  const waitingForBolt = activeWeapon.recycle && recycleBoltInFlight(world);
+  const waitingForBomber = activeWeapon.bomber && world.bomberCooldown > 0;
+  if (!waitingForBolt && !waitingForBomber) firePlayerBullet(world);
 }
 
 /**
@@ -320,7 +346,7 @@ export function updatePlayer(world: GameWorld, dt: number) {
  * The corridor test in pass 1 uses the bullet and enemy radii, so "an enemy
  * in that direction" means "this bullet would hit it", not a loose quadrant.
  */
-export function pickCardinalAngle(
+function pickCardinalAngle(
   world: GameWorld,
   move: { x: number; y: number; magnitude: number },
 ): number {
@@ -353,17 +379,17 @@ export function pickCardinalAngle(
 
   if (bestAxis !== null) return bestAxis;
   if (nearest) {
-    return snapToCardinal(world,
+    return snapToCardinal(
       Math.atan2(nearest.y - player.y, nearest.x - player.x),
     );
   }
   if (move.magnitude > 0.12) {
-    return snapToCardinal(world, Math.atan2(move.y, move.x));
+    return snapToCardinal(Math.atan2(move.y, move.x));
   }
-  return snapToCardinal(world, player.angle);
+  return snapToCardinal(player.angle);
 }
 
-export function snapToCardinal(_world: GameWorld, angle: number): number {
+function snapToCardinal(angle: number): number {
   let best = CARDINAL_DIRS[0].angle;
   let bestDelta = Math.PI;
   for (const dir of CARDINAL_DIRS) {

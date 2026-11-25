@@ -1,3 +1,5 @@
+/** Particles, floaters, targeting and screen effects. */
+
 import { PLAYER_COLOR } from '../core/config';
 import { TAU, clamp, withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';

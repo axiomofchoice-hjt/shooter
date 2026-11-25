@@ -1,3 +1,5 @@
+/** Enemy AI, movement and attack actions. */
+
 import {
   ENEMY_APPROACH_CHANCE,
   ENEMY_IDLE_JITTER,
@@ -7,26 +9,18 @@ import {
   ENEMY_LEG_TIMEOUT,
   ENEMY_RING_MAX,
   ENEMY_RING_MIN,
-  HOMING_BLAST_DAMAGE,
-  HOMING_BLAST_RADIUS,
   HOMING_LIFE,
   HOMING_RADIUS,
   HOMING_SEEK_TIME,
   HOMING_SPEED,
-  HOMING_TRAIL_POINTS,
-  HOMING_TURN_RATE,
   SHELL_FLIGHT_TIME,
   SHELL_RADIUS,
   SHELL_SPEED,
-  SPLIT_BULLET_DAMAGE,
-  SPLIT_BULLET_LIFE,
-  SPLIT_BULLET_SPEED,
-  SPLIT_RING_COUNT,
 } from '../core/config';
 import type { EnemyAction, EnemyAttackDef } from '../core/enemyDefs';
 import { ENEMY_ACTIONS, ENEMY_BEHAVIOR } from '../core/enemyDefs';
-import type { Enemy, EnemyHoming, EnemyShell } from '../core/entities';
-import { TAU, angleDelta, clamp, dist, rand, segmentCircleHit, turnTowards } from '../core/math';
+import type { Enemy } from '../core/entities';
+import { TAU, clamp, dist, rand, segmentCircleHit, turnTowards } from '../core/math';
 import type { GameWorld } from '../core/world';
 import { TURRET } from '../weapons';
 import { updateBossAttack } from './boss';
@@ -34,110 +28,154 @@ import { compactEnemies } from './combat';
 import { damageTurret, playerHit } from './damage';
 import { spawnBurst } from './fx';
 import { enemyAttackPoint, findTauntTurret, turretById } from './turrets';
-import { outOfRoom, roomBounds } from './world';
+import type { RoomBounds } from './world';
+import { roomBounds } from './world';
 
 // ------------------------------------------------------------------ enemies
 export function updateEnemies(world: GameWorld, dt: number) {
-  const player = world.player;
   const bounds = roomBounds(world);
-
   for (const enemy of world.enemies) {
     if (enemy.dead) continue;
     enemy.age += dt;
     enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
     if (enemy.dummy) continue;
-    enemy.attackTimer -= dt;
+    updateEnemy(world, enemy, bounds, dt);
+  }
+  separateEnemies(world);
+  compactEnemies(world);
+}
 
-    const dx = player.x - enemy.x;
-    const dy = player.y - enemy.y;
-    const distance = Math.max(1, Math.hypot(dx, dy));
-    const nx = dx / distance;
-    const ny = dy / distance;
+function updateEnemy(
+  world: GameWorld,
+  enemy: Enemy,
+  bounds: RoomBounds,
+  dt: number,
+) {
+  const player = world.player;
+  enemy.attackTimer -= dt;
 
-    enemy.desiredX = 0;
-    enemy.desiredY = 0;
-    enemy.desiredSpeed = 0;
-    enemy.turnRate = 4;
-    let aimAtPlayer = true;
+  const dx = player.x - enemy.x;
+  const dy = player.y - enemy.y;
+  const distance = Math.max(1, Math.hypot(dx, dy));
+  const nx = dx / distance;
+  const ny = dy / distance;
 
-    if (enemy.kind === 'boss') {
-      enemy.angle = Math.atan2(dy, dx);
-      if (distance > 300) {
-        enemy.desiredX = nx;
-        enemy.desiredY = ny;
-      } else if (distance < 185) {
-        enemy.desiredX = -nx;
-        enemy.desiredY = -ny;
-      } else {
-        const strafe = Math.sin(world.elapsed * 0.9 + enemy.seed) > 0 ? 1 : -1;
-        enemy.desiredX = -ny * strafe * 0.85 + nx * 0.1;
-        enemy.desiredY = nx * strafe * 0.85 + ny * 0.1;
-      }
-      const phase2 = enemy.hp <= enemy.maxHp * 0.5;
-      enemy.desiredSpeed = enemy.speed * (phase2 ? 1.32 : 1);
-      if (!player.dead) updateBossAttack(world, enemy, dt);
-    } else {
-      aimAtPlayer = updateEnemyBrain(world, enemy, dt, distance);
-    }
+  enemy.desiredX = 0;
+  enemy.desiredY = 0;
+  enemy.desiredSpeed = 0;
+  enemy.turnRate = 4;
+  let aimAtPlayer = true;
 
-    const desiredLen = Math.hypot(enemy.desiredX, enemy.desiredY);
-    if (desiredLen > 0.001) {
-      enemy.desiredX /= desiredLen;
-      enemy.desiredY /= desiredLen;
-    } else {
-      enemy.desiredX = 0;
-      enemy.desiredY = 0;
-    }
-    const turn = 1 - Math.exp(-enemy.turnRate * dt);
-    enemy.vx += (enemy.desiredX * enemy.desiredSpeed - enemy.vx) * turn;
-    enemy.vy += (enemy.desiredY * enemy.desiredSpeed - enemy.vy) * turn;
-    enemy.x += (enemy.vx + enemy.knockX) * dt;
-    enemy.y += (enemy.vy + enemy.knockY) * dt;
-    const knockDecay = Math.exp(-5 * dt);
-    enemy.knockX *= knockDecay;
-    enemy.knockY *= knockDecay;
-    if (Math.abs(enemy.knockX) < 0.5) enemy.knockX = 0;
-    if (Math.abs(enemy.knockY) < 0.5) enemy.knockY = 0;
-    enemy.x = clamp(enemy.x, bounds.left + 18, bounds.right - 18);
-    enemy.y = clamp(enemy.y, bounds.top + 18, bounds.bottom - 18);
-
-    if (enemy.kind !== 'boss') {
-      if (aimAtPlayer) {
-        const target = enemyAttackPoint(world, enemy);
-        enemy.angle = turnTowards(
-          enemy.angle,
-          Math.atan2(target.y - enemy.y, target.x - enemy.x),
-          1 - Math.exp(-10 * dt),
-        );
-      } else if (Math.hypot(enemy.vx, enemy.vy) > 26) {
-        enemy.angle = turnTowards(
-          enemy.angle,
-          Math.atan2(enemy.vy, enemy.vx),
-          1 - Math.exp(-6 * dt),
-        );
-      }
-    }
-
-    if (
-      enemy.age > 0.18 &&
-      !enemy.dummy &&
-      !player.dead &&
-      distance < enemy.radius + player.radius - 2
-    ) {
-      if (player.invuln <= 0) {
-        playerHit(world, enemy.damage);
-        const push = 140;
-        enemy.vx -= nx * push;
-        enemy.vy -= ny * push;
-        // Impact force is an external impulse, so it still shoves the player
-        // even though normal movement has no inertia.
-        player.knockX += nx * 240;
-        player.knockY += ny * 240;
-      }
-    }
+  if (enemy.kind === 'boss') {
+    moveBoss(world, enemy, nx, ny, distance, dt);
+  } else {
+    aimAtPlayer = updateEnemyBrain(world, enemy, dt, distance);
   }
 
-  // Soft separation keeps the horde readable.
+  const desiredLen = Math.hypot(enemy.desiredX, enemy.desiredY);
+  if (desiredLen > 0.001) {
+    enemy.desiredX /= desiredLen;
+    enemy.desiredY /= desiredLen;
+  } else {
+    enemy.desiredX = 0;
+    enemy.desiredY = 0;
+  }
+  applyEnemyMotion(enemy, bounds, dt);
+  faceEnemy(world, enemy, aimAtPlayer, dt);
+  hitPlayerOnContact(world, enemy, nx, ny, distance);
+}
+
+function moveBoss(
+  world: GameWorld,
+  enemy: Enemy,
+  nx: number,
+  ny: number,
+  distance: number,
+  dt: number,
+) {
+  enemy.angle = Math.atan2(world.player.y - enemy.y, world.player.x - enemy.x);
+  if (distance > 300) {
+    enemy.desiredX = nx;
+    enemy.desiredY = ny;
+  } else if (distance < 185) {
+    enemy.desiredX = -nx;
+    enemy.desiredY = -ny;
+  } else {
+    const strafe = Math.sin(world.elapsed * 0.9 + enemy.seed) > 0 ? 1 : -1;
+    enemy.desiredX = -ny * strafe * 0.85 + nx * 0.1;
+    enemy.desiredY = nx * strafe * 0.85 + ny * 0.1;
+  }
+  const phase2 = enemy.hp <= enemy.maxHp * 0.5;
+  enemy.desiredSpeed = enemy.speed * (phase2 ? 1.32 : 1);
+  if (!world.player.dead) updateBossAttack(world, enemy, dt);
+}
+
+function applyEnemyMotion(
+  enemy: Enemy,
+  bounds: RoomBounds,
+  dt: number,
+) {
+  const turn = 1 - Math.exp(-enemy.turnRate * dt);
+  enemy.vx += (enemy.desiredX * enemy.desiredSpeed - enemy.vx) * turn;
+  enemy.vy += (enemy.desiredY * enemy.desiredSpeed - enemy.vy) * turn;
+  enemy.x += (enemy.vx + enemy.knockX) * dt;
+  enemy.y += (enemy.vy + enemy.knockY) * dt;
+  const knockDecay = Math.exp(-5 * dt);
+  enemy.knockX *= knockDecay;
+  enemy.knockY *= knockDecay;
+  if (Math.abs(enemy.knockX) < 0.5) enemy.knockX = 0;
+  if (Math.abs(enemy.knockY) < 0.5) enemy.knockY = 0;
+  enemy.x = clamp(enemy.x, bounds.left + 18, bounds.right - 18);
+  enemy.y = clamp(enemy.y, bounds.top + 18, bounds.bottom - 18);
+}
+
+function faceEnemy(world: GameWorld, enemy: Enemy, aimAtPlayer: boolean, dt: number) {
+  if (enemy.kind === 'boss') return;
+  if (aimAtPlayer) {
+    const target = enemyAttackPoint(world, enemy);
+    enemy.angle = turnTowards(
+      enemy.angle,
+      Math.atan2(target.y - enemy.y, target.x - enemy.x),
+      1 - Math.exp(-10 * dt),
+    );
+  } else if (Math.hypot(enemy.vx, enemy.vy) > 26) {
+    enemy.angle = turnTowards(
+      enemy.angle,
+      Math.atan2(enemy.vy, enemy.vx),
+      1 - Math.exp(-6 * dt),
+    );
+  }
+}
+
+function hitPlayerOnContact(
+  world: GameWorld,
+  enemy: Enemy,
+  nx: number,
+  ny: number,
+  distance: number,
+) {
+  const player = world.player;
+  if (
+    enemy.age <= 0.18 ||
+    enemy.dummy ||
+    player.dead ||
+    distance >= enemy.radius + player.radius - 2
+  ) {
+    return;
+  }
+  if (player.invuln > 0) return;
+  playerHit(world, enemy.damage);
+  const push = 140;
+  enemy.vx -= nx * push;
+  enemy.vy -= ny * push;
+  // Impact force is an external impulse, so it still shoves the player
+  // even though normal movement has no inertia.
+  player.knockX += nx * 240;
+  player.knockY += ny * 240;
+}
+
+/** Soft separation keeps the horde readable. */
+function separateEnemies(world: GameWorld) {
   for (let i = 0; i < world.enemies.length; i++) {
     const a = world.enemies[i];
     if (a.dead) continue;
@@ -160,15 +198,13 @@ export function updateEnemies(world: GameWorld, dt: number) {
       }
     }
   }
-
-  compactEnemies(world);
 }
 
 /**
  * Advances the enemy's move / attack / idle rotation. Returns true while the
  * enemy is attacking, which makes it face the player instead of its heading.
  */
-export function updateEnemyBrain(
+function updateEnemyBrain(
   world: GameWorld,
   enemy: Enemy,
   dt: number,
@@ -178,7 +214,7 @@ export function updateEnemyBrain(
   let guard = 0;
   while (guard++ < 8) {
     if (brain.index >= brain.queue.length) {
-      brain.queue = rollEnemyActions(world);
+      brain.queue = rollEnemyActions();
       brain.index = 0;
       brain.started = false;
     }
@@ -196,7 +232,7 @@ export function updateEnemyBrain(
 }
 
 /** One move, one attack and two idle actions in a random order. */
-export function rollEnemyActions(_world: GameWorld): EnemyAction[] {
+function rollEnemyActions(): EnemyAction[] {
   const queue = ENEMY_ACTIONS.slice();
   for (let i = queue.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -207,7 +243,7 @@ export function rollEnemyActions(_world: GameWorld): EnemyAction[] {
   return queue;
 }
 
-export function beginEnemyAction(world: GameWorld, enemy: Enemy, action: EnemyAction) {
+function beginEnemyAction(world: GameWorld, enemy: Enemy, action: EnemyAction) {
   if (action === 'move') {
     beginEnemyMove(world, enemy);
     return;
@@ -235,14 +271,14 @@ export function beginEnemyAction(world: GameWorld, enemy: Enemy, action: EnemyAc
   );
 }
 
-export function beginEnemyMove(world: GameWorld, enemy: Enemy) {
+function beginEnemyMove(world: GameWorld, enemy: Enemy) {
   const brain = enemy.brain;
   brain.legsLeft =
     ENEMY_LEGS_MIN + Math.floor(Math.random() * (ENEMY_LEGS_MAX - ENEMY_LEGS_MIN + 1));
   beginEnemyLeg(world, enemy, dist(enemy.x, enemy.y, world.player.x, world.player.y));
 }
 
-export function beginEnemyLeg(world: GameWorld, enemy: Enemy, distance: number) {
+function beginEnemyLeg(world: GameWorld, enemy: Enemy, distance: number) {
   const brain = enemy.brain;
   const def = ENEMY_BEHAVIOR[enemy.kind];
   const bounds = roomBounds(world);
@@ -317,7 +353,7 @@ export function beginEnemyLeg(world: GameWorld, enemy: Enemy, distance: number) 
   brain.lastLegTime = brain.legTime;
 }
 
-export function tickEnemyAction(
+function tickEnemyAction(
   world: GameWorld,
   enemy: Enemy,
   dt: number,
@@ -395,7 +431,7 @@ export function tickEnemyAction(
   return brain.idleTimer > 0;
 }
 
-export function enemySweepHit(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
+function enemySweepHit(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
   const brain = enemy.brain;
   if (brain.sweepHit) return;
   const player = world.player;
@@ -441,7 +477,7 @@ export function enemySweepHit(world: GameWorld, enemy: Enemy, atk: EnemyAttackDe
   spawnBurst(world, tipX, tipY, enemy.color, 8, 150, 0.3);
 }
 
-export function fireEnemyShot(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
+function fireEnemyShot(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
   if (atk.mode === 'shell') {
     fireShell(world, enemy, atk);
     return;
@@ -472,7 +508,7 @@ export function fireEnemyShot(world: GameWorld, enemy: Enemy, atk: EnemyAttackDe
 }
 
 /** Lobs one shell at where its target stands right now. */
-export function fireShell(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
+function fireShell(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
   const target = enemyAttackPoint(world, enemy);
   const angle = Math.atan2(target.y - enemy.y, target.x - enemy.x);
   const x = enemy.x + Math.cos(angle) * (enemy.radius + SHELL_RADIUS + 6);
@@ -500,85 +536,12 @@ export function fireShell(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
   world.sfx.play('shell');
 }
 
-export function updateShells(world: GameWorld, dt: number) {
-  for (let i = world.shells.length - 1; i >= 0; i--) {
-    const shell = world.shells[i];
-    // Stop exactly on the aim point instead of overshooting it by a frame.
-    const step = Math.min(SHELL_SPEED * dt, Math.max(0, shell.total - shell.traveled));
-    shell.prevX = shell.x;
-    shell.prevY = shell.y;
-    const len = Math.hypot(shell.vx, shell.vy) || 1;
-    shell.x += (shell.vx / len) * step;
-    shell.y += (shell.vy / len) * step;
-    shell.traveled += step;
-    shell.life -= dt;
-    shell.spin += dt * 3.4;
-
-    let burst = false;
-
-    // The only early trigger is touching the player; the shell ignores
-    // bullets and only bursts where it was aimed. A dodging player is not
-    // there at all, so the shell sails through instead of bursting on them.
-    const player = world.player;
-    if (
-      !player.dead &&
-      player.invuln <= 0 &&
-      segmentCircleHit(
-        shell.prevX,
-        shell.prevY,
-        shell.x,
-        shell.y,
-        player.x,
-        player.y,
-        player.radius + shell.radius - 3,
-      )
-    ) {
-      playerHit(world, shell.damage);
-      burst = true;
-    }
-
-    if (
-      burst ||
-      shell.traveled >= shell.total - 0.01 ||
-      shell.life <= 0 ||
-      outOfRoom(world, shell.x, shell.y, 40)
-    ) {
-      splitShell(world, shell);
-      world.shells.splice(i, 1);
-    }
-  }
-}
-
-/** Bursts a shell into a full ring of fast, unlimited-range bullets. */
-export function splitShell(world: GameWorld, shell: EnemyShell) {
-  const base = rand(0, TAU);
-  for (let i = 0; i < SPLIT_RING_COUNT; i++) {
-    const angle = base + (TAU * i) / SPLIT_RING_COUNT;
-    world.enemyBullets.push({
-      x: shell.x,
-      y: shell.y,
-      prevX: shell.x,
-      prevY: shell.y,
-      vx: Math.cos(angle) * SPLIT_BULLET_SPEED,
-      vy: Math.sin(angle) * SPLIT_BULLET_SPEED,
-      radius: 5,
-      damage: SPLIT_BULLET_DAMAGE,
-      life: SPLIT_BULLET_LIFE,
-      color: shell.color,
-    });
-  }
-  spawnBurst(world, shell.x, shell.y, shell.color, 20, 260, 0.5);
-  spawnBurst(world, shell.x, shell.y, '#ffffff', 8, 190, 0.32);
-  world.shake = Math.max(world.shake, 3);
-  world.sfx.play('split');
-}
-
 /**
  * Launches a missile that starts out aimed at the player and then chases at
  * a capped turn rate. The lock only lasts HOMING_SEEK_TIME, after which the
  * missile keeps whatever heading it had and flies straight.
  */
-export function fireHoming(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
+function fireHoming(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
   const target = enemyAttackPoint(world, enemy);
   const angle =
     Math.atan2(target.y - enemy.y, target.x - enemy.x) + rand(-0.1, 0.1);
@@ -603,126 +566,4 @@ export function fireHoming(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) 
   });
   spawnBurst(world, x, y, enemy.color, 5, 100, 0.28);
   world.sfx.play('lock');
-}
-
-export function updateHomings(world: GameWorld, dt: number) {
-  const bounds = roomBounds(world);
-  const player = world.player;
-
-  for (let i = world.homings.length - 1; i >= 0; i--) {
-    const missile = world.homings[i];
-    missile.prevX = missile.x;
-    missile.prevY = missile.y;
-    missile.life -= dt;
-    missile.spin += dt * 5;
-    // Keep the smoke trail short: a curved ribbon, not a full path record.
-    missile.trail.push({ x: missile.x, y: missile.y });
-    if (missile.trail.length > HOMING_TRAIL_POINTS) missile.trail.shift();
-
-    if (missile.seek > 0) {
-      missile.seek = Math.max(0, missile.seek - dt);
-      const chaseTurret = turretById(world, missile.turretId);
-      if (missile.turretId !== undefined && !chaseTurret) {
-        missile.turretId = undefined;
-      }
-      if (chaseTurret || !player.dead) {
-        const tx = chaseTurret ? chaseTurret.x : player.x;
-        const ty = chaseTurret ? chaseTurret.y : player.y;
-        const want = Math.atan2(ty - missile.y, tx - missile.x);
-        const maxTurn = HOMING_TURN_RATE * dt;
-        missile.angle += clamp(angleDelta(missile.angle, want), -maxTurn, maxTurn);
-      }
-      if (missile.seek <= 0) {
-        // Lock lost: a white ping marks the moment it stops chasing.
-        spawnBurst(world, missile.x, missile.y, '#ffffff', 6, 90, 0.26);
-      }
-    }
-
-    missile.vx = Math.cos(missile.angle) * HOMING_SPEED;
-    missile.vy = Math.sin(missile.angle) * HOMING_SPEED;
-    missile.x += missile.vx * dt;
-    missile.y += missile.vy * dt;
-
-    // Walls are the room's inner face; the missile's own radius decides how
-    // close it has to get before it counts as a touch.
-    const hitWall =
-      missile.x <= bounds.left + missile.radius ||
-      missile.x >= bounds.right - missile.radius ||
-      missile.y <= bounds.top + missile.radius ||
-      missile.y >= bounds.bottom - missile.radius;
-
-    // A dodging player is not there: the missile crosses the i-frame gap
-    // without detonating, so a well-timed slide really does ignore the shot.
-    const hitPlayer =
-      !player.dead &&
-      player.invuln <= 0 &&
-      segmentCircleHit(
-        missile.prevX,
-        missile.prevY,
-        missile.x,
-        missile.y,
-        player.x,
-        player.y,
-        player.radius + missile.radius - 2,
-      );
-
-    const hitTurretTarget = turretById(world, missile.turretId);
-    const hitTurret =
-      hitTurretTarget !== null &&
-      segmentCircleHit(
-        missile.prevX,
-        missile.prevY,
-        missile.x,
-        missile.y,
-        hitTurretTarget.x,
-        hitTurretTarget.y,
-        TURRET.radius + missile.radius - 2,
-      );
-
-    if (hitWall || hitPlayer || hitTurret) {
-      if (hitPlayer) playerHit(world, missile.damage);
-      if (hitTurret && hitTurretTarget) damageTurret(world, hitTurretTarget, missile.damage);
-      explodeHoming(world, missile, hitPlayer);
-      world.homings.splice(i, 1);
-      continue;
-    }
-
-    if (missile.life <= 0) {
-      // Out of fuel: no blast, just a fizzle where it gave up.
-      spawnBurst(world, missile.x, missile.y, missile.color, 5, 80, 0.3);
-      world.homings.splice(i, 1);
-    }
-  }
-}
-
-/**
- * Small blast that ends a homing missile. A body hit already paid its
- * damage, so only a wall burst can clip the player standing next to it.
- */
-export function explodeHoming(
-  world: GameWorld,
-  missile: EnemyHoming,
-  alreadyHitPlayer: boolean,
-) {
-  world.blasts.push({
-    x: missile.x,
-    y: missile.y,
-    radius: HOMING_BLAST_RADIUS,
-    life: 0.3,
-    maxLife: 0.3,
-    color: missile.color,
-  });
-  spawnBurst(world, missile.x, missile.y, missile.color, 12, 200, 0.36);
-  spawnBurst(world, missile.x, missile.y, '#ffffff', 5, 130, 0.22);
-  world.shake = Math.max(world.shake, 2.6);
-  world.sfx.play('blast');
-
-  const player = world.player;
-  if (alreadyHitPlayer || player.dead) return;
-  if (
-    dist(missile.x, missile.y, player.x, player.y) <=
-    HOMING_BLAST_RADIUS + player.radius - 10
-  ) {
-    if (player.invuln <= 0) playerHit(world, HOMING_BLAST_DAMAGE);
-  }
 }

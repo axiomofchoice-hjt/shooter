@@ -1,3 +1,5 @@
+/** Spawns enemies and the training dummy. */
+
 import { DUMMY_X, DUMMY_Y } from '../core/config';
 import { ENEMY_DEFS } from '../core/enemyDefs';
 import { createEnemyBrain } from '../core/entities';

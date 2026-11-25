@@ -1,3 +1,5 @@
+/** Cached glow and room palette helpers. */
+
 import { DUNGEON_ROOMS, TEST_COLOR } from '../core/config';
 import { withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';

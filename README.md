@@ -94,6 +94,7 @@ src/
       weaponItems.ts      # 抛物物品、雷暴镖、轰炸机、回收弹
       combat.ts           # 子弹、冲击波与敌方弹道结算
       enemies.ts          # 敌人 AI、移动与攻击
+      enemyProjectiles.ts # 敌方炮弹、追踪弹与爆炸
       turrets.ts          # 蜂巢炮台
       damage.ts           # 伤害、受击与死亡结算
       rooms.ts            # 地牢房间、遭遇、传送门与测试房
@@ -107,8 +108,11 @@ src/
       session.ts          # 开局与回主菜单
     render/               # 只读渲染层，按场景 / 实体 / 弹道 / 特效拆分
       render.ts           # 渲染调度
-      scene.ts            # 地板、墙、门、传送门、场景层
-      entities.ts         # 玩家、敌人、炮台、闪避残影
+      scene.ts            # 地板、墙、门、房间标签
+      props.ts            # 传送门、拾取物、射程圈、轰炸阴影、火圈
+      enemies.ts          # 敌人本体、攻击预警与血条
+      player.ts           # 玩家舰体、闪避尾焰与残影
+      turrets.ts          # 炮台与轨道球
       projectiles.ts      # 各类子弹、导弹与冲击波
       weapons.ts          # 武器表现、轰炸机与状态环
       fx.ts               # 粒子、飘字、锁定框、屏幕效果
