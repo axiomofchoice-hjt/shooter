@@ -32,6 +32,9 @@ const WALL_THICK = 52;
 const WALL_PAD = WALL_THICK / 2;
 const DOOR_HALF = 118;
 const DOOR_Y = ROOM_SIZE / 2;
+// Practice dummy: below the player, clear of the start banner and the door.
+const DUMMY_X = ROOM_SIZE / 2;
+const DUMMY_Y = ROOM_SIZE / 2 + 150;
 const PORTAL_X = (DUNGEON_ROOMS - 1) * ROOM_SIZE + ROOM_SIZE / 2;
 const PORTAL_Y = ROOM_SIZE / 2;
 const PORTAL_RADIUS = 46;
@@ -448,6 +451,8 @@ interface Enemy {
   desiredY: number;
   desiredSpeed: number;
   turnRate: number;
+  /** Training dummy: stationary, no attacks, no rewards, respawns on death. */
+  dummy?: boolean;
   dead: boolean;
 }
 
@@ -916,6 +921,11 @@ export class ShooterGame {
   // trigger was held last frame so a release can be detected.
   private volleyShots = 0;
   private volleyFiring = false;
+  // Training dummy in the dungeon start room: the live body, its respawn
+  // countdown after being broken, and a throttle for its damage numbers.
+  private dummy: Enemy | null = null;
+  private dummyRespawn = 0;
+  private dummyFloatTimer = 0;
   // Orbit weapon: current spin/radius, how far it is spun out (0..1), and the
   // remaining seconds of the timed spin-up started by a trigger press.
   private orbitAngle = 0;
@@ -1185,6 +1195,9 @@ export class ShooterGame {
     this.camera.y = this.player.y;
 
     this.enemies = [];
+    this.dummy = null;
+    this.dummyRespawn = 0;
+    this.dummyFloatTimer = 0;
     this.bullets = [];
     this.enemyBullets = [];
     this.shells = [];
@@ -1401,6 +1414,8 @@ export class ShooterGame {
       const nextRoom = clamp(Math.floor(player.x / ROOM_SIZE), 0, DUNGEON_ROOMS - 1);
       if (nextRoom !== this.roomIndex) {
         this.roomIndex = nextRoom;
+        // The dummy belongs to the start room; it is rebuilt on the way back.
+        this.removeDummy();
         // Turrets belong to the room they were planted in.
         this.turrets = [];
         this.clampCamera();
@@ -3319,6 +3334,10 @@ export class ShooterGame {
     hitY: number,
     quiet = false,
   ) {
+    if (enemy.dummy) {
+      this.damageDummy(enemy, damage, hitX, hitY, quiet);
+      return;
+    }
     enemy.hp -= damage;
     enemy.hitFlash = 0.09;
     if (!quiet) {
@@ -3374,6 +3393,55 @@ export class ShooterGame {
         this.maybeDropPickup(enemy);
       }
     }
+  }
+
+  /**
+   * Training dummy: takes visible damage but never awards kills, score, combo
+   * or loot. When it breaks it simply waits, then a fresh one is set up.
+   */
+  private damageDummy(
+    enemy: Enemy,
+    damage: number,
+    hitX: number,
+    hitY: number,
+    quiet: boolean,
+  ) {
+    if (enemy.dead) return;
+    enemy.hp = Math.max(0, enemy.hp - damage);
+    enemy.hitFlash = 0.09;
+    if (!quiet) {
+      this.spawnBurst(hitX, hitY, enemy.color, 5, 130, 0.28);
+      this.sfx.play('hit');
+    }
+    if (this.dummyFloatTimer <= 0) {
+      this.dummyFloatTimer = 0.12;
+      this.floaters.push({
+        x: enemy.x + rand(-10, 10),
+        y: enemy.y + enemy.radius + 18,
+        text: damage >= 10 ? `${Math.round(damage)}` : damage.toFixed(1),
+        color: '#ffe6c0',
+        life: 0.55,
+        maxLife: 0.55,
+        size: 12,
+      });
+    }
+    if (enemy.hp > 0) return;
+
+    enemy.dead = true;
+    this.dummyRespawn = 2.2;
+    this.spawnBurst(enemy.x, enemy.y, enemy.color, 26, 240, 0.6);
+    this.spawnBurst(enemy.x, enemy.y, '#ffffff', 10, 160, 0.4);
+    this.floaters.push({
+      x: enemy.x,
+      y: enemy.y - enemy.radius - 28,
+      text: '桩已击破',
+      color: enemy.color,
+      life: 1.2,
+      maxLife: 1.2,
+      size: 15,
+    });
+    this.shake = Math.max(this.shake, 4);
+    this.sfx.play('kill');
   }
 
   private updateEnemyBullets(dt: number) {
@@ -3444,6 +3512,7 @@ export class ShooterGame {
       if (enemy.dead) continue;
       enemy.age += dt;
       enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
+      if (enemy.dummy) continue;
       enemy.attackTimer -= dt;
 
       const dx = player.x - enemy.x;
@@ -3516,7 +3585,12 @@ export class ShooterGame {
         }
       }
 
-      if (enemy.age > 0.18 && !player.dead && distance < enemy.radius + player.radius - 2) {
+      if (
+        enemy.age > 0.18 &&
+        !enemy.dummy &&
+        !player.dead &&
+        distance < enemy.radius + player.radius - 2
+      ) {
         if (player.invuln <= 0) {
           this.playerHit(enemy.damage);
           const push = 140;
@@ -4343,10 +4417,12 @@ export class ShooterGame {
       color: PLAYER_COLOR,
     };
     this.sfx.play('wave');
+    this.spawnDummy();
     this.emitHud(true);
   }
 
   private updateDungeon(dt: number) {
+    if (this.roomIndex === 0) this.updateDummy(dt);
     if (this.encounterActive) {
       this.updateEncounter(dt);
     } else if (
@@ -4605,6 +4681,58 @@ export class ShooterGame {
     this.spawnBurst(x, y, def.color, 12, 180, 0.45);
   }
 
+  /**
+   * Practice dummy for the dungeon start room. It uses a tank body so every
+   * weapon can lock and hit it, but has no AI, no contact damage and no
+   * rewards; breaking it just schedules a fresh one.
+   */
+  private spawnDummy() {
+    this.removeDummy();
+    this.spawnEnemy('tank', DUMMY_X, DUMMY_Y);
+    const dummy = this.enemies[this.enemies.length - 1];
+    if (!dummy) return;
+    dummy.dummy = true;
+    dummy.hp = 240;
+    dummy.maxHp = 240;
+    dummy.damage = 0;
+    dummy.speed = 0;
+    dummy.score = 0;
+    dummy.color = '#ffcf6b';
+    dummy.angle = -Math.PI / 2;
+    dummy.brain.queue = [];
+    dummy.brain.started = false;
+    this.dummy = dummy;
+    this.dummyRespawn = 0;
+  }
+
+  private removeDummy() {
+    if (!this.dummy) return;
+    const index = this.enemies.indexOf(this.dummy);
+    if (index >= 0) this.enemies.splice(index, 1);
+    this.dummy = null;
+    this.dummyRespawn = 0;
+  }
+
+  private updateDummy(dt: number) {
+    this.dummyFloatTimer = Math.max(0, this.dummyFloatTimer - dt);
+    if (this.dummy && !this.dummy.dead) return;
+    this.dummyRespawn = Math.max(0, this.dummyRespawn - dt);
+    if (this.dummyRespawn > 0) return;
+    const broken = this.dummy !== null;
+    this.spawnDummy();
+    if (broken) {
+      this.floaters.push({
+        x: DUMMY_X,
+        y: DUMMY_Y - 46,
+        text: '桩已重置',
+        color: '#ffcf6b',
+        life: 1,
+        maxLife: 1,
+        size: 13,
+      });
+    }
+  }
+
   // ------------------------------------------------------------------ pickups
 
   private maybeDropPickup(enemy: Enemy) {
@@ -4771,7 +4899,10 @@ export class ShooterGame {
       roomKind: roomKindAt(this.roomIndex),
       roomsCleared: this.countCleared(),
       enemiesRemaining:
-        this.enemies.length + this.telegraphs.length + this.spawnQueue.length,
+        this.enemies.length +
+        this.telegraphs.length +
+        this.spawnQueue.length -
+        (this.dummy && !this.dummy.dead ? 1 : 0),
       encounterActive: this.encounterActive,
       portalActive: this.countCleared() >= DUNGEON_ROOMS - 2,
       combo: this.combo,
@@ -6818,6 +6949,25 @@ export class ShooterGame {
           barWidth * Math.max(0, enemy.hp / enemy.maxHp),
           4,
         );
+      }
+
+      if (enemy.dummy) {
+        ctx.save();
+        ctx.translate(enemy.x, enemy.y);
+        ctx.strokeStyle = withAlpha(enemy.color, 0.45);
+        ctx.lineWidth = 1.5 / this.zoom;
+        ctx.setLineDash([6 / this.zoom, 8 / this.zoom]);
+        ctx.lineDashOffset = -this.ambientTime * 12;
+        ctx.beginPath();
+        ctx.arc(0, 0, enemy.radius + 16, 0, TAU);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = withAlpha(enemy.color, 0.9);
+        ctx.font = '700 12px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('桩', 0, -enemy.radius - 28);
+        ctx.restore();
       }
     }
   }
