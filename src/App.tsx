@@ -7,7 +7,6 @@ import {
 import { ShooterGame } from './game/Game';
 import { createGamepadPoller, PAD_BUTTON } from './game/gamepad';
 import {
-  DEFAULT_TEST_CONFIG,
   TEST_ENEMY_KINDS,
   INITIAL_HUD,
   type GameStats,
@@ -51,7 +50,12 @@ export default function App() {
   const [victory, setVictory] = useState(false);
   const [isTouch, setIsTouch] = useState(detectTouchDevice);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [testConfig, setTestConfig] = useState<TestRoomConfig>(DEFAULT_TEST_CONFIG);
+  // The test room starts with the whole armory checked: a weapon is only
+  // absent from a run when the player unchecks it, never because it is hidden.
+  const [testConfig, setTestConfig] = useState<TestRoomConfig>(() => ({
+    weapons: [...ALL_WEAPONS],
+    enemies: ['grunt'],
+  }));
   const [testSetupOpen, setTestSetupOpen] = useState(false);
   const [fullscreenSupported] = useState(() => {
     if (typeof document === 'undefined') return false;

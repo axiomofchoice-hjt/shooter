@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { GameStats, TestEnemyKind, TestRoomConfig, WeaponId } from '../game/types';
 import { ENEMY_LABELS, TEST_ENEMY_KINDS } from '../game/types';
-import { ALL_WEAPONS, WEAPONS, WEAPON_ORDER } from '../game/weapons';
+import { ALL_WEAPONS, WEAPONS } from '../game/weapons';
 import {
   ArrowIcon,
   BossIcon,
@@ -244,7 +244,7 @@ export function TestRoomSetup({
         </h2>
         <p className="modal-copy">
           勾选要带进测试房的武器和要刷新的敌人；清空一波后 1.6 秒自动续波。
-          未开放的武器也能在这里试用。
+          所有武器都在这里，勾上就会带进去。
         </p>
 
         <div className="setup-group">
@@ -258,16 +258,13 @@ export function TestRoomSetup({
             {ALL_WEAPONS.map((id) => {
               const spec = WEAPONS[id];
               const selected = config.weapons.includes(id);
-              const hidden = !WEAPON_ORDER.includes(id);
               return (
                 <button
                   key={id}
                   type="button"
                   tabIndex={0}
                   aria-pressed={selected}
-                  className={`setup-chip ${selected ? 'is-on' : ''} ${
-                    hidden ? 'is-hidden-weapon' : ''
-                  }`}
+                  className={`setup-chip ${selected ? 'is-on' : ''}`}
                   style={{ '--chip-color': spec.color } as CSSProperties}
                   onClick={() => onToggleWeapon(id)}
                 >
@@ -275,7 +272,6 @@ export function TestRoomSetup({
                     <strong>{spec.name}</strong>
                     <em>{spec.tag}</em>
                   </span>
-                  {hidden && <i className="setup-chip-note">未开放</i>}
                 </button>
               );
             })}

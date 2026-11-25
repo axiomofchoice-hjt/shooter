@@ -13,9 +13,9 @@ import {
 } from './types';
 import {
   ALL_WEAPONS,
+  DUNGEON_LOADOUT,
   TURRET,
   WEAPONS,
-  WEAPON_ORDER,
   nextWeapon,
   previousWeapon,
   type WeaponSpec,
@@ -858,7 +858,7 @@ export class ShooterGame {
   private testWave = 0;
   private testWaveTimer = 0;
   private testEnemies: TestEnemyKind[] = ['grunt'];
-  private weaponPool: WeaponId[] = WEAPON_ORDER;
+  private weaponPool: WeaponId[] = DUNGEON_LOADOUT;
 
   private input: InputState = {
     keys: new Set(),
@@ -931,9 +931,10 @@ export class ShooterGame {
 
   start(mode: GameMode = 'dungeon', config?: TestRoomConfig) {
     this.mode = mode;
-    // The dungeon keeps its curated 7-weapon cycle; the test room uses the
-    // loadout picked on the start screen, hidden guns included.
-    this.weaponPool = mode === 'boss' ? pickTestWeapons(config?.weapons) : WEAPON_ORDER;
+    // The dungeon carries its loadout; the test room carries the weapons
+    // picked on the start screen. Neither list makes a weapon unavailable.
+    this.weaponPool =
+      mode === 'boss' ? pickTestWeapons(config?.weapons) : DUNGEON_LOADOUT;
     this.testEnemies = mode === 'boss' ? pickTestEnemies(config?.enemies) : ['grunt'];
     this.worldW = mode === 'boss' ? BOSS_SIZE : DUNGEON_WIDTH;
     this.worldH = mode === 'boss' ? BOSS_SIZE : ROOM_SIZE;
@@ -956,7 +957,7 @@ export class ShooterGame {
     this.phase = 'idle';
     this.paused = false;
     this.mode = 'dungeon';
-    this.weaponPool = WEAPON_ORDER;
+    this.weaponPool = DUNGEON_LOADOUT;
     this.testEnemies = ['grunt'];
     this.worldW = DUNGEON_WIDTH;
     this.worldH = ROOM_SIZE;

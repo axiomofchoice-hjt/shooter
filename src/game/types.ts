@@ -50,19 +50,11 @@ export const ENEMY_LABELS: Record<EnemyKind, string> = {
   boss: '压制核心',
 };
 
-/**
- * What the test room opens with. Both lists are multi-select in the setup
- * panel; only the first weapon and the first enemy start out checked.
- */
+/** What a test-room run carries: which weapons and which enemy kinds. */
 export interface TestRoomConfig {
   weapons: WeaponId[];
   enemies: TestEnemyKind[];
 }
-
-export const DEFAULT_TEST_CONFIG: TestRoomConfig = {
-  weapons: ['pulse'],
-  enemies: ['grunt'],
-};
 
 export type RoomKind = 'start' | 'combat' | 'portal';
 

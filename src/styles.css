@@ -1555,20 +1555,6 @@ kbd.accent,
   color: var(--chip-color);
 }
 
-.setup-chip-note {
-  font-family: var(--mono);
-  font-style: normal;
-  font-size: 7px;
-  letter-spacing: 0.06em;
-  padding: 2px 4px;
-  color: rgba(255, 159, 67, 0.82);
-  border: 1px solid rgba(255, 159, 67, 0.32);
-}
-
-.setup-chip.is-hidden-weapon:not(.is-on) {
-  border-style: dashed;
-}
-
 .setup-chip-enemy {
   min-width: 92px;
 }

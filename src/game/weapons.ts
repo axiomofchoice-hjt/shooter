@@ -196,13 +196,13 @@ export const ALL_WEAPONS: WeaponId[] = [
   'shock',
 ];
 
-// Temporarily expose the pulse rifle, storm dart, laser, ricochet gun, orbiting
-// guards, fission cannon, hive gun, salvage cannon and carpet bomber. The other
-// seven stay implemented and fully specced, but cannot be reached from the
-// in-game weapon cycle. Raise this count to bring them back.
-const VISIBLE_WEAPONS = 9;
-
-export const WEAPON_ORDER: WeaponId[] = ALL_WEAPONS.slice(0, VISIBLE_WEAPONS);
+/**
+ * What a dungeon run carries, in cycle order. This is a run loadout, not a
+ * property of the weapon: every gun in ALL_WEAPONS is finished and usable, and
+ * the test room can pick any of them. Taking one out of this list only means
+ * the dungeon does not bring it along.
+ */
+export const DUNGEON_LOADOUT: WeaponId[] = [...ALL_WEAPONS];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pulse: {
@@ -522,7 +522,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
 
 export function previousWeapon(
   current: WeaponId,
-  order: WeaponId[] = WEAPON_ORDER,
+  order: WeaponId[] = ALL_WEAPONS,
 ): WeaponId {
   const index = order.indexOf(current);
   if (index < 0) return current;
@@ -531,7 +531,7 @@ export function previousWeapon(
 
 export function nextWeapon(
   current: WeaponId,
-  order: WeaponId[] = WEAPON_ORDER,
+  order: WeaponId[] = ALL_WEAPONS,
 ): WeaponId {
   const index = order.indexOf(current);
   if (index < 0) return current;
