@@ -15,11 +15,11 @@ export const DUMMY_Y = ROOM_SIZE / 2 + 150;
 // Parabola-gun item: a fixed pull toward the player at the hit moment, plus a
 // random sideways bend on launch, so it loops away and back.
 export const LOB_ACCEL = 600;
-export const LOB_INITIAL_SPEED = 600;
+export const LOB_INITIAL_SPEED = 300;
 export const LOB_LATERAL_MAX = 240;
-// Speed cap for the item, applied after each acceleration step. The launch
-// sits at the cap, so the pull can only slow the outbound leg; the return leg
-// holds a steady 600px/s instead of building up thousands.
+// Speed cap for the item, applied after each acceleration step. The launch is
+// below the cap, so the return leg can speed up to 600px/s instead of building
+// up thousands.
 export const LOB_MAX_SPEED = 600;
 export const LOB_RADIUS = 7;
 export const LOB_LIFE = 4.5;
