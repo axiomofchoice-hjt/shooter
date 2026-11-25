@@ -104,6 +104,23 @@ export interface WeaponSpec {
    * bullet, so `speed`, `radius` and `life` apply as usual.
    */
   cardinal?: boolean;
+  /**
+   * Release volley: count shots while the trigger is held, then launch
+   * `missiles` homing missiles when it is released after at least `shots`
+   * shots. The regular fire uses the normal bullet fields above.
+   */
+  volley?: {
+    /** Shots that must land while holding before a release volley. */
+    shots: number;
+    /** Homing missiles fired when the trigger is released. */
+    missiles: number;
+    missileDamage: number;
+    missileSpeed: number;
+    missileTurnRate: number;
+    missileRadius: number;
+    blastRadius: number;
+    blastDamage: number;
+  };
   /** Wall bounces a shot survives; it breaks on the wall after the last one. */
   bounces?: number;
   /** Mother shot that bursts into `count` children the moment it lands on an
@@ -202,6 +219,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'arc',
   'shock',
   'ortho',
+  'volley',
 ];
 
 /**
@@ -213,7 +231,7 @@ export const ALL_WEAPONS: WeaponId[] = [
  * it can be tried in the dungeon; when the player asks to carry only the first
  * gun again, trim the list back to ['pulse'].
  */
-export const DUNGEON_LOADOUT: WeaponId[] = ['pulse', 'ortho'];
+export const DUNGEON_LOADOUT: WeaponId[] = ['pulse', 'ortho', 'volley'];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pulse: {
@@ -547,6 +565,34 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     spread: 0,
     pierce: 0,
     cardinal: true,
+  },
+  // Volley gun: a slow SMG whose release after a held burst launches three
+  // homing missiles. Each missile locks the nearest enemy and pops a small
+  // blast where it lands, so a finished burst clears the space around the
+  // target even when the target itself dies first.
+  volley: {
+    id: 'volley',
+    name: '连射追踪炮',
+    tag: 'VOLLEY',
+    color: '#ff9ecb',
+    damage: 1.3,
+    cooldown: 0.2,
+    speed: 1200,
+    radius: 3,
+    life: 0.95,
+    pellets: 1,
+    spread: 0.075,
+    pierce: 0,
+    volley: {
+      shots: 3,
+      missiles: 3,
+      missileDamage: 6,
+      missileSpeed: 900,
+      missileTurnRate: 9,
+      missileRadius: 4,
+      blastRadius: 48,
+      blastDamage: 5,
+    },
   },
 };
 

@@ -495,6 +495,11 @@ interface Bullet {
     damage: number;
     knockback: number;
   };
+  /** Volley missile: a small blast where it lands or expires. */
+  blast?: {
+    radius: number;
+    damage: number;
+  };
   /** Ricochet shot: wall bounces left before it breaks on the wall. */
   bounce?: {
     left: number;
@@ -907,6 +912,10 @@ export class ShooterGame {
   private laserCharge = 0;
   // Orthogonal cannon: the cardinal direction the next shot will leave along.
   private cardinalAim = PLAYER_START_ANGLE;
+  // Volley gun: shots landed during the current trigger hold, and whether the
+  // trigger was held last frame so a release can be detected.
+  private volleyShots = 0;
+  private volleyFiring = false;
   // Orbit weapon: current spin/radius, how far it is spun out (0..1), and the
   // remaining seconds of the timed spin-up started by a trigger press.
   private orbitAngle = 0;
@@ -1090,6 +1099,8 @@ export class ShooterGame {
     this.input.padX = 0;
     this.input.padY = 0;
     this.input.padFire = false;
+    this.volleyShots = 0;
+    this.volleyFiring = false;
   }
 
   dispose() {
@@ -1187,6 +1198,8 @@ export class ShooterGame {
     this.fireRings = [];
     this.laserBeams = [];
     this.laserCharge = 0;
+    this.volleyShots = 0;
+    this.volleyFiring = false;
     this.turrets = [];
     this.nextTurretId = 1;
     this.orbitAngle = 0;
@@ -1556,6 +1569,20 @@ export class ShooterGame {
 
     const firing = this.input.fireKey || this.input.touchFire || this.input.padFire;
     const activeWeapon = WEAPONS[player.weapon];
+    if (activeWeapon.volley) {
+      // A release volley only happens once the hold has actually put the
+      // required number of shots downrange; a short tap just resets the count.
+      if (this.volleyFiring && !firing) {
+        if (this.volleyShots >= activeWeapon.volley.shots) {
+          this.fireVolleyMissiles(activeWeapon);
+        }
+        this.volleyShots = 0;
+      }
+      this.volleyFiring = firing;
+    } else {
+      this.volleyShots = 0;
+      this.volleyFiring = false;
+    }
     if (activeWeapon.orbit) {
       // The orbit guards keep circling after the trigger is released: a press
       // starts a timed spin-up, holding simply keeps refilling it.
@@ -1676,6 +1703,8 @@ export class ShooterGame {
         ? nextWeapon(this.player.weapon, this.weaponPool)
         : previousWeapon(this.player.weapon, this.weaponPool);
     this.player.weapon = next;
+    this.volleyShots = 0;
+    this.volleyFiring = false;
     const spec = WEAPONS[next];
     this.floaters.push({
       x: this.player.x,
@@ -1709,6 +1738,7 @@ export class ShooterGame {
     player.muzzle =
       weapon.pellets > 1 || weapon.id === 'rail' || weapon.laser ? 0.1 : 0.06;
     player.muzzleColor = weapon.color;
+    if (weapon.volley) this.volleyShots += 1;
 
     const offset = 26;
     if (weapon.bomber) {
@@ -2140,6 +2170,75 @@ export class ShooterGame {
           }
         : undefined,
     });
+  }
+
+  /**
+   * Volley gun release: three homing missiles leave in a small fan. Each one
+   * locks the nearest enemy at this instant (so all three usually share a
+   * target) and carries a small blast for the impact. With no enemy the trio
+   * flies straight, keeping the trigger responsive even in an empty room.
+   */
+  private fireVolleyMissiles(weapon: WeaponSpec) {
+    const volley = weapon.volley;
+    if (!volley) return;
+    const player = this.player;
+    const target = this.findNearestEnemy(player.x, player.y, AUTOAIM_RANGE, true);
+    const speed = volley.missileSpeed;
+    const targetDistance = target
+      ? dist(player.x, player.y, target.x, target.y)
+      : 520;
+    const life = target
+      ? Math.min(2.6, Math.max(0.5, targetDistance / speed + 0.7))
+      : 1.2;
+
+    for (let i = 0; i < volley.missiles; i++) {
+      const side = i - (volley.missiles - 1) / 2;
+      const lateral = side * 14;
+      const launchAngle = player.angle + side * 0.16;
+      const x =
+        player.x +
+        Math.cos(player.angle) * 26 +
+        Math.cos(player.angle + Math.PI / 2) * lateral;
+      const y =
+        player.y +
+        Math.sin(player.angle) * 26 +
+        Math.sin(player.angle + Math.PI / 2) * lateral;
+      this.bullets.push({
+        x,
+        y,
+        prevX: x,
+        prevY: y,
+        vx: Math.cos(launchAngle) * speed,
+        vy: Math.sin(launchAngle) * speed,
+        radius: volley.missileRadius,
+        damage: volley.missileDamage,
+        life,
+        color: weapon.color,
+        pierce: 0,
+        hitIds: [],
+        trail: [{ x, y }],
+        missile: target
+          ? {
+              targetId: target.id,
+              x: target.x,
+              y: target.y,
+              dead: false,
+              angle: launchAngle,
+              turnRate: volley.missileTurnRate,
+            }
+          : undefined,
+        blast: {
+          radius: volley.blastRadius,
+          damage: volley.blastDamage,
+        },
+      });
+    }
+
+    player.muzzle = 0.12;
+    player.muzzleColor = weapon.color;
+    this.shake = Math.max(this.shake, 2.4);
+    this.sfx.play('secondary');
+    this.spawnBurst(player.x, player.y, weapon.color, 12, 150, 0.32);
   }
 
   /**
@@ -2757,6 +2856,19 @@ export class ShooterGame {
             break;
           }
           this.damageEnemy(enemy, bullet.damage, bullet.x, bullet.y);
+          if (bullet.blast) {
+            // The direct target already took the hit; the blast only spreads
+            // to the neighbours.
+            this.detonateBlast(
+              bullet.x,
+              bullet.y,
+              bullet.blast,
+              bullet.color,
+              enemy.id,
+            );
+            consumed = true;
+            break;
+          }
           if (bullet.recycle) {
             // The bolt dealt its hit; from now on it is a recall round.
             bullet.returning = true;
@@ -2895,7 +3007,11 @@ export class ShooterGame {
         dist(bullet.x, bullet.y, missile.x, missile.y) <=
           speed * dt + bullet.radius + 4
       ) {
-        this.spawnBurst(missile.x, missile.y, bullet.color, 6, 110, 0.3);
+        if (bullet.blast) {
+          this.detonateBlast(missile.x, missile.y, bullet.blast, bullet.color);
+        } else {
+          this.spawnBurst(missile.x, missile.y, bullet.color, 6, 110, 0.3);
+        }
         consumed = true;
       }
 
@@ -2906,13 +3022,16 @@ export class ShooterGame {
         bullet.life = 2;
       }
 
-      if (
+      const leaving =
         consumed ||
         bullet.life <= 0 ||
         // Locking missiles are not stopped by room walls, only by their range.
         // Salvage bolts handle their own wall contact above.
-        (!missile && !bullet.recycle && this.outOfRoom(bullet.x, bullet.y, 24))
-      ) {
+        (!missile && !bullet.recycle && this.outOfRoom(bullet.x, bullet.y, 24));
+      if (leaving) {
+        if (!consumed && bullet.blast) {
+          this.detonateBlast(bullet.x, bullet.y, bullet.blast, bullet.color);
+        }
         this.bullets.splice(i, 1);
       }
     }
@@ -2932,6 +3051,39 @@ export class ShooterGame {
       enemies[write++] = enemy;
     }
     if (write !== enemies.length) enemies.length = write;
+  }
+
+  /**
+   * Small blast carried by a volley missile. `excludeId` is the enemy that
+   * took the direct hit, so one missile never damages it twice.
+   */
+  private detonateBlast(
+    x: number,
+    y: number,
+    blast: { radius: number; damage: number },
+    color: string,
+    excludeId?: number,
+  ) {
+    this.shockwaves.push({
+      x,
+      y,
+      maxRadius: blast.radius * 1.2,
+      life: 0.3,
+      maxLife: 0.3,
+      color,
+    });
+    this.shake = Math.max(this.shake, 3.2);
+    this.sfx.play('blast');
+    this.spawnBurst(x, y, color, 14, 220, 0.4);
+    this.spawnBurst(x, y, '#ffffff', 6, 140, 0.25);
+
+    for (const enemy of this.enemies) {
+      if (enemy.dead || enemy.id === excludeId) continue;
+      if (this.outOfRoom(enemy.x, enemy.y, 0)) continue;
+      if (dist(x, y, enemy.x, enemy.y) > blast.radius + enemy.radius) continue;
+      this.damageEnemy(enemy, blast.damage, enemy.x, enemy.y, true);
+      this.spawnBurst(enemy.x, enemy.y, color, 5, 130, 0.25);
+    }
   }
 
   /**
