@@ -301,7 +301,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   },
   // Orbiting guards: three balls circle the player at about one body's width,
   // then spin out to the seeker's 240px reach while the trigger is held (or for
-  // two seconds after a tap). They hit enemies and erase enemy bullets.
+  // one second after a tap). They hit enemies and erase enemy bullets.
   orbit: {
     id: 'orbit',
     name: '轨道球',
@@ -323,7 +323,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       activeSpeed: 4.2,
       ballRadius: 10,
       hitInterval: 0.28,
-      sustain: 2,
+      sustain: 1,
       expandTime: 0.55,
       contractTime: 0.7,
     },
