@@ -35,6 +35,15 @@ const DOOR_Y = ROOM_SIZE / 2;
 // Practice dummy: below the player, clear of the start banner and the door.
 const DUMMY_X = ROOM_SIZE / 2;
 const DUMMY_Y = ROOM_SIZE / 2 + 150;
+// Parabola-gun item: a fixed pull toward the player at the hit moment, plus a
+// random sideways kick and an initial outward kick, so it loops away and back.
+const LOB_ACCEL = 1200;
+const LOB_OUTWARD_SPEED = 320;
+const LOB_LATERAL_MIN = 140;
+const LOB_LATERAL_MAX = 240;
+const LOB_RADIUS = 7;
+const LOB_LIFE = 4.5;
+const LOB_MAX = 16;
 const PORTAL_X = (DUNGEON_ROOMS - 1) * ROOM_SIZE + ROOM_SIZE / 2;
 const PORTAL_Y = ROOM_SIZE / 2;
 const PORTAL_RADIUS = 46;
@@ -521,6 +530,26 @@ interface Bullet {
   ignoreId?: number;
   /** Hive shot: hits per turret summon, carried so mid-flight swaps are safe. */
   summonEvery?: number;
+  /** Every N hits with this bullet's weapon drops a parabola item. */
+  dropEvery?: number;
+}
+
+interface LobItem {
+  x: number;
+  y: number;
+  prevX: number;
+  prevY: number;
+  vx: number;
+  vy: number;
+  ax: number;
+  ay: number;
+  radius: number;
+  age: number;
+  life: number;
+  maxLife: number;
+  spin: number;
+  color: string;
+  trail: { x: number; y: number }[];
 }
 
 interface EnemyBullet {
@@ -926,6 +955,9 @@ export class ShooterGame {
   private dummy: Enemy | null = null;
   private dummyRespawn = 0;
   private dummyFloatTimer = 0;
+  // Parabola gun: enemy hits since the last drop, plus the lobbed items.
+  private dropHits = 0;
+  private lobItems: LobItem[] = [];
   // Orbit weapon: current spin/radius, how far it is spun out (0..1), and the
   // remaining seconds of the timed spin-up started by a trigger press.
   private orbitAngle = 0;
@@ -1198,6 +1230,8 @@ export class ShooterGame {
     this.dummy = null;
     this.dummyRespawn = 0;
     this.dummyFloatTimer = 0;
+    this.dropHits = 0;
+    this.lobItems = [];
     this.bullets = [];
     this.enemyBullets = [];
     this.shells = [];
@@ -1260,6 +1294,7 @@ export class ShooterGame {
   private update(dt: number) {
     this.updatePlayer(dt);
     this.updateBullets(dt);
+    this.updateLobItems(dt);
     this.updateStormDarts(dt);
     this.updateBombers(dt);
     this.updateEnemies(dt);
@@ -1416,8 +1451,9 @@ export class ShooterGame {
         this.roomIndex = nextRoom;
         // The dummy belongs to the start room; it is rebuilt on the way back.
         this.removeDummy();
-        // Turrets belong to the room they were planted in.
+        // Turrets and dropped items belong to the room they were left in.
         this.turrets = [];
+        this.lobItems = [];
         this.clampCamera();
       }
       return;
@@ -1816,6 +1852,7 @@ export class ShooterGame {
               }
             : undefined,
           summonEvery: weapon.summon ? TURRET.hitsPerSummon : undefined,
+          dropEvery: weapon.dropEvery,
         });
       }
     }
@@ -2256,6 +2293,132 @@ export class ShooterGame {
     this.shake = Math.max(this.shake, 2.4);
     this.sfx.play('secondary');
     this.spawnBurst(player.x, player.y, weapon.color, 12, 150, 0.32);
+  }
+
+  /**
+   * Parabola gun hit streak. Every fifth enemy hit (different enemies all
+   * count) drops one lobbed item at that hit point.
+   */
+  private registerDropHit(
+    x: number,
+    y: number,
+    every: number,
+    color: string,
+  ) {
+    this.dropHits += 1;
+    if (this.dropHits < every) return;
+    this.dropHits = 0;
+    this.spawnLobItem(x, y, color);
+  }
+
+  /**
+   * Lobbed item: the initial velocity is a random left/right kick plus a kick
+   * straight away from the player. A fixed acceleration toward the player's
+   * position at the hit moment then bends the path into a parabola and pulls
+   * the item back. The actual pickup effect is still being designed.
+   */
+  private spawnLobItem(x: number, y: number, color: string) {
+    if (this.lobItems.length >= LOB_MAX) return;
+    const player = this.player;
+    let dx = player.x - x;
+    let dy = player.y - y;
+    const length = Math.hypot(dx, dy);
+    if (length < 0.001) {
+      const angle = rand(0, TAU);
+      dx = Math.cos(angle);
+      dy = Math.sin(angle);
+    } else {
+      dx /= length;
+      dy /= length;
+    }
+
+    // Perpendicular left/right is (-dy, dx); away from the player is (-dx, -dy).
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const lateral = rand(LOB_LATERAL_MIN, LOB_LATERAL_MAX) * side;
+    const vx = -dy * lateral - dx * LOB_OUTWARD_SPEED;
+    const vy = dx * lateral - dy * LOB_OUTWARD_SPEED;
+
+    this.lobItems.push({
+      x,
+      y,
+      prevX: x,
+      prevY: y,
+      vx,
+      vy,
+      ax: dx * LOB_ACCEL,
+      ay: dy * LOB_ACCEL,
+      radius: LOB_RADIUS,
+      age: 0,
+      life: LOB_LIFE,
+      maxLife: LOB_LIFE,
+      spin: rand(0, TAU),
+      color,
+      trail: [{ x, y }],
+    });
+    this.spawnBurst(x, y, color, 10, 150, 0.35);
+  }
+
+  private collectLobItem(item: LobItem) {
+    this.spawnBurst(item.x, item.y, item.color, 18, 220, 0.45);
+    this.spawnBurst(item.x, item.y, '#fff4cf', 6, 140, 0.3);
+    this.shockwaves.push({
+      x: item.x,
+      y: item.y,
+      maxRadius: 30,
+      life: 0.28,
+      maxLife: 0.28,
+      color: item.color,
+    });
+    this.floaters.push({
+      x: this.player.x,
+      y: this.player.y - 38,
+      text: '拾取',
+      color: item.color,
+      life: 0.9,
+      maxLife: 0.9,
+      size: 14,
+    });
+    this.sfx.play('pickup');
+    // TODO: the pickup's special effect is intentionally not implemented yet.
+  }
+
+  private updateLobItems(dt: number) {
+    const player = this.player;
+    for (let i = this.lobItems.length - 1; i >= 0; i--) {
+      const item = this.lobItems[i];
+      item.prevX = item.x;
+      item.prevY = item.y;
+      item.vx += item.ax * dt;
+      item.vy += item.ay * dt;
+      item.x += item.vx * dt;
+      item.y += item.vy * dt;
+      item.age += dt;
+      item.life -= dt;
+      item.spin += dt * 5;
+      item.trail.push({ x: item.x, y: item.y });
+      if (item.trail.length > 12) item.trail.shift();
+
+      if (
+        !player.dead &&
+        segmentCircleHit(
+          item.prevX,
+          item.prevY,
+          item.x,
+          item.y,
+          player.x,
+          player.y,
+          player.radius + item.radius + 2,
+        )
+      ) {
+        this.collectLobItem(item);
+        this.lobItems.splice(i, 1);
+        continue;
+      }
+
+      if (item.life <= 0 || this.outOfRoom(item.x, item.y, 60)) {
+        this.lobItems.splice(i, 1);
+      }
+    }
   }
 
   /**
@@ -2873,6 +3036,14 @@ export class ShooterGame {
             break;
           }
           this.damageEnemy(enemy, bullet.damage, bullet.x, bullet.y);
+          if (bullet.dropEvery !== undefined) {
+            this.registerDropHit(
+              bullet.x,
+              bullet.y,
+              bullet.dropEvery,
+              bullet.color,
+            );
+          }
           if (bullet.blast) {
             // The direct target already took the hit; the blast only spreads
             // to the neighbours.
@@ -5040,6 +5211,7 @@ export class ShooterGame {
     this.drawEnemyBullets();
     this.drawBullets();
     this.drawEnemies();
+    this.drawLobItems();
     this.drawShells();
     this.drawHomings();
     this.drawBlasts();
@@ -5925,6 +6097,78 @@ export class ShooterGame {
       ctx.fillStyle = '#7dff9b';
       ctx.fillRect(-2.5, -8, 5, 16);
       ctx.fillRect(-8, -2.5, 16, 5);
+      ctx.restore();
+    }
+  }
+
+  /** Parabola-gun items: curved trail, glowing core and a dashed target ring. */
+  private drawLobItems() {
+    if (!this.lobItems.length) return;
+    const ctx = this.ctx;
+    for (const item of this.lobItems) {
+      const fadeIn = Math.min(1, item.age / 0.15);
+      const fadeOut = Math.min(1, item.life / 0.9);
+      const alpha = fadeIn * fadeOut;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      for (let i = 1; i < item.trail.length; i++) {
+        const a = item.trail[i - 1];
+        const b = item.trail[i];
+        const t = i / item.trail.length;
+        ctx.strokeStyle = withAlpha(item.color, t * 0.4 * alpha);
+        ctx.lineWidth = 1 + t * 3.2;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      const glow = ctx.createRadialGradient(
+        item.x,
+        item.y,
+        1,
+        item.x,
+        item.y,
+        item.radius * 4,
+      );
+      glow.addColorStop(0, withAlpha(item.color, 0.55 * alpha));
+      glow.addColorStop(1, withAlpha(item.color, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(item.x, item.y, item.radius * 4, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(item.x, item.y);
+      ctx.rotate(item.spin);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = withAlpha(item.color, 0.85);
+      ctx.strokeStyle = '#fff6d8';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, -item.radius);
+      ctx.lineTo(item.radius * 0.8, 0);
+      ctx.lineTo(0, item.radius);
+      ctx.lineTo(-item.radius * 0.8, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fffbe8';
+      ctx.beginPath();
+      ctx.arc(0, 0, 2, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = withAlpha(item.color, 0.35 * alpha);
+      ctx.lineWidth = 1.1;
+      ctx.setLineDash([4, 6]);
+      ctx.lineDashOffset = -this.ambientTime * 18;
+      ctx.beginPath();
+      ctx.arc(item.x, item.y, item.radius + 7, 0, TAU);
+      ctx.stroke();
       ctx.restore();
     }
   }

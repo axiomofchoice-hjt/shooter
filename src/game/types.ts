@@ -27,7 +27,8 @@ export type WeaponId =
   | 'recycler'
   | 'bomber'
   | 'ortho'
-  | 'volley';
+  | 'volley'
+  | 'parabola';
 
 /** Everything the test room can spawn; the dungeon boss stays out of it. */
 export type TestEnemyKind = Exclude<EnemyKind, 'boss'>;

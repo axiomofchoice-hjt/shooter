@@ -121,6 +121,11 @@ export interface WeaponSpec {
     blastRadius: number;
     blastDamage: number;
   };
+  /**
+   * Every N enemy hits with this weapon's bullets drop a parabola item at the
+   * hit point. Hits from different enemies all count toward the same streak.
+   */
+  dropEvery?: number;
   /** Wall bounces a shot survives; it breaks on the wall after the last one. */
   bounces?: number;
   /** Mother shot that bursts into `count` children the moment it lands on an
@@ -220,6 +225,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'shock',
   'ortho',
   'volley',
+  'parabola',
 ];
 
 /**
@@ -231,7 +237,12 @@ export const ALL_WEAPONS: WeaponId[] = [
  * it can be tried in the dungeon; when the player asks to carry only the first
  * gun again, trim the list back to ['pulse'].
  */
-export const DUNGEON_LOADOUT: WeaponId[] = ['pulse', 'ortho', 'volley'];
+export const DUNGEON_LOADOUT: WeaponId[] = [
+  'pulse',
+  'ortho',
+  'volley',
+  'parabola',
+];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pulse: {
@@ -595,6 +606,24 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       blastRadius: 48,
       blastDamage: 5,
     },
+  },
+  // Parabola gun: SMG rounds that drop a lobbed item every five enemy hits.
+  // The item is kicked away from the player and then pulled back by a fixed
+  // acceleration, so its path is a visible arc.
+  parabola: {
+    id: 'parabola',
+    name: '抛物枪',
+    tag: 'LOB',
+    color: '#ffd479',
+    damage: 1.3,
+    cooldown: 0.06,
+    speed: 1200,
+    radius: 3,
+    life: 0.95,
+    pellets: 1,
+    spread: 0.075,
+    pierce: 0,
+    dropEvery: 5,
   },
 };
 
