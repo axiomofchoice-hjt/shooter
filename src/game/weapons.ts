@@ -63,6 +63,30 @@ export interface WeaponSpec {
   ring?: boolean;
   /** Wall bounces a shot survives; it breaks on the wall after the last one. */
   bounces?: number;
+  /**
+   * Orbiting guards: balls circle the player, damage whatever they touch and
+   * erase enemy bullets. Holding fire spins them out to `maxRadius`.
+   */
+  orbit?: {
+    /** Number of balls. */
+    count: number;
+    /** Resting orbit radius, in world px. */
+    idleRadius: number;
+    /** Reach while the trigger is held. */
+    maxRadius: number;
+    /** Resting / spun-up angular speed, in rad/s. */
+    idleSpeed: number;
+    activeSpeed: number;
+    /** Ball radius for both contact checks and drawing. */
+    ballRadius: number;
+    /** Seconds between two hits on the same enemy. */
+    hitInterval: number;
+    /** Seconds one trigger press keeps the balls spun up. */
+    sustain: number;
+    /** Ramp-out and ramp-back times, in seconds. */
+    expandTime: number;
+    contractTime: number;
+  };
   /** Hitscan piercing beam that grows stronger while idle. */
   laser?: {
     /** Seconds of idle time to reach full charge. */
@@ -80,6 +104,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'storm',
   'laser',
   'carom',
+  'orbit',
   'smg',
   'scatter',
   'rail',
@@ -89,10 +114,11 @@ export const ALL_WEAPONS: WeaponId[] = [
   'shock',
 ];
 
-// Temporarily expose the pulse rifle, storm dart, laser and ricochet gun. The
-// other seven stay implemented and fully specced, but cannot be reached from
-// the in-game weapon cycle. Raise this count to bring them back.
-const VISIBLE_WEAPONS = 4;
+// Temporarily expose the pulse rifle, storm dart, laser, ricochet gun and
+// orbiting guards. The other seven stay implemented and fully specced, but
+// cannot be reached from the in-game weapon cycle. Raise this count to bring
+// them back.
+const VISIBLE_WEAPONS = 5;
 
 export const WEAPON_ORDER: WeaponId[] = ALL_WEAPONS.slice(0, VISIBLE_WEAPONS);
 
@@ -272,6 +298,35 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pierce: 0,
     ring: true,
     bounces: 5,
+  },
+  // Orbiting guards: three balls circle the player at about one body's width,
+  // then spin out to the seeker's 240px reach while the trigger is held (or for
+  // two seconds after a tap). They hit enemies and erase enemy bullets.
+  orbit: {
+    id: 'orbit',
+    name: '轨道球',
+    tag: 'ORBIT',
+    color: '#c9a2ff',
+    damage: 6,
+    cooldown: 0,
+    speed: 0,
+    radius: 0,
+    life: 0,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    orbit: {
+      count: 3,
+      idleRadius: 60,
+      maxRadius: SHORT_RANGE,
+      idleSpeed: 1.1,
+      activeSpeed: 4.2,
+      ballRadius: 10,
+      hitInterval: 0.28,
+      sustain: 2,
+      expandTime: 0.55,
+      contractTime: 0.7,
+    },
   },
   // Concussion shell: explodes on contact and shoves the blast outward.
   shock: {

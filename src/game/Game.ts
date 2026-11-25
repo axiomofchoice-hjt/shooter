@@ -425,6 +425,8 @@ interface Enemy {
   angle: number;
   attackTimer: number;
   hitFlash: number;
+  /** Seconds until the orbit weapon can hit this enemy again. */
+  orbitCooldown: number;
   age: number;
   seed: number;
   brain: EnemyBrain;
@@ -790,6 +792,12 @@ export class ShooterGame {
   private dodgeCooldown = 0;
   private flameTick = 0;
   private laserCharge = 0;
+  // Orbit weapon: current spin/radius, how far it is spun out (0..1), and the
+  // remaining seconds of the timed spin-up started by a trigger press.
+  private orbitAngle = 0;
+  private orbitRadius = 0;
+  private orbitExpand = 0;
+  private orbitActive = 0;
   private sfx = new SoundFX();
 
   private bgGradient: CanvasGradient | null = null;
@@ -818,7 +826,7 @@ export class ShooterGame {
 
   start(mode: GameMode = 'dungeon', config?: TestRoomConfig) {
     this.mode = mode;
-    // The dungeon keeps its curated 4-weapon cycle; the test room uses the
+    // The dungeon keeps its curated 5-weapon cycle; the test room uses the
     // loadout picked on the start screen, hidden guns included.
     this.weaponPool = mode === 'boss' ? pickTestWeapons(config?.weapons) : WEAPON_ORDER;
     this.testEnemies = mode === 'boss' ? pickTestEnemies(config?.enemies) : ['grunt'];
@@ -1060,6 +1068,10 @@ export class ShooterGame {
     this.stormDarts = [];
     this.laserBeams = [];
     this.laserCharge = 0;
+    this.orbitAngle = 0;
+    this.orbitRadius = 0;
+    this.orbitExpand = 0;
+    this.orbitActive = 0;
     this.particles = [];
     this.ghosts = [];
     this.dashGhostTimer = 0;
@@ -1408,16 +1420,26 @@ export class ShooterGame {
     }
 
     const firing = this.input.fireKey || this.input.touchFire || this.input.padFire;
-    if (firing) {
-      if (WEAPONS[player.weapon].flame) {
-        this.updateFlamer(dt);
-      } else if (player.fireCooldown <= 0) {
-        this.firePlayerBullet();
-      }
+    const activeWeapon = WEAPONS[player.weapon];
+    if (activeWeapon.orbit) {
+      // The orbit guards keep circling after the trigger is released: a press
+      // starts a timed spin-up, holding simply keeps refilling it.
+      this.updateOrbit(dt, firing, activeWeapon);
     } else {
-      // Let the next held burst start on a fresh tick instead of waiting out
-      // the remainder of the last one.
-      this.flameTick = 0;
+      // Leaving the orbit weapon drops whatever spin-up was left.
+      this.orbitActive = 0;
+      this.orbitExpand = Math.max(0, this.orbitExpand - dt * 4);
+      if (firing) {
+        if (activeWeapon.flame) {
+          this.updateFlamer(dt);
+        } else if (player.fireCooldown <= 0) {
+          this.firePlayerBullet();
+        }
+      } else {
+        // Let the next held burst start on a fresh tick instead of waiting out
+        // the remainder of the last one.
+        this.flameTick = 0;
+      }
     }
   }
 
@@ -1907,6 +1929,68 @@ export class ShooterGame {
       this.burnFlamerCone(spec, range, half);
       this.spawnFlamerParticles(spec, range, half);
       this.sfx.play('flame');
+    }
+  }
+
+  /**
+   * Orbit weapon: the balls circle the player at a body's width, spinning out
+   * to the seeker's 240px reach while the trigger is held. A single press
+   * refills a two-second spin-up, so holding and tapping every other second
+   * play the same. In both states a ball hurts any enemy it touches (with a
+   * per-enemy interval) and erases enemy bullets.
+   */
+  private updateOrbit(dt: number, firing: boolean, weapon: WeaponSpec) {
+    const spec = weapon.orbit;
+    if (!spec) return;
+    const player = this.player;
+
+    this.orbitActive = firing
+      ? spec.sustain
+      : Math.max(0, this.orbitActive - dt);
+    const want = this.orbitActive > 0 ? 1 : 0;
+    if (want > this.orbitExpand) {
+      this.orbitExpand = Math.min(want, this.orbitExpand + dt / spec.expandTime);
+    } else {
+      this.orbitExpand = Math.max(want, this.orbitExpand - dt / spec.contractTime);
+    }
+    // Smoothstep so the balls visibly pick up speed as they move out.
+    const e = this.orbitExpand;
+    const eased = e * e * (3 - 2 * e);
+    const radius =
+      spec.idleRadius + (spec.maxRadius - spec.idleRadius) * eased;
+    const spin = spec.idleSpeed + (spec.activeSpeed - spec.idleSpeed) * eased;
+    this.orbitRadius = radius;
+    this.orbitAngle = (this.orbitAngle + spin * dt) % TAU;
+
+    for (const enemy of this.enemies) {
+      if (enemy.orbitCooldown > 0) {
+        enemy.orbitCooldown = Math.max(0, enemy.orbitCooldown - dt);
+      }
+    }
+
+    for (let i = 0; i < spec.count; i++) {
+      const angle = this.orbitAngle + (i * TAU) / spec.count;
+      const ox = player.x + Math.cos(angle) * radius;
+      const oy = player.y + Math.sin(angle) * radius;
+
+      for (const enemy of this.enemies) {
+        if (enemy.dead || enemy.orbitCooldown > 0) continue;
+        if (dist(ox, oy, enemy.x, enemy.y) > enemy.radius + spec.ballRadius) {
+          continue;
+        }
+        enemy.orbitCooldown = spec.hitInterval;
+        this.damageEnemy(enemy, weapon.damage, ox, oy, true);
+        this.spawnBurst(ox, oy, weapon.color, 3, 110, 0.22);
+      }
+
+      for (let j = this.enemyBullets.length - 1; j >= 0; j--) {
+        const bullet = this.enemyBullets[j];
+        if (dist(ox, oy, bullet.x, bullet.y) > bullet.radius + spec.ballRadius) {
+          continue;
+        }
+        this.spawnBurst(bullet.x, bullet.y, weapon.color, 3, 90, 0.2);
+        this.enemyBullets.splice(j, 1);
+      }
     }
   }
 
@@ -3408,6 +3492,8 @@ export class ShooterGame {
     this.stormDarts = [];
     this.laserBeams = [];
     this.laserCharge = 0;
+    this.orbitActive = 0;
+    this.orbitExpand = 0;
     this.bullets = [];
     this.pickups = [];
     this.player.x = ROOM_SIZE / 2;
@@ -3487,6 +3573,7 @@ export class ShooterGame {
       angle: 0,
       attackTimer: rand(0.8, 2.2),
       hitFlash: 0,
+      orbitCooldown: 0,
       age: 0,
       seed: rand(0, TAU),
       brain: createEnemyBrain(),
@@ -3803,6 +3890,7 @@ export class ShooterGame {
     this.drawBlasts();
     this.drawDashGhosts();
     this.drawPlayer();
+    this.drawOrbs();
     this.drawLaserMuzzleGlow();
     this.drawStormDarts();
     this.drawFlamer();
@@ -5811,6 +5899,61 @@ export class ShooterGame {
       ctx.fill();
     }
 
+    ctx.restore();
+  }
+
+  /** Three glowing guards; their orbit ring doubles as the weapon's reach. */
+  private drawOrbs() {
+    const weapon = WEAPONS[this.player.weapon];
+    const spec = weapon.orbit;
+    if (!spec || this.player.dead) return;
+    const ctx = this.ctx;
+    const player = this.player;
+    const radius = this.orbitRadius > 0 ? this.orbitRadius : spec.idleRadius;
+    const ball = spec.ballRadius;
+    const active = this.orbitExpand;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    ctx.strokeStyle = withAlpha(weapon.color, 0.1 + active * 0.07);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, radius, 0, TAU);
+    ctx.stroke();
+
+    for (let i = 0; i < spec.count; i++) {
+      const angle = this.orbitAngle + (i * TAU) / spec.count;
+      const x = player.x + Math.cos(angle) * radius;
+      const y = player.y + Math.sin(angle) * radius;
+
+      // Comet tail along the orbit, longer and brighter when spun up.
+      const tail = 0.34 + active * 0.3;
+      ctx.strokeStyle = withAlpha(weapon.color, 0.22 + active * 0.1);
+      ctx.lineWidth = ball * 1.1;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, radius, angle - tail, angle);
+      ctx.stroke();
+
+      const glow = ctx.createRadialGradient(x, y, 1, x, y, ball * 2.4);
+      glow.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+      glow.addColorStop(0.4, withAlpha(weapon.color, 0.55));
+      glow.addColorStop(1, withAlpha(weapon.color, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, ball * 2.4, 0, TAU);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(x, y, ball * 0.42, 0, TAU);
+      ctx.fill();
+
+      ctx.strokeStyle = withAlpha(weapon.color, 0.85);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(x, y, ball, 0, TAU);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
