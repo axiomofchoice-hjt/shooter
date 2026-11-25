@@ -78,11 +78,47 @@ npm run dev
 ```
 src/
   App.tsx                 # 页面状态、输入与流程编排
-  game/Game.ts            # 游戏引擎（地牢房间、遭遇、渲染）
-  game/audio.ts           # WebAudio 合成音效
-  game/gamepad.ts         # Gamepad API 轮询与标准按钮映射
+  game/
+    Game.ts               # ShooterGame 门面：画布生命周期、主循环、输入入口
+    core/
+      world.ts            # GameWorld：一局游戏的全部可变状态
+      config.ts           # 游戏数值与视觉常量
+      enemyDefs.ts        # 敌人属性、攻击与行为配置
+      entities.ts         # 实体、弹道、特效等数据结构
+      math.ts             # 数学与颜色工具
+      testRoom.ts         # 测试房配置校验
+    systems/              # 模拟系统；函数第一个参数都是 GameWorld
+      world.ts            # 相机、房间几何、装饰、索敌
+      player.ts           # 玩家移动、瞄准、闪避
+      weapons.ts          # 主武器开火与派生弹道
+      weaponItems.ts      # 抛物物品、雷暴镖、轰炸机、回收弹
+      combat.ts           # 子弹、冲击波与敌方弹道结算
+      enemies.ts          # 敌人 AI、移动与攻击
+      turrets.ts          # 蜂巢炮台
+      damage.ts           # 伤害、受击与死亡结算
+      rooms.ts            # 地牢房间、遭遇、传送门与测试房
+      spawn.ts            # 刷怪与训练桩
+      pickups.ts          # 掉落与拾取
+      boss.ts             # Boss 血条与结算
+      fx.ts               # 粒子、飘字与短时特效
+      hud.ts              # HUD 快照
+      input.ts            # 输入归一化与清空
+      loop.ts             # 每帧更新调度
+      session.ts          # 开局与回主菜单
+    render/               # 只读渲染层，按场景 / 实体 / 弹道 / 特效拆分
+      render.ts           # 渲染调度
+      scene.ts            # 地板、墙、门、传送门、场景层
+      entities.ts         # 玩家、敌人、炮台、闪避残影
+      projectiles.ts      # 各类子弹、导弹与冲击波
+      weapons.ts          # 武器表现、轰炸机与状态环
+      fx.ts               # 粒子、飘字、锁定框、屏幕效果
+      overlay.ts          # 横幅与菜单氛围
+      shared.ts           # 缓存光晕与房间配色
+    weapons.ts            # 武器数值表
+    audio.ts              # WebAudio 合成音效
+    gamepad.ts            # Gamepad API 轮询与标准按钮映射
   components/             # HUD、触屏控制、菜单与弹窗
   styles.css              # 响应式视觉与布局
 ```
 
-数值和敌人配置集中在 `src/game/Game.ts` 顶部，方便继续调参。
+数值和敌人配置集中在 `src/game/core/config.ts` 与 `src/game/core/enemyDefs.ts`，方便继续调参。模拟与渲染都通过 `GameWorld` 读写状态；新增玩法按依赖方向放进 `systems/`，新增画面放进 `render/`，`Game.ts` 只保留门面。

@@ -17,7 +17,8 @@
 
 ## 代码
 
-- 游戏数值和敌人配置集中在 `src/game/Game.ts` 顶部；武器数值在 `src/game/weapons.ts`。
+- 游戏数值和敌人配置集中在 `src/game/core/config.ts` 与 `src/game/core/enemyDefs.ts`；武器数值在 `src/game/weapons.ts`。
+- 一局游戏的可变状态在 `src/game/core/world.ts` 的 `GameWorld`；模拟逻辑按子系统放在 `src/game/systems/`，渲染放在 `src/game/render/`；`src/game/Game.ts` 只保留画布生命周期、主循环和输入门面。
 - 地牢带哪几把枪由 `src/game/weapons.ts` 的 `DUNGEON_LOADOUT` 决定，默认为 `['pulse']`（只带第一把）。新武器做完先加进这个列表，方便进地牢实测；用户说「除了第一把都不带」时，把列表收回只剩 `pulse`。测试房不受这个列表限制。
 - 改动玩法后同步更新 `README.md` 与 `CHANGELOG.md`。
 

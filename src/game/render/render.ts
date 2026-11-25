@@ -1,0 +1,91 @@
+import { rand } from '../core/math';
+import type { GameWorld } from '../core/world';
+import { drawDashGhosts, drawEnemies, drawOrbs, drawPlayer, drawTurrets } from './entities';
+import { drawAutoTarget, drawFloaters, drawOverlayEffects, drawParticles } from './fx';
+import { drawBanner, drawMenuAtmosphere } from './overlay';
+import {
+  drawBlasts,
+  drawBullets,
+  drawEnemyBullets,
+  drawHomings,
+  drawShells,
+  drawShockwaves,
+  drawStormDarts,
+} from './projectiles';
+import {
+  drawBackdrop,
+  drawBomberShadows,
+  drawFireRings,
+  drawFloor,
+  drawPickups,
+  drawPortal,
+  drawTelegraphs,
+  drawWeaponRange,
+} from './scene';
+import {
+  drawArcs,
+  drawBomberStatus,
+  drawBombers,
+  drawFlamer,
+  drawLaserBeams,
+  drawLaserMuzzleGlow,
+  drawLobItems,
+  drawRecycleStatus,
+} from './weapons';
+
+// -------------------------------------------------------------------- render
+export function render(world: GameWorld) {
+  const ctx = world.ctx;
+  const { width, height, zoom } = world;
+  const shakeX = world.shake > 0 ? rand(-world.shake, world.shake) : 0;
+  const shakeY = world.shake > 0 ? rand(-world.shake, world.shake) : 0;
+
+  ctx.setTransform(world.dpr, 0, 0, world.dpr, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  drawBackdrop(world, width, height);
+
+  ctx.save();
+  ctx.translate(width / 2 + shakeX, height / 2 + shakeY);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-world.camera.x, -world.camera.y);
+
+  drawFloor(world);
+  drawWeaponRange(world);
+  drawBomberShadows(world);
+  drawPortal(world);
+  drawTelegraphs(world);
+  drawFireRings(world);
+  drawPickups(world);
+  drawTurrets(world);
+  drawEnemyBullets(world);
+  drawBullets(world);
+  drawEnemies(world);
+  drawLobItems(world);
+  drawShells(world);
+  drawHomings(world);
+  drawBlasts(world);
+  drawDashGhosts(world);
+  drawPlayer(world);
+  drawRecycleStatus(world);
+  drawBomberStatus(world);
+  drawOrbs(world);
+  drawLaserMuzzleGlow(world);
+  drawStormDarts(world);
+  drawFlamer(world);
+  drawArcs(world);
+  drawLaserBeams(world);
+  drawShockwaves(world);
+  drawParticles(world);
+  drawFloaters(world);
+  drawBombers(world);
+  drawAutoTarget(world);
+
+  ctx.restore();
+
+  drawOverlayEffects(world, shakeX, shakeY);
+  if (world.banner) drawBanner(world);
+  if (world.phase === 'idle') {
+    drawMenuAtmosphere(world);
+  }
+}

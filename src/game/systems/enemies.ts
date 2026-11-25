@@ -1,0 +1,728 @@
+import {
+  ENEMY_APPROACH_CHANCE,
+  ENEMY_IDLE_JITTER,
+  ENEMY_LANE_PAD,
+  ENEMY_LEGS_MAX,
+  ENEMY_LEGS_MIN,
+  ENEMY_LEG_TIMEOUT,
+  ENEMY_RING_MAX,
+  ENEMY_RING_MIN,
+  HOMING_BLAST_DAMAGE,
+  HOMING_BLAST_RADIUS,
+  HOMING_LIFE,
+  HOMING_RADIUS,
+  HOMING_SEEK_TIME,
+  HOMING_SPEED,
+  HOMING_TRAIL_POINTS,
+  HOMING_TURN_RATE,
+  SHELL_FLIGHT_TIME,
+  SHELL_RADIUS,
+  SHELL_SPEED,
+  SPLIT_BULLET_DAMAGE,
+  SPLIT_BULLET_LIFE,
+  SPLIT_BULLET_SPEED,
+  SPLIT_RING_COUNT,
+} from '../core/config';
+import type { EnemyAction, EnemyAttackDef } from '../core/enemyDefs';
+import { ENEMY_ACTIONS, ENEMY_BEHAVIOR } from '../core/enemyDefs';
+import type { Enemy, EnemyHoming, EnemyShell } from '../core/entities';
+import { TAU, angleDelta, clamp, dist, rand, segmentCircleHit, turnTowards } from '../core/math';
+import type { GameWorld } from '../core/world';
+import { TURRET } from '../weapons';
+import { updateBossAttack } from './boss';
+import { compactEnemies } from './combat';
+import { damageTurret, playerHit } from './damage';
+import { spawnBurst } from './fx';
+import { enemyAttackPoint, findTauntTurret, turretById } from './turrets';
+import { outOfRoom, roomBounds } from './world';
+
+// ------------------------------------------------------------------ enemies
+export function updateEnemies(world: GameWorld, dt: number) {
+  const player = world.player;
+  const bounds = roomBounds(world);
+
+  for (const enemy of world.enemies) {
+    if (enemy.dead) continue;
+    enemy.age += dt;
+    enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
+    if (enemy.dummy) continue;
+    enemy.attackTimer -= dt;
+
+    const dx = player.x - enemy.x;
+    const dy = player.y - enemy.y;
+    const distance = Math.max(1, Math.hypot(dx, dy));
+    const nx = dx / distance;
+    const ny = dy / distance;
+
+    enemy.desiredX = 0;
+    enemy.desiredY = 0;
+    enemy.desiredSpeed = 0;
+    enemy.turnRate = 4;
+    let aimAtPlayer = true;
+
+    if (enemy.kind === 'boss') {
+      enemy.angle = Math.atan2(dy, dx);
+      if (distance > 300) {
+        enemy.desiredX = nx;
+        enemy.desiredY = ny;
+      } else if (distance < 185) {
+        enemy.desiredX = -nx;
+        enemy.desiredY = -ny;
+      } else {
+        const strafe = Math.sin(world.elapsed * 0.9 + enemy.seed) > 0 ? 1 : -1;
+        enemy.desiredX = -ny * strafe * 0.85 + nx * 0.1;
+        enemy.desiredY = nx * strafe * 0.85 + ny * 0.1;
+      }
+      const phase2 = enemy.hp <= enemy.maxHp * 0.5;
+      enemy.desiredSpeed = enemy.speed * (phase2 ? 1.32 : 1);
+      if (!player.dead) updateBossAttack(world, enemy, dt);
+    } else {
+      aimAtPlayer = updateEnemyBrain(world, enemy, dt, distance);
+    }
+
+    const desiredLen = Math.hypot(enemy.desiredX, enemy.desiredY);
+    if (desiredLen > 0.001) {
+      enemy.desiredX /= desiredLen;
+      enemy.desiredY /= desiredLen;
+    } else {
+      enemy.desiredX = 0;
+      enemy.desiredY = 0;
+    }
+    const turn = 1 - Math.exp(-enemy.turnRate * dt);
+    enemy.vx += (enemy.desiredX * enemy.desiredSpeed - enemy.vx) * turn;
+    enemy.vy += (enemy.desiredY * enemy.desiredSpeed - enemy.vy) * turn;
+    enemy.x += (enemy.vx + enemy.knockX) * dt;
+    enemy.y += (enemy.vy + enemy.knockY) * dt;
+    const knockDecay = Math.exp(-5 * dt);
+    enemy.knockX *= knockDecay;
+    enemy.knockY *= knockDecay;
+    if (Math.abs(enemy.knockX) < 0.5) enemy.knockX = 0;
+    if (Math.abs(enemy.knockY) < 0.5) enemy.knockY = 0;
+    enemy.x = clamp(enemy.x, bounds.left + 18, bounds.right - 18);
+    enemy.y = clamp(enemy.y, bounds.top + 18, bounds.bottom - 18);
+
+    if (enemy.kind !== 'boss') {
+      if (aimAtPlayer) {
+        const target = enemyAttackPoint(world, enemy);
+        enemy.angle = turnTowards(
+          enemy.angle,
+          Math.atan2(target.y - enemy.y, target.x - enemy.x),
+          1 - Math.exp(-10 * dt),
+        );
+      } else if (Math.hypot(enemy.vx, enemy.vy) > 26) {
+        enemy.angle = turnTowards(
+          enemy.angle,
+          Math.atan2(enemy.vy, enemy.vx),
+          1 - Math.exp(-6 * dt),
+        );
+      }
+    }
+
+    if (
+      enemy.age > 0.18 &&
+      !enemy.dummy &&
+      !player.dead &&
+      distance < enemy.radius + player.radius - 2
+    ) {
+      if (player.invuln <= 0) {
+        playerHit(world, enemy.damage);
+        const push = 140;
+        enemy.vx -= nx * push;
+        enemy.vy -= ny * push;
+        // Impact force is an external impulse, so it still shoves the player
+        // even though normal movement has no inertia.
+        player.knockX += nx * 240;
+        player.knockY += ny * 240;
+      }
+    }
+  }
+
+  // Soft separation keeps the horde readable.
+  for (let i = 0; i < world.enemies.length; i++) {
+    const a = world.enemies[i];
+    if (a.dead) continue;
+    for (let j = i + 1; j < world.enemies.length; j++) {
+      const b = world.enemies[j];
+      if (b.dead || a.kind === 'boss' || b.kind === 'boss') continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const minDist = (a.radius + b.radius) * 0.88;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > 0.001 && d2 < minDist * minDist) {
+        const d = Math.sqrt(d2);
+        const overlap = (minDist - d) * 0.5;
+        const px = (dx / d) * overlap;
+        const py = (dy / d) * overlap;
+        a.x -= px;
+        a.y -= py;
+        b.x += px;
+        b.y += py;
+      }
+    }
+  }
+
+  compactEnemies(world);
+}
+
+/**
+ * Advances the enemy's move / attack / idle rotation. Returns true while the
+ * enemy is attacking, which makes it face the player instead of its heading.
+ */
+export function updateEnemyBrain(
+  world: GameWorld,
+  enemy: Enemy,
+  dt: number,
+  distance: number,
+): boolean {
+  const brain = enemy.brain;
+  let guard = 0;
+  while (guard++ < 8) {
+    if (brain.index >= brain.queue.length) {
+      brain.queue = rollEnemyActions(world);
+      brain.index = 0;
+      brain.started = false;
+    }
+    if (!brain.started) {
+      brain.started = true;
+      beginEnemyAction(world, enemy, brain.queue[brain.index]);
+    }
+    if (tickEnemyAction(world, enemy, dt, distance)) {
+      return brain.queue[brain.index] === 'attack';
+    }
+    brain.index += 1;
+    brain.started = false;
+  }
+  return false;
+}
+
+/** One move, one attack and two idle actions in a random order. */
+export function rollEnemyActions(_world: GameWorld): EnemyAction[] {
+  const queue = ENEMY_ACTIONS.slice();
+  for (let i = queue.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const swap = queue[i];
+    queue[i] = queue[j];
+    queue[j] = swap;
+  }
+  return queue;
+}
+
+export function beginEnemyAction(world: GameWorld, enemy: Enemy, action: EnemyAction) {
+  if (action === 'move') {
+    beginEnemyMove(world, enemy);
+    return;
+  }
+  if (action === 'attack') {
+    // A turret nearby pulls this attack off the player.
+    enemy.brain.turretId = findTauntTurret(world, enemy)?.id;
+    const atk = ENEMY_BEHAVIOR[enemy.kind].attack;
+    enemy.brain.phase = 'windup';
+    enemy.brain.timer = atk.windup * rand(0.9, 1.1);
+    return;
+  }
+  // Idle: random duration whose expectation matches one straight-line hop.
+  const brain = enemy.brain;
+  const def = ENEMY_BEHAVIOR[enemy.kind];
+  const mean =
+    brain.lastLegTime > 0.05
+      ? brain.lastLegTime
+      : (brain.ringRadius > 0 ? brain.ringRadius : (ENEMY_RING_MIN + ENEMY_RING_MAX) / 2) /
+        Math.max(1, def.moveSpeed);
+  brain.idleTimer = clamp(
+    mean * rand(1 - ENEMY_IDLE_JITTER, 1 + ENEMY_IDLE_JITTER),
+    0.35,
+    2.6,
+  );
+}
+
+export function beginEnemyMove(world: GameWorld, enemy: Enemy) {
+  const brain = enemy.brain;
+  brain.legsLeft =
+    ENEMY_LEGS_MIN + Math.floor(Math.random() * (ENEMY_LEGS_MAX - ENEMY_LEGS_MIN + 1));
+  beginEnemyLeg(world, enemy, dist(enemy.x, enemy.y, world.player.x, world.player.y));
+}
+
+export function beginEnemyLeg(world: GameWorld, enemy: Enemy, distance: number) {
+  const brain = enemy.brain;
+  const def = ENEMY_BEHAVIOR[enemy.kind];
+  const bounds = roomBounds(world);
+  const player = world.player;
+
+  // Each hop starts where the previous one ended; the ring is built around
+  // that spot and a bigger enemy paces a wider ring.
+  brain.anchorX = enemy.x;
+  brain.anchorY = enemy.y;
+  brain.ringRadius =
+    rand(ENEMY_RING_MIN, ENEMY_RING_MAX) * clamp(enemy.radius / 16, 0.8, 1.5);
+
+  // Random point on the ring around the anchor. The player-facing direction
+  // is the one that corrects the distance to the preferred range; 80% of the
+  // hops take it, 20% take the same vector reversed, away from the range.
+  const toPlayer = Math.atan2(player.y - brain.anchorY, player.x - brain.anchorX);
+  const tooFar = distance > def.range;
+  const corrective = tooFar ? toPlayer : toPlayer + Math.PI;
+  const reversed = Math.random() >= ENEMY_APPROACH_CHANCE;
+  let angle = reversed ? corrective + Math.PI : corrective;
+  // Do not overshoot the preferred range and barge into the player.
+  const hopLen =
+    tooFar !== reversed
+      ? Math.min(brain.ringRadius, Math.max(26, distance - def.range))
+      : brain.ringRadius;
+  // Still a ring pick, not a pure radial line.
+  angle += rand(-0.6, 0.6);
+
+  // Never aim outside the room: swing the hop toward the room centre until
+  // the ring point fits, instead of clamping it onto the wall.
+  const pad = ENEMY_LANE_PAD + enemy.radius;
+  const fits = (a: number) => {
+    const x = brain.anchorX + Math.cos(a) * hopLen;
+    const y = brain.anchorY + Math.sin(a) * hopLen;
+    return (
+      x >= bounds.left + pad &&
+      x <= bounds.right - pad &&
+      y >= bounds.top + pad &&
+      y <= bounds.bottom - pad
+    );
+  };
+  if (!fits(angle)) {
+    const toCentre = Math.atan2(
+      (bounds.top + bounds.bottom) / 2 - brain.anchorY,
+      (bounds.left + bounds.right) / 2 - brain.anchorX,
+    );
+    const delta = ((((toCentre - angle + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+    for (let step = 1; step <= 8; step++) {
+      const probe = angle + delta * (step / 8);
+      if (fits(probe)) {
+        angle = probe;
+        break;
+      }
+    }
+  }
+
+  brain.targetX = clamp(
+    brain.anchorX + Math.cos(angle) * hopLen,
+    bounds.left + pad,
+    bounds.right - pad,
+  );
+  brain.targetY = clamp(
+    brain.anchorY + Math.sin(angle) * hopLen,
+    bounds.top + pad,
+    bounds.bottom - pad,
+  );
+
+  const hop = Math.max(12, dist(brain.targetX, brain.targetY, enemy.x, enemy.y));
+  brain.legSpeed = def.moveSpeed * rand(0.9, 1.15);
+  brain.legTime = hop / brain.legSpeed;
+  brain.legTimer = brain.legTime * ENEMY_LEG_TIMEOUT + 0.3;
+  brain.lastLegTime = brain.legTime;
+}
+
+export function tickEnemyAction(
+  world: GameWorld,
+  enemy: Enemy,
+  dt: number,
+  distance: number,
+): boolean {
+  const brain = enemy.brain;
+  const action = brain.queue[brain.index];
+
+  if (action === 'move') {
+    const dx = brain.targetX - enemy.x;
+    const dy = brain.targetY - enemy.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 2) {
+      enemy.desiredX = dx / d;
+      enemy.desiredY = dy / d;
+      // Ease into the ring point instead of overshooting it.
+      enemy.desiredSpeed = brain.legSpeed * clamp(d / 34, 0.35, 1);
+    }
+    brain.legTimer -= dt;
+    if (d <= 8 || brain.legTimer <= 0) {
+      brain.legsLeft -= 1;
+      if (brain.legsLeft <= 0) return false;
+      beginEnemyLeg(world, enemy, distance);
+    }
+    return true;
+  }
+
+  if (action === 'attack') {
+    const atk = ENEMY_BEHAVIOR[enemy.kind].attack;
+    enemy.turnRate = 10;
+    if (brain.phase === 'windup') {
+      brain.timer -= dt;
+      if (brain.timer <= 0) {
+        brain.phase = 'active';
+        brain.timer = atk.active;
+        if (atk.mode !== 'sweep') {
+          brain.shotsLeft = atk.shots;
+          brain.fireTimer = 0;
+        } else {
+          // Start the blade behind the enemy and sweep one full turn.
+          brain.sweepFrom = enemy.angle - Math.PI;
+          brain.sweepAngle = brain.sweepFrom;
+          brain.sweepHit = false;
+          world.sfx.play('sweep');
+        }
+      }
+      return true;
+    }
+    if (brain.phase === 'active') {
+      brain.timer -= dt;
+      if (atk.mode !== 'sweep') {
+        brain.fireTimer -= dt;
+        if (brain.shotsLeft > 0 && brain.fireTimer <= 0) {
+          fireEnemyShot(world, enemy, atk);
+          brain.shotsLeft -= 1;
+          brain.fireTimer = atk.interval;
+        }
+      } else {
+        const progress = 1 - clamp(brain.timer / Math.max(0.001, atk.active), 0, 1);
+        brain.sweepAngle = brain.sweepFrom + TAU * progress;
+        enemySweepHit(world, enemy, atk);
+      }
+      if (brain.timer <= 0) {
+        brain.phase = 'recover';
+        brain.timer = atk.recovery;
+      }
+      return true;
+    }
+    brain.timer -= dt;
+    return brain.timer > 0;
+  }
+
+  brain.idleTimer -= dt;
+  enemy.turnRate = 6;
+  return brain.idleTimer > 0;
+}
+
+export function enemySweepHit(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
+  const brain = enemy.brain;
+  if (brain.sweepHit) return;
+  const player = world.player;
+  const tipX = enemy.x + Math.cos(brain.sweepAngle) * atk.reach;
+  const tipY = enemy.y + Math.sin(brain.sweepAngle) * atk.reach;
+  let hitSomething = false;
+  if (
+    !player.dead &&
+    player.invuln <= 0 &&
+    segmentCircleHit(
+      enemy.x,
+      enemy.y,
+      tipX,
+      tipY,
+      player.x,
+      player.y,
+      player.radius + 9,
+    )
+  ) {
+    playerHit(world, atk.damage);
+    hitSomething = true;
+  }
+  // A taunted sweep bites the turret instead of reaching for the player.
+  const turret = turretById(world, brain.turretId);
+  if (
+    turret &&
+    segmentCircleHit(
+      enemy.x,
+      enemy.y,
+      tipX,
+      tipY,
+      turret.x,
+      turret.y,
+      TURRET.radius + 9,
+    )
+  ) {
+    damageTurret(world, turret, atk.damage);
+    hitSomething = true;
+  }
+  if (!hitSomething) return;
+  brain.sweepHit = true;
+  world.shake = Math.max(world.shake, 6);
+  spawnBurst(world, tipX, tipY, enemy.color, 8, 150, 0.3);
+}
+
+export function fireEnemyShot(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
+  if (atk.mode === 'shell') {
+    fireShell(world, enemy, atk);
+    return;
+  }
+  if (atk.mode === 'homing') {
+    fireHoming(world, enemy, atk);
+    return;
+  }
+  const target = enemyAttackPoint(world, enemy);
+  const angle =
+    Math.atan2(target.y - enemy.y, target.x - enemy.x) + rand(-0.05, 0.05);
+  const x = enemy.x + Math.cos(angle) * (enemy.radius + 5);
+  const y = enemy.y + Math.sin(angle) * (enemy.radius + 5);
+  world.enemyBullets.push({
+    x,
+    y,
+    prevX: x,
+    prevY: y,
+    vx: Math.cos(angle) * 300,
+    vy: Math.sin(angle) * 300,
+    radius: 6.5,
+    damage: atk.damage,
+    life: 4,
+    color: enemy.color,
+  });
+  spawnBurst(world, x, y, enemy.color, 4, 90, 0.25);
+  world.sfx.play('spit');
+}
+
+/** Lobs one shell at where its target stands right now. */
+export function fireShell(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
+  const target = enemyAttackPoint(world, enemy);
+  const angle = Math.atan2(target.y - enemy.y, target.x - enemy.x);
+  const x = enemy.x + Math.cos(angle) * (enemy.radius + SHELL_RADIUS + 6);
+  const y = enemy.y + Math.sin(angle) * (enemy.radius + SHELL_RADIUS + 6);
+  const travel = Math.max(1, dist(x, y, target.x, target.y));
+  world.shells.push({
+    x,
+    y,
+    prevX: x,
+    prevY: y,
+    vx: Math.cos(angle) * SHELL_SPEED,
+    vy: Math.sin(angle) * SHELL_SPEED,
+    radius: SHELL_RADIUS,
+    damage: atk.damage,
+    // Fixed aim point: if the target moves, the shell still lands here.
+    targetX: target.x,
+    targetY: target.y,
+    traveled: 0,
+    total: travel,
+    life: SHELL_FLIGHT_TIME,
+    color: enemy.color,
+    spin: rand(0, TAU),
+  });
+  spawnBurst(world, x, y, enemy.color, 6, 110, 0.3);
+  world.sfx.play('shell');
+}
+
+export function updateShells(world: GameWorld, dt: number) {
+  for (let i = world.shells.length - 1; i >= 0; i--) {
+    const shell = world.shells[i];
+    // Stop exactly on the aim point instead of overshooting it by a frame.
+    const step = Math.min(SHELL_SPEED * dt, Math.max(0, shell.total - shell.traveled));
+    shell.prevX = shell.x;
+    shell.prevY = shell.y;
+    const len = Math.hypot(shell.vx, shell.vy) || 1;
+    shell.x += (shell.vx / len) * step;
+    shell.y += (shell.vy / len) * step;
+    shell.traveled += step;
+    shell.life -= dt;
+    shell.spin += dt * 3.4;
+
+    let burst = false;
+
+    // The only early trigger is touching the player; the shell ignores
+    // bullets and only bursts where it was aimed. A dodging player is not
+    // there at all, so the shell sails through instead of bursting on them.
+    const player = world.player;
+    if (
+      !player.dead &&
+      player.invuln <= 0 &&
+      segmentCircleHit(
+        shell.prevX,
+        shell.prevY,
+        shell.x,
+        shell.y,
+        player.x,
+        player.y,
+        player.radius + shell.radius - 3,
+      )
+    ) {
+      playerHit(world, shell.damage);
+      burst = true;
+    }
+
+    if (
+      burst ||
+      shell.traveled >= shell.total - 0.01 ||
+      shell.life <= 0 ||
+      outOfRoom(world, shell.x, shell.y, 40)
+    ) {
+      splitShell(world, shell);
+      world.shells.splice(i, 1);
+    }
+  }
+}
+
+/** Bursts a shell into a full ring of fast, unlimited-range bullets. */
+export function splitShell(world: GameWorld, shell: EnemyShell) {
+  const base = rand(0, TAU);
+  for (let i = 0; i < SPLIT_RING_COUNT; i++) {
+    const angle = base + (TAU * i) / SPLIT_RING_COUNT;
+    world.enemyBullets.push({
+      x: shell.x,
+      y: shell.y,
+      prevX: shell.x,
+      prevY: shell.y,
+      vx: Math.cos(angle) * SPLIT_BULLET_SPEED,
+      vy: Math.sin(angle) * SPLIT_BULLET_SPEED,
+      radius: 5,
+      damage: SPLIT_BULLET_DAMAGE,
+      life: SPLIT_BULLET_LIFE,
+      color: shell.color,
+    });
+  }
+  spawnBurst(world, shell.x, shell.y, shell.color, 20, 260, 0.5);
+  spawnBurst(world, shell.x, shell.y, '#ffffff', 8, 190, 0.32);
+  world.shake = Math.max(world.shake, 3);
+  world.sfx.play('split');
+}
+
+/**
+ * Launches a missile that starts out aimed at the player and then chases at
+ * a capped turn rate. The lock only lasts HOMING_SEEK_TIME, after which the
+ * missile keeps whatever heading it had and flies straight.
+ */
+export function fireHoming(world: GameWorld, enemy: Enemy, atk: EnemyAttackDef) {
+  const target = enemyAttackPoint(world, enemy);
+  const angle =
+    Math.atan2(target.y - enemy.y, target.x - enemy.x) + rand(-0.1, 0.1);
+  const x = enemy.x + Math.cos(angle) * (enemy.radius + 9);
+  const y = enemy.y + Math.sin(angle) * (enemy.radius + 9);
+  world.homings.push({
+    x,
+    y,
+    prevX: x,
+    prevY: y,
+    vx: Math.cos(angle) * HOMING_SPEED,
+    vy: Math.sin(angle) * HOMING_SPEED,
+    angle,
+    radius: HOMING_RADIUS,
+    damage: atk.damage,
+    seek: HOMING_SEEK_TIME,
+    life: HOMING_LIFE,
+    color: enemy.color,
+    spin: rand(0, TAU),
+    trail: [{ x, y }],
+    turretId: turretById(world, enemy.brain.turretId)?.id,
+  });
+  spawnBurst(world, x, y, enemy.color, 5, 100, 0.28);
+  world.sfx.play('lock');
+}
+
+export function updateHomings(world: GameWorld, dt: number) {
+  const bounds = roomBounds(world);
+  const player = world.player;
+
+  for (let i = world.homings.length - 1; i >= 0; i--) {
+    const missile = world.homings[i];
+    missile.prevX = missile.x;
+    missile.prevY = missile.y;
+    missile.life -= dt;
+    missile.spin += dt * 5;
+    // Keep the smoke trail short: a curved ribbon, not a full path record.
+    missile.trail.push({ x: missile.x, y: missile.y });
+    if (missile.trail.length > HOMING_TRAIL_POINTS) missile.trail.shift();
+
+    if (missile.seek > 0) {
+      missile.seek = Math.max(0, missile.seek - dt);
+      const chaseTurret = turretById(world, missile.turretId);
+      if (missile.turretId !== undefined && !chaseTurret) {
+        missile.turretId = undefined;
+      }
+      if (chaseTurret || !player.dead) {
+        const tx = chaseTurret ? chaseTurret.x : player.x;
+        const ty = chaseTurret ? chaseTurret.y : player.y;
+        const want = Math.atan2(ty - missile.y, tx - missile.x);
+        const maxTurn = HOMING_TURN_RATE * dt;
+        missile.angle += clamp(angleDelta(missile.angle, want), -maxTurn, maxTurn);
+      }
+      if (missile.seek <= 0) {
+        // Lock lost: a white ping marks the moment it stops chasing.
+        spawnBurst(world, missile.x, missile.y, '#ffffff', 6, 90, 0.26);
+      }
+    }
+
+    missile.vx = Math.cos(missile.angle) * HOMING_SPEED;
+    missile.vy = Math.sin(missile.angle) * HOMING_SPEED;
+    missile.x += missile.vx * dt;
+    missile.y += missile.vy * dt;
+
+    // Walls are the room's inner face; the missile's own radius decides how
+    // close it has to get before it counts as a touch.
+    const hitWall =
+      missile.x <= bounds.left + missile.radius ||
+      missile.x >= bounds.right - missile.radius ||
+      missile.y <= bounds.top + missile.radius ||
+      missile.y >= bounds.bottom - missile.radius;
+
+    // A dodging player is not there: the missile crosses the i-frame gap
+    // without detonating, so a well-timed slide really does ignore the shot.
+    const hitPlayer =
+      !player.dead &&
+      player.invuln <= 0 &&
+      segmentCircleHit(
+        missile.prevX,
+        missile.prevY,
+        missile.x,
+        missile.y,
+        player.x,
+        player.y,
+        player.radius + missile.radius - 2,
+      );
+
+    const hitTurretTarget = turretById(world, missile.turretId);
+    const hitTurret =
+      hitTurretTarget !== null &&
+      segmentCircleHit(
+        missile.prevX,
+        missile.prevY,
+        missile.x,
+        missile.y,
+        hitTurretTarget.x,
+        hitTurretTarget.y,
+        TURRET.radius + missile.radius - 2,
+      );
+
+    if (hitWall || hitPlayer || hitTurret) {
+      if (hitPlayer) playerHit(world, missile.damage);
+      if (hitTurret && hitTurretTarget) damageTurret(world, hitTurretTarget, missile.damage);
+      explodeHoming(world, missile, hitPlayer);
+      world.homings.splice(i, 1);
+      continue;
+    }
+
+    if (missile.life <= 0) {
+      // Out of fuel: no blast, just a fizzle where it gave up.
+      spawnBurst(world, missile.x, missile.y, missile.color, 5, 80, 0.3);
+      world.homings.splice(i, 1);
+    }
+  }
+}
+
+/**
+ * Small blast that ends a homing missile. A body hit already paid its
+ * damage, so only a wall burst can clip the player standing next to it.
+ */
+export function explodeHoming(
+  world: GameWorld,
+  missile: EnemyHoming,
+  alreadyHitPlayer: boolean,
+) {
+  world.blasts.push({
+    x: missile.x,
+    y: missile.y,
+    radius: HOMING_BLAST_RADIUS,
+    life: 0.3,
+    maxLife: 0.3,
+    color: missile.color,
+  });
+  spawnBurst(world, missile.x, missile.y, missile.color, 12, 200, 0.36);
+  spawnBurst(world, missile.x, missile.y, '#ffffff', 5, 130, 0.22);
+  world.shake = Math.max(world.shake, 2.6);
+  world.sfx.play('blast');
+
+  const player = world.player;
+  if (alreadyHitPlayer || player.dead) return;
+  if (
+    dist(missile.x, missile.y, player.x, player.y) <=
+    HOMING_BLAST_RADIUS + player.radius - 10
+  ) {
+    if (player.invuln <= 0) playerHit(world, HOMING_BLAST_DAMAGE);
+  }
+}
