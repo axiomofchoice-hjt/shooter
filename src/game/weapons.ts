@@ -3,6 +3,35 @@ import type { WeaponId } from './types';
 // Shared by the close-range weapons so the range circle and lock distance agree.
 const SHORT_RANGE = 240;
 
+/**
+ * Sentry turrets dropped by the hive gun. One turret per three hits on the
+ * same enemy (or one kill), placed about one body away from that enemy.
+ */
+export const TURRET = {
+  /** Hits on the same enemy needed for a summon. */
+  hitsPerSummon: 3,
+  /** Live turret cap; summoning past it retires the oldest turret. */
+  maxCount: 4,
+  /** Turrets expire on their own after this many seconds. */
+  life: 7,
+  /** Body radius for drawing and hit tests. */
+  radius: 11,
+  /** Gap between the target enemy's edge and the turret's edge. */
+  spawnGap: 34,
+  /** How much punishment a turret survives. */
+  hp: 40,
+  /** Enemies this close pick a turret as their attack target. */
+  tauntRange: 200,
+  /** Target acquisition radius, also drawn as the range ring. */
+  range: 280,
+  fireInterval: 0.3,
+  damage: 2.5,
+  shotSpeed: 1100,
+  shotRadius: 3,
+  /** Turret shots fizzle just past the ring so the drawn range stays honest. */
+  shotLife: 0.28,
+};
+
 export interface WeaponSpec {
   id: WeaponId;
   name: string;
@@ -63,8 +92,7 @@ export interface WeaponSpec {
   ring?: boolean;
   /** Wall bounces a shot survives; it breaks on the wall after the last one. */
   bounces?: number;
-  /**
-   * Mother shot that bursts into `count` children the moment it lands on an
+  /** Mother shot that bursts into `count` children the moment it lands on an
    * enemy or a wall. Children fly evenly around the mother's own heading and
    * never split again.
    */
@@ -75,6 +103,11 @@ export interface WeaponSpec {
     childLife: number;
     childRadius: number;
   };
+  /**
+   * Hive gun: its hits are counted per enemy and every few of them (or a kill)
+   * drop a sentry turret. Turret numbers live in TURRET below.
+   */
+  summon?: boolean;
   /**
    * Orbiting guards: balls circle the player, damage whatever they touch and
    * erase enemy bullets. Holding fire spins them out to `maxRadius`.
@@ -118,6 +151,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'carom',
   'orbit',
   'fission',
+  'summoner',
   'smg',
   'scatter',
   'rail',
@@ -128,10 +162,10 @@ export const ALL_WEAPONS: WeaponId[] = [
 ];
 
 // Temporarily expose the pulse rifle, storm dart, laser, ricochet gun, orbiting
-// guards and fission cannon. The other seven stay implemented and fully
-// specced, but cannot be reached from the in-game weapon cycle. Raise this
-// count to bring them back.
-const VISIBLE_WEAPONS = 6;
+// guards, fission cannon and hive gun. The other seven stay implemented and
+// fully specced, but cannot be reached from the in-game weapon cycle. Raise
+// this count to bring them back.
+const VISIBLE_WEAPONS = 7;
 
 export const WEAPON_ORDER: WeaponId[] = ALL_WEAPONS.slice(0, VISIBLE_WEAPONS);
 
@@ -363,6 +397,23 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       childLife: 0.65,
       childRadius: 3.2,
     },
+  },
+  // Hive gun: weak, steady hits that build up to turrets. Every third hit on
+  // the same enemy (or any kill) plants a sentry one body away from the enemy.
+  summoner: {
+    id: 'summoner',
+    name: '蜂巢枪',
+    tag: 'HIVE',
+    color: '#ffc94d',
+    damage: 5,
+    cooldown: 0.5,
+    speed: 1000,
+    radius: 4,
+    life: 1.15,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    summon: true,
   },
   // Concussion shell: explodes on contact and shoves the blast outward.
   shock: {

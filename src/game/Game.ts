@@ -13,6 +13,7 @@ import {
 } from './types';
 import {
   ALL_WEAPONS,
+  TURRET,
   WEAPONS,
   WEAPON_ORDER,
   nextWeapon,
@@ -377,6 +378,9 @@ interface EnemyBrain {
 
   // idle action
   idleTimer: number;
+
+  /** Turret this attack is aimed at; cleared back to the player when it dies. */
+  turretId?: number;
 }
 
 function createEnemyBrain(): EnemyBrain {
@@ -427,6 +431,8 @@ interface Enemy {
   hitFlash: number;
   /** Seconds until the orbit weapon can hit this enemy again. */
   orbitCooldown: number;
+  /** Hive-gun hits landed since the last turret summon. */
+  summonHits: number;
   age: number;
   seed: number;
   brain: EnemyBrain;
@@ -485,6 +491,8 @@ interface Bullet {
   };
   /** Split child: the mother's victim is skipped so the ring can spread. */
   ignoreId?: number;
+  /** Hive shot: hits per turret summon, carried so mid-flight swaps are safe. */
+  summonEvery?: number;
 }
 
 interface EnemyBullet {
@@ -537,6 +545,26 @@ interface EnemyHoming {
   color: string;
   spin: number;
   trail: Array<{ x: number; y: number }>;
+  /** Turret this missile is chasing instead of the player, when set. */
+  turretId?: number;
+}
+
+// Sentry turret summoned by the hive gun. It shoots for a few seconds, pulls
+// enemy attacks, and has enough HP to soak a hit or two.
+interface Turret {
+  id: number;
+  x: number;
+  y: number;
+  angle: number;
+  hp: number;
+  maxHp: number;
+  hitFlash: number;
+  cooldown: number;
+  life: number;
+  maxLife: number;
+  muzzle: number;
+  color: string;
+  seed: number;
 }
 
 // Small round blast left where a homing missile breaks.
@@ -741,6 +769,8 @@ export class ShooterGame {
   private shockwaves: Shockwave[] = [];
   private stormDarts: StormDart[] = [];
   private laserBeams: LaserBeam[] = [];
+  private turrets: Turret[] = [];
+  private nextTurretId = 1;
   private particles: Particle[] = [];
   private ghosts: DashGhost[] = [];
   private dashGhostTimer = 0;
@@ -836,7 +866,7 @@ export class ShooterGame {
 
   start(mode: GameMode = 'dungeon', config?: TestRoomConfig) {
     this.mode = mode;
-    // The dungeon keeps its curated 6-weapon cycle; the test room uses the
+    // The dungeon keeps its curated 7-weapon cycle; the test room uses the
     // loadout picked on the start screen, hidden guns included.
     this.weaponPool = mode === 'boss' ? pickTestWeapons(config?.weapons) : WEAPON_ORDER;
     this.testEnemies = mode === 'boss' ? pickTestEnemies(config?.enemies) : ['grunt'];
@@ -1078,6 +1108,8 @@ export class ShooterGame {
     this.stormDarts = [];
     this.laserBeams = [];
     this.laserCharge = 0;
+    this.turrets = [];
+    this.nextTurretId = 1;
     this.orbitAngle = 0;
     this.orbitRadius = 0;
     this.orbitExpand = 0;
@@ -1124,6 +1156,7 @@ export class ShooterGame {
     this.updateBullets(dt);
     this.updateStormDarts(dt);
     this.updateEnemies(dt);
+    this.updateTurrets(dt);
     this.updateEnemyBullets(dt);
     this.updateShells(dt);
     this.updateHomings(dt);
@@ -1274,6 +1307,8 @@ export class ShooterGame {
       const nextRoom = clamp(Math.floor(player.x / ROOM_SIZE), 0, DUNGEON_ROOMS - 1);
       if (nextRoom !== this.roomIndex) {
         this.roomIndex = nextRoom;
+        // Turrets belong to the room they were planted in.
+        this.turrets = [];
         this.clampCamera();
       }
       return;
@@ -1561,6 +1596,7 @@ export class ShooterGame {
                 radius: weapon.split.childRadius,
               }
             : undefined,
+          summonEvery: weapon.summon ? TURRET.hitsPerSummon : undefined,
         });
       }
     }
@@ -2236,6 +2272,9 @@ export class ShooterGame {
             break;
           }
           this.damageEnemy(enemy, bullet.damage, bullet.x, bullet.y);
+          if (bullet.summonEvery !== undefined) {
+            this.registerSummonHit(enemy, bullet.summonEvery, bullet.color);
+          }
           if (bullet.split) {
             this.spawnSplitBullets(bullet, enemy.id);
             consumed = true;
@@ -2444,6 +2483,160 @@ export class ShooterGame {
     this.shake = Math.max(this.shake, 1.1);
   }
 
+  // ------------------------------------------------------------------ turrets
+
+  /**
+   * Hive gun bookkeeping: every few hits on one enemy — or any kill — plants a
+   * turret beside that enemy. A kill takes priority so one hit can never both
+   * trigger the counter and "kill summon" into two turrets.
+   */
+  private registerSummonHit(enemy: Enemy, every: number, color: string) {
+    if (enemy.dead) {
+      this.summonTurret(enemy.x, enemy.y, enemy.radius, color);
+      return;
+    }
+    enemy.summonHits += 1;
+    if (enemy.summonHits < every) return;
+    enemy.summonHits = 0;
+    this.summonTurret(enemy.x, enemy.y, enemy.radius, color);
+  }
+
+  /** Plants a turret one body away from the enemy, always inside the room. */
+  private summonTurret(x: number, y: number, enemyRadius: number, color: string) {
+    const bounds = this.roomBounds();
+    const gap = enemyRadius + TURRET.radius + TURRET.spawnGap;
+    const start = rand(0, TAU);
+    const margin = TURRET.radius + 12;
+    let tx = 0;
+    let ty = 0;
+    let placed = false;
+    for (let i = 0; i < 8; i++) {
+      const angle = start + (i / 8) * TAU;
+      const px = x + Math.cos(angle) * gap;
+      const py = y + Math.sin(angle) * gap;
+      if (
+        px >= bounds.left + margin &&
+        px <= bounds.right - margin &&
+        py >= bounds.top + margin &&
+        py <= bounds.bottom - margin
+      ) {
+        tx = px;
+        ty = py;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      tx = clamp(x + Math.cos(start) * gap, bounds.left + margin, bounds.right - margin);
+      ty = clamp(y + Math.sin(start) * gap, bounds.top + margin, bounds.bottom - margin);
+    }
+
+    if (this.turrets.length >= TURRET.maxCount) this.turrets.shift();
+    this.turrets.push({
+      id: this.nextTurretId++,
+      x: tx,
+      y: ty,
+      angle: 0,
+      hp: TURRET.hp,
+      maxHp: TURRET.hp,
+      hitFlash: 0,
+      cooldown: 0.12,
+      life: TURRET.life,
+      maxLife: TURRET.life,
+      muzzle: 0,
+      color,
+      seed: rand(0, TAU),
+    });
+    this.spawnBurst(tx, ty, color, 12, 170, 0.4);
+    this.spawnBurst(tx, ty, '#ffffff', 5, 120, 0.25);
+    this.shake = Math.max(this.shake, 2);
+  }
+
+  private turretById(id: number | undefined): Turret | null {
+    if (id === undefined) return null;
+    return this.turrets.find((turret) => turret.id === id) ?? null;
+  }
+
+  /** Nearest live turret within taunt range, so attacks can be pulled onto it. */
+  private findTauntTurret(enemy: Enemy): Turret | null {
+    let best: Turret | null = null;
+    let bestDist = TURRET.tauntRange;
+    for (const turret of this.turrets) {
+      const d = dist(enemy.x, enemy.y, turret.x, turret.y);
+      if (d < bestDist) {
+        bestDist = d;
+        best = turret;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Where this enemy's current attack is pointed: the turret it was taunted by,
+   * or the player once that turret is gone.
+   */
+  private enemyAttackPoint(enemy: Enemy): { x: number; y: number } {
+    const turret = this.turretById(enemy.brain.turretId);
+    if (turret) return turret;
+    enemy.brain.turretId = undefined;
+    return this.player;
+  }
+
+  private damageTurret(turret: Turret, damage: number) {
+    turret.hp -= damage;
+    turret.hitFlash = 0.1;
+    this.spawnBurst(turret.x, turret.y, turret.color, 4, 110, 0.25);
+    if (turret.hp > 0) return;
+    const index = this.turrets.indexOf(turret);
+    if (index >= 0) this.turrets.splice(index, 1);
+    this.spawnBurst(turret.x, turret.y, turret.color, 16, 220, 0.45);
+    this.spawnBurst(turret.x, turret.y, '#ffffff', 8, 160, 0.3);
+    this.shake = Math.max(this.shake, 3);
+  }
+
+  private updateTurrets(dt: number) {
+    for (let i = this.turrets.length - 1; i >= 0; i--) {
+      const turret = this.turrets[i];
+      turret.life -= dt;
+      turret.hitFlash = Math.max(0, turret.hitFlash - dt);
+      turret.muzzle = Math.max(0, turret.muzzle - dt);
+      turret.cooldown -= dt;
+      if (turret.life <= 0) {
+        this.spawnBurst(turret.x, turret.y, turret.color, 8, 120, 0.35);
+        this.turrets.splice(i, 1);
+        continue;
+      }
+
+      const target = this.findNearestEnemy(turret.x, turret.y, TURRET.range);
+      if (!target) continue;
+      // Lead a little so a grunt walking across the ring does not slip out.
+      const distance = dist(turret.x, turret.y, target.x, target.y);
+      const lead = Math.min(0.25, distance / TURRET.shotSpeed);
+      const aimX = target.x + target.vx * lead;
+      const aimY = target.y + target.vy * lead;
+      turret.angle = Math.atan2(aimY - turret.y, aimX - turret.x);
+      if (turret.cooldown > 0) continue;
+      turret.cooldown = TURRET.fireInterval;
+      turret.muzzle = 0.08;
+      const muzzleX = turret.x + Math.cos(turret.angle) * (TURRET.radius + 6);
+      const muzzleY = turret.y + Math.sin(turret.angle) * (TURRET.radius + 6);
+      this.bullets.push({
+        x: muzzleX,
+        y: muzzleY,
+        prevX: muzzleX,
+        prevY: muzzleY,
+        vx: Math.cos(turret.angle) * TURRET.shotSpeed,
+        vy: Math.sin(turret.angle) * TURRET.shotSpeed,
+        radius: TURRET.shotRadius,
+        damage: TURRET.damage,
+        life: TURRET.shotLife,
+        color: turret.color,
+        pierce: 0,
+        hitIds: [],
+      });
+    }
+  }
+
   private damageEnemy(
     enemy: Enemy,
     damage: number,
@@ -2538,6 +2731,28 @@ export class ShooterGame {
         hit = true;
       }
 
+      // Turrets are valid targets too, whether or not this shot was aimed at
+      // one; they are what pulls enemy fire away from the player.
+      if (!hit) {
+        for (const turret of this.turrets) {
+          if (
+            segmentCircleHit(
+              bullet.prevX,
+              bullet.prevY,
+              bullet.x,
+              bullet.y,
+              turret.x,
+              turret.y,
+              TURRET.radius + bullet.radius - 2,
+            )
+          ) {
+            this.damageTurret(turret, bullet.damage);
+            hit = true;
+            break;
+          }
+        }
+      }
+
       if (hit || bullet.life <= 0 || this.outOfRoom(bullet.x, bullet.y, 18)) {
         this.enemyBullets.splice(i, 1);
       }
@@ -2611,7 +2826,12 @@ export class ShooterGame {
 
       if (enemy.kind !== 'boss') {
         if (aimAtPlayer) {
-          enemy.angle = turnTowards(enemy.angle, Math.atan2(dy, dx), 1 - Math.exp(-10 * dt));
+          const target = this.enemyAttackPoint(enemy);
+          enemy.angle = turnTowards(
+            enemy.angle,
+            Math.atan2(target.y - enemy.y, target.x - enemy.x),
+            1 - Math.exp(-10 * dt),
+          );
         } else if (Math.hypot(enemy.vx, enemy.vy) > 26) {
           enemy.angle = turnTowards(
             enemy.angle,
@@ -2706,6 +2926,8 @@ export class ShooterGame {
       return;
     }
     if (action === 'attack') {
+      // A turret nearby pulls this attack off the player.
+      enemy.brain.turretId = this.findTauntTurret(enemy)?.id;
       const atk = ENEMY_BEHAVIOR[enemy.kind].attack;
       enemy.brain.phase = 'windup';
       enemy.brain.timer = atk.windup * rand(0.9, 1.1);
@@ -2885,11 +3107,13 @@ export class ShooterGame {
     const brain = enemy.brain;
     if (brain.sweepHit) return;
     const player = this.player;
-    if (player.dead || player.invuln > 0) return;
     const tipX = enemy.x + Math.cos(brain.sweepAngle) * atk.reach;
     const tipY = enemy.y + Math.sin(brain.sweepAngle) * atk.reach;
+    let hitSomething = false;
     if (
-      !segmentCircleHit(
+      !player.dead &&
+      player.invuln <= 0 &&
+      segmentCircleHit(
         enemy.x,
         enemy.y,
         tipX,
@@ -2899,10 +3123,28 @@ export class ShooterGame {
         player.radius + 9,
       )
     ) {
-      return;
+      this.playerHit(atk.damage);
+      hitSomething = true;
     }
+    // A taunted sweep bites the turret instead of reaching for the player.
+    const turret = this.turretById(brain.turretId);
+    if (
+      turret &&
+      segmentCircleHit(
+        enemy.x,
+        enemy.y,
+        tipX,
+        tipY,
+        turret.x,
+        turret.y,
+        TURRET.radius + 9,
+      )
+    ) {
+      this.damageTurret(turret, atk.damage);
+      hitSomething = true;
+    }
+    if (!hitSomething) return;
     brain.sweepHit = true;
-    this.playerHit(atk.damage);
     this.shake = Math.max(this.shake, 6);
     this.spawnBurst(tipX, tipY, enemy.color, 8, 150, 0.3);
   }
@@ -2916,8 +3158,9 @@ export class ShooterGame {
       this.fireHoming(enemy, atk);
       return;
     }
+    const target = this.enemyAttackPoint(enemy);
     const angle =
-      Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x) + rand(-0.05, 0.05);
+      Math.atan2(target.y - enemy.y, target.x - enemy.x) + rand(-0.05, 0.05);
     const x = enemy.x + Math.cos(angle) * (enemy.radius + 5);
     const y = enemy.y + Math.sin(angle) * (enemy.radius + 5);
     this.enemyBullets.push({
@@ -2936,13 +3179,13 @@ export class ShooterGame {
     this.sfx.play('spit');
   }
 
-  /** Lobs one shell at where the player stands right now. */
+  /** Lobs one shell at where its target stands right now. */
   private fireShell(enemy: Enemy, atk: EnemyAttackDef) {
-    const player = this.player;
-    const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+    const target = this.enemyAttackPoint(enemy);
+    const angle = Math.atan2(target.y - enemy.y, target.x - enemy.x);
     const x = enemy.x + Math.cos(angle) * (enemy.radius + SHELL_RADIUS + 6);
     const y = enemy.y + Math.sin(angle) * (enemy.radius + SHELL_RADIUS + 6);
-    const travel = Math.max(1, dist(x, y, player.x, player.y));
+    const travel = Math.max(1, dist(x, y, target.x, target.y));
     this.shells.push({
       x,
       y,
@@ -2952,9 +3195,9 @@ export class ShooterGame {
       vy: Math.sin(angle) * SHELL_SPEED,
       radius: SHELL_RADIUS,
       damage: atk.damage,
-      // Fixed aim point: if the player moves, the shell still lands here.
-      targetX: player.x,
-      targetY: player.y,
+      // Fixed aim point: if the target moves, the shell still lands here.
+      targetX: target.x,
+      targetY: target.y,
       traveled: 0,
       total: travel,
       life: SHELL_FLIGHT_TIME,
@@ -3044,9 +3287,9 @@ export class ShooterGame {
    * missile keeps whatever heading it had and flies straight.
    */
   private fireHoming(enemy: Enemy, atk: EnemyAttackDef) {
-    const player = this.player;
+    const target = this.enemyAttackPoint(enemy);
     const angle =
-      Math.atan2(player.y - enemy.y, player.x - enemy.x) + rand(-0.1, 0.1);
+      Math.atan2(target.y - enemy.y, target.x - enemy.x) + rand(-0.1, 0.1);
     const x = enemy.x + Math.cos(angle) * (enemy.radius + 9);
     const y = enemy.y + Math.sin(angle) * (enemy.radius + 9);
     this.homings.push({
@@ -3064,6 +3307,7 @@ export class ShooterGame {
       color: enemy.color,
       spin: rand(0, TAU),
       trail: [{ x, y }],
+      turretId: this.turretById(enemy.brain.turretId)?.id,
     });
     this.spawnBurst(x, y, enemy.color, 5, 100, 0.28);
     this.sfx.play('lock');
@@ -3085,8 +3329,14 @@ export class ShooterGame {
 
       if (missile.seek > 0) {
         missile.seek = Math.max(0, missile.seek - dt);
-        if (!player.dead) {
-          const want = Math.atan2(player.y - missile.y, player.x - missile.x);
+        const chaseTurret = this.turretById(missile.turretId);
+        if (missile.turretId !== undefined && !chaseTurret) {
+          missile.turretId = undefined;
+        }
+        if (chaseTurret || !player.dead) {
+          const tx = chaseTurret ? chaseTurret.x : player.x;
+          const ty = chaseTurret ? chaseTurret.y : player.y;
+          const want = Math.atan2(ty - missile.y, tx - missile.x);
           const maxTurn = HOMING_TURN_RATE * dt;
           missile.angle += clamp(angleDelta(missile.angle, want), -maxTurn, maxTurn);
         }
@@ -3124,8 +3374,22 @@ export class ShooterGame {
           player.radius + missile.radius - 2,
         );
 
-      if (hitWall || hitPlayer) {
+      const hitTurretTarget = this.turretById(missile.turretId);
+      const hitTurret =
+        hitTurretTarget !== null &&
+        segmentCircleHit(
+          missile.prevX,
+          missile.prevY,
+          missile.x,
+          missile.y,
+          hitTurretTarget.x,
+          hitTurretTarget.y,
+          TURRET.radius + missile.radius - 2,
+        );
+
+      if (hitWall || hitPlayer || hitTurret) {
         if (hitPlayer) this.playerHit(missile.damage);
+        if (hitTurret && hitTurretTarget) this.damageTurret(hitTurretTarget, missile.damage);
         this.explodeHoming(missile, hitPlayer);
         this.homings.splice(i, 1);
         continue;
@@ -3567,6 +3831,7 @@ export class ShooterGame {
     this.stormDarts = [];
     this.laserBeams = [];
     this.laserCharge = 0;
+    this.turrets = [];
     this.orbitActive = 0;
     this.orbitExpand = 0;
     this.bullets = [];
@@ -3649,6 +3914,7 @@ export class ShooterGame {
       attackTimer: rand(0.8, 2.2),
       hitFlash: 0,
       orbitCooldown: 0,
+      summonHits: 0,
       age: 0,
       seed: rand(0, TAU),
       brain: createEnemyBrain(),
@@ -3957,6 +4223,7 @@ export class ShooterGame {
     this.drawPortal();
     this.drawTelegraphs();
     this.drawPickups();
+    this.drawTurrets();
     this.drawEnemyBullets();
     this.drawBullets();
     this.drawEnemies();
@@ -5986,6 +6253,86 @@ export class ShooterGame {
     }
 
     ctx.restore();
+  }
+
+  /** Sentry turrets: range hint, body, remaining life and remaining HP. */
+  private drawTurrets() {
+    if (this.turrets.length === 0) return;
+    const ctx = this.ctx;
+    for (const turret of this.turrets) {
+      const color = turret.color;
+      const pulse = 0.5 + Math.sin(this.ambientTime * 3 + turret.seed) * 0.5;
+      ctx.save();
+      ctx.translate(turret.x, turret.y);
+
+      // Range hint, so the reach is readable at a glance.
+      ctx.strokeStyle = withAlpha(color, 0.1 + pulse * 0.04);
+      ctx.fillStyle = withAlpha(color, 0.015);
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([10, 14]);
+      ctx.lineDashOffset = -this.ambientTime * 12;
+      ctx.beginPath();
+      ctx.arc(0, 0, TURRET.range, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Life ring around the base.
+      ctx.strokeStyle = withAlpha(color, 0.5);
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(
+        0,
+        0,
+        TURRET.radius + 4,
+        -Math.PI / 2,
+        -Math.PI / 2 + (turret.life / turret.maxLife) * TAU,
+      );
+      ctx.stroke();
+
+      // Base.
+      ctx.fillStyle = turret.hitFlash > 0 ? '#ffffff' : 'rgba(12, 16, 20, 0.95)';
+      ctx.strokeStyle = withAlpha(color, 0.9);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, TURRET.radius, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = withAlpha(color, 0.35);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, TURRET.radius - 4, 0, TAU);
+      ctx.stroke();
+
+      // Barrel and muzzle flash.
+      ctx.save();
+      ctx.rotate(turret.angle);
+      ctx.fillStyle = withAlpha(color, 0.85);
+      ctx.fillRect(TURRET.radius - 2, -2.5, 14, 5);
+      if (turret.muzzle > 0) {
+        const flash = turret.muzzle / 0.08;
+        ctx.fillStyle = withAlpha('#ffffff', 0.85 * flash);
+        ctx.beginPath();
+        ctx.arc(TURRET.radius + 12, 0, 6 * flash, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = withAlpha(color, 0.5 * flash);
+        ctx.beginPath();
+        ctx.arc(TURRET.radius + 12, 0, 11 * flash, 0, TAU);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // HP bar only once it has been hurt.
+      if (turret.hp < turret.maxHp) {
+        const width = 26;
+        const fill = Math.max(0, turret.hp / turret.maxHp);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.fillRect(-width / 2, -TURRET.radius - 15, width, 4);
+        ctx.fillStyle = withAlpha(color, 0.9);
+        ctx.fillRect(-width / 2, -TURRET.radius - 15, width * fill, 4);
+      }
+      ctx.restore();
+    }
   }
 
   /** Three glowing guards; their orbit ring doubles as the weapon's reach. */
