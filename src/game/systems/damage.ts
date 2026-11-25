@@ -163,8 +163,9 @@ export function damageEnemy(
 }
 
 /**
- * Training dummy: takes visible damage but never awards kills, score, combo
- * or loot. When it breaks it simply waits, then a fresh one is set up.
+ * Training dummy: an indestructible practice target. Hits still flash, burst
+ * and print damage numbers, but it never loses health, never dies, never
+ * awards kills, score or combo, and never drops loot.
  */
 function damageDummy(
   world: GameWorld,
@@ -175,7 +176,6 @@ function damageDummy(
   quiet: boolean,
 ) {
   if (enemy.dead) return;
-  enemy.hp = Math.max(0, enemy.hp - damage);
   enemy.hitFlash = 0.09;
   if (!quiet) {
     spawnBurst(world, hitX, hitY, enemy.color, 5, 130, 0.28);
@@ -193,21 +193,4 @@ function damageDummy(
       size: 12,
     });
   }
-  if (enemy.hp > 0) return;
-
-  enemy.dead = true;
-  world.dummyRespawn = 2.2;
-  spawnBurst(world, enemy.x, enemy.y, enemy.color, 26, 240, 0.6);
-  spawnBurst(world, enemy.x, enemy.y, '#ffffff', 10, 160, 0.4);
-  world.floaters.push({
-    x: enemy.x,
-    y: enemy.y - enemy.radius - 28,
-    text: '桩已击破',
-    color: enemy.color,
-    life: 1.2,
-    maxLife: 1.2,
-    size: 15,
-  });
-  world.shake = Math.max(world.shake, 4);
-  world.sfx.play('kill');
 }

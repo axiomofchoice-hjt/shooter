@@ -76,8 +76,8 @@ export function spawnEnemy(world: GameWorld, kind: EnemyKind, x: number, y: numb
 
 /**
  * Practice dummy for the dungeon start room. It uses a tank body so every
- * weapon can lock and hit it, but has no AI, no contact damage and no
- * rewards; breaking it just schedules a fresh one.
+ * weapon can lock and hit it, but has no AI, no contact damage, no rewards,
+ * and cannot be destroyed; it stays put for the whole run.
  */
 export function spawnDummy(world: GameWorld) {
   removeDummy(world);
@@ -85,8 +85,6 @@ export function spawnDummy(world: GameWorld) {
   const dummy = world.enemies[world.enemies.length - 1];
   if (!dummy) return;
   dummy.dummy = true;
-  dummy.hp = 240;
-  dummy.maxHp = 240;
   dummy.damage = 0;
   dummy.speed = 0;
   dummy.score = 0;
@@ -95,7 +93,6 @@ export function spawnDummy(world: GameWorld) {
   dummy.brain.queue = [];
   dummy.brain.started = false;
   world.dummy = dummy;
-  world.dummyRespawn = 0;
 }
 
 export function removeDummy(world: GameWorld) {
@@ -103,25 +100,11 @@ export function removeDummy(world: GameWorld) {
   const index = world.enemies.indexOf(world.dummy);
   if (index >= 0) world.enemies.splice(index, 1);
   world.dummy = null;
-  world.dummyRespawn = 0;
 }
 
 export function updateDummy(world: GameWorld, dt: number) {
   world.dummyFloatTimer = Math.max(0, world.dummyFloatTimer - dt);
-  if (world.dummy && !world.dummy.dead) return;
-  world.dummyRespawn = Math.max(0, world.dummyRespawn - dt);
-  if (world.dummyRespawn > 0) return;
-  const broken = world.dummy !== null;
-  spawnDummy(world);
-  if (broken) {
-    world.floaters.push({
-      x: DUMMY_X,
-      y: DUMMY_Y - 46,
-      text: '桩已重置',
-      color: '#ffcf6b',
-      life: 1,
-      maxLife: 1,
-      size: 13,
-    });
-  }
+  // The dummy is invulnerable, so this only runs after a room change dropped
+  // it; rebuild it when the player walks back into the start room.
+  if (!world.dummy) spawnDummy(world);
 }

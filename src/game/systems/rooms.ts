@@ -68,7 +68,6 @@ function createPlayer(world: GameWorld): Player {
 function resetCombatState(world: GameWorld) {
   world.enemies = [];
   world.dummy = null;
-  world.dummyRespawn = 0;
   world.dummyFloatTimer = 0;
   world.dropHits = 0;
   world.lobItems = [];

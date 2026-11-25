@@ -143,10 +143,9 @@ export class GameWorld {
   // trigger was held last frame so a release can be detected.
   volleyShots = 0;
   volleyFiring = false;
-  // Training dummy in the dungeon start room: the live body, its respawn
-  // countdown after being broken, and a throttle for its damage numbers.
+  // Training dummy in the dungeon start room: the live body plus a throttle
+  // for its damage numbers. It cannot be destroyed.
   dummy: Enemy | null = null;
-  dummyRespawn = 0;
   dummyFloatTimer = 0;
   // Parabola gun: enemy hits since the last drop, plus the lobbed items.
   dropHits = 0;
