@@ -50,10 +50,10 @@ export default function App() {
   const [victory, setVictory] = useState(false);
   const [isTouch, setIsTouch] = useState(detectTouchDevice);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  // The test room starts with the whole armory checked: a weapon is only
-  // absent from a run when the player unchecks it, never because it is hidden.
+  // The test room opens with just the pulse rifle checked; every weapon is
+  // listed and can be checked, so this is a selection, not a hidden state.
   const [testConfig, setTestConfig] = useState<TestRoomConfig>(() => ({
-    weapons: [...ALL_WEAPONS],
+    weapons: ['pulse'],
     enemies: ['grunt'],
   }));
   const [testSetupOpen, setTestSetupOpen] = useState(false);

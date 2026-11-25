@@ -199,10 +199,13 @@ export const ALL_WEAPONS: WeaponId[] = [
 /**
  * What a dungeon run carries, in cycle order. This is a run loadout, not a
  * property of the weapon: every gun in ALL_WEAPONS is finished and usable, and
- * the test room can pick any of them. Taking one out of this list only means
- * the dungeon does not bring it along.
+ * the test room can pick any of them.
+ *
+ * It starts with just the pulse rifle. When a new gun lands, append it here so
+ * it can be tried in the dungeon; when the player asks to carry only the first
+ * gun again, trim the list back to ['pulse'].
  */
-export const DUNGEON_LOADOUT: WeaponId[] = [...ALL_WEAPONS];
+export const DUNGEON_LOADOUT: WeaponId[] = ['pulse'];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pulse: {
