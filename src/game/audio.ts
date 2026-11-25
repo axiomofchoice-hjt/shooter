@@ -19,6 +19,8 @@ type SoundName =
   | 'flame'
   | 'arc'
   | 'laser'
+  | 'airstrike'
+  | 'bomb'
   | 'dash'
   | 'bossIntro'
   | 'bossCharge'
@@ -33,6 +35,7 @@ export class SoundFX {
   private master: GainNode | null = null;
   private lastShoot = 0;
   private lastFlame = 0;
+  private lastBomb = 0;
   private noiseBuffer: AudioBuffer | null = null;
 
   constructor() {
@@ -160,6 +163,20 @@ export class SoundFX {
         this.tone(2400, 300, 0.18, 'sawtooth', 0.11, 0);
         this.tone(1200, 160, 0.12, 'square', 0.045, 0.01);
         this.tone(90, 38, 0.24, 'sine', 0.08, 0);
+        break;
+      case 'airstrike':
+        // Low descending siren: the call-in, not the gunshot.
+        this.tone(340, 90, 0.7, 'sawtooth', 0.07, 0);
+        this.tone(180, 55, 0.9, 'triangle', 0.06, 0.08);
+        this.hiss(0.5, 0.035);
+        break;
+      case 'bomb':
+        // A carpet run drops often; throttle so the mix stays readable.
+        if (now - this.lastBomb < 0.07) return;
+        this.lastBomb = now;
+        this.tone(130, 38, 0.24, 'sawtooth', 0.13, 0);
+        this.tone(74, 28, 0.32, 'triangle', 0.1, 0.01);
+        this.hiss(0.12, 0.04);
         break;
       case 'dash':
         this.tone(190, 720, 0.16, 'sine', 0.11, 0);

@@ -622,6 +622,55 @@ interface Shockwave {
   color: string;
 }
 
+type BomberSpec = NonNullable<WeaponSpec['bomber']>;
+
+// Plane called in by the carpet bomber. It crosses the room along the aim line
+// and drops bombs the whole way.
+interface Bomber {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  dirX: number;
+  dirY: number;
+  length: number;
+  elapsed: number;
+  callIn: number;
+  speed: number;
+  dropTimer: number;
+  seed: number;
+  color: string;
+  spec: BomberSpec;
+}
+
+// Bomb falling from the plane toward its ground impact point.
+interface Bomb {
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  age: number;
+  fuse: number;
+  color: string;
+  spec: BomberSpec;
+}
+
+// Burning ring left on the floor by an airstrike bomb. It damages enemies in
+// fixed ticks, like the flamer, so damage does not depend on frame rate.
+interface FireRing {
+  x: number;
+  y: number;
+  radius: number;
+  life: number;
+  maxLife: number;
+  tickTimer: number;
+  tickInterval: number;
+  tickDamage: number;
+  pulse: number;
+  seed: number;
+  color: string;
+}
+
 // One chain-lightning zap, kept briefly so the bolt can be drawn.
 interface ArcBolt {
   /** Player muzzle followed by every enemy the chain reached. */
@@ -778,6 +827,9 @@ export class ShooterGame {
   private arcPoints: number[] = [];
   private shockwaves: Shockwave[] = [];
   private stormDarts: StormDart[] = [];
+  private bombers: Bomber[] = [];
+  private bombs: Bomb[] = [];
+  private fireRings: FireRing[] = [];
   private laserBeams: LaserBeam[] = [];
   private turrets: Turret[] = [];
   private nextTurretId = 1;
@@ -840,6 +892,9 @@ export class ShooterGame {
   private autoTarget: Enemy | null = null;
   private secondaryCooldown = 0;
   private dodgeCooldown = 0;
+  // The bomber's recharge is tracked separately: its 6.5s cooldown must not
+  // lock out every other weapon just because the player switched guns.
+  private bomberCooldown = 0;
   private flameTick = 0;
   private laserCharge = 0;
   // Orbit weapon: current spin/radius, how far it is spun out (0..1), and the
@@ -1116,6 +1171,9 @@ export class ShooterGame {
     this.arcs = [];
     this.shockwaves = [];
     this.stormDarts = [];
+    this.bombers = [];
+    this.bombs = [];
+    this.fireRings = [];
     this.laserBeams = [];
     this.laserCharge = 0;
     this.turrets = [];
@@ -1156,6 +1214,7 @@ export class ShooterGame {
     this.autoTarget = null;
     this.secondaryCooldown = 0;
     this.dodgeCooldown = 0;
+    this.bomberCooldown = 0;
     this.flameTick = 0;
     this.hudTimer = 0;
     this.clearInput();
@@ -1165,6 +1224,7 @@ export class ShooterGame {
     this.updatePlayer(dt);
     this.updateBullets(dt);
     this.updateStormDarts(dt);
+    this.updateBombers(dt);
     this.updateEnemies(dt);
     this.updateTurrets(dt);
     this.updateEnemyBullets(dt);
@@ -1443,6 +1503,7 @@ export class ShooterGame {
     this.confinePlayer();
 
     player.fireCooldown -= dt;
+    this.bomberCooldown = Math.max(0, this.bomberCooldown - dt);
     player.invuln = Math.max(0, player.invuln - dt);
     player.muzzle = Math.max(0, player.muzzle - dt);
 
@@ -1495,7 +1556,9 @@ export class ShooterGame {
           // the way home. `fireCooldown` keeps the minimum interval.
           const waitingForBolt =
             activeWeapon.recycle && this.recycleBoltInFlight();
-          if (!waitingForBolt) this.firePlayerBullet();
+          const waitingForBomber =
+            activeWeapon.bomber && this.bomberCooldown > 0;
+          if (!waitingForBolt && !waitingForBomber) this.firePlayerBullet();
         }
       } else {
         // Let the next held burst start on a fresh tick instead of waiting out
@@ -1562,13 +1625,18 @@ export class ShooterGame {
   private firePlayerBullet() {
     const player = this.player;
     const weapon = WEAPONS[player.weapon];
-    player.fireCooldown = weapon.cooldown;
+    // The bomber's long recharge lives on its own timer so switching guns
+    // after a call-in does not leave the player unable to shoot for 6.5s.
+    player.fireCooldown = weapon.bomber ? 0.25 : weapon.cooldown;
+    if (weapon.bomber) this.bomberCooldown = weapon.cooldown;
     player.muzzle =
       weapon.pellets > 1 || weapon.id === 'rail' || weapon.laser ? 0.1 : 0.06;
     player.muzzleColor = weapon.color;
 
     const offset = 26;
-    if (weapon.laser) {
+    if (weapon.bomber) {
+      this.launchBomber(weapon);
+    } else if (weapon.laser) {
       this.fireLaser(weapon);
     } else if (weapon.storm) {
       this.spawnStormDart(weapon);
@@ -1671,15 +1739,17 @@ export class ShooterGame {
                 : 0.9,
     );
     this.sfx.play(
-      weapon.laser
-        ? 'laser'
-        : weapon.storm || weapon.chain
-          ? 'arc'
-          : weapon.id === 'rail'
-            ? 'rail'
-            : weapon.id === 'scatter'
-              ? 'scatter'
-              : 'shoot',
+      weapon.bomber
+        ? 'airstrike'
+        : weapon.laser
+          ? 'laser'
+          : weapon.storm || weapon.chain
+            ? 'arc'
+            : weapon.id === 'rail'
+              ? 'rail'
+              : weapon.id === 'scatter'
+                ? 'scatter'
+                : 'shoot',
     );
   }
 
@@ -2041,6 +2111,222 @@ export class ShooterGame {
   }
 
   /**
+   * Carpet bomber: calls a plane down the line from the player to the current
+   * lock. The run starts outside the room behind the player and ends outside
+   * the far wall, so the whole room is covered. The plane drops a bomb every
+   * few ticks; each impact blasts enemies and leaves a burning ring behind.
+   */
+  private launchBomber(weapon: WeaponSpec) {
+    const spec = weapon.bomber;
+    if (!spec) return;
+    const player = this.player;
+    const dirX = Math.cos(player.angle);
+    const dirY = Math.sin(player.angle);
+    const bounds = this.roomBounds();
+
+    // Distance from the player to the wall in one direction. Starting the run
+    // outside the wall makes the plane fly in from off-screen instead of
+    // popping into existence in the middle of the room.
+    const distanceToWall = (dx: number, dy: number) => {
+      let distance = 2400;
+      if (Math.abs(dx) > 0.00001) {
+        distance = Math.min(
+          distance,
+          (dx > 0 ? bounds.right - player.x : bounds.left - player.x) / dx,
+        );
+      }
+      if (Math.abs(dy) > 0.00001) {
+        distance = Math.min(
+          distance,
+          (dy > 0 ? bounds.bottom - player.y : bounds.top - player.y) / dy,
+        );
+      }
+      return Math.max(0, distance);
+    };
+
+    const forward = distanceToWall(dirX, dirY);
+    const backward = distanceToWall(-dirX, -dirY);
+    const margin = spec.margin;
+    const startX = player.x - dirX * (backward + margin);
+    const startY = player.y - dirY * (backward + margin);
+    const endX = player.x + dirX * (forward + margin);
+    const endY = player.y + dirY * (forward + margin);
+
+    this.bombers.push({
+      startX,
+      startY,
+      endX,
+      endY,
+      dirX,
+      dirY,
+      length: backward + forward + margin * 2,
+      elapsed: 0,
+      callIn: spec.callIn,
+      speed: spec.planeSpeed,
+      dropTimer: 0,
+      seed: rand(0, TAU),
+      color: weapon.color,
+      spec,
+    });
+    // Signal flare at the call-in point.
+    this.spawnBurst(player.x, player.y, '#ffd166', 12, 160, 0.4);
+    this.shake = Math.max(this.shake, 3.4);
+  }
+
+  private updateBombers(dt: number) {
+    const bounds = this.roomBounds();
+
+    for (let i = this.bombers.length - 1; i >= 0; i--) {
+      const bomber = this.bombers[i];
+      bomber.elapsed += dt;
+      if (bomber.elapsed < bomber.callIn) continue;
+      const travelled = (bomber.elapsed - bomber.callIn) * bomber.speed;
+      if (travelled >= bomber.length) {
+        this.bombers.splice(i, 1);
+        continue;
+      }
+      const x = bomber.startX + bomber.dirX * travelled;
+      const y = bomber.startY + bomber.dirY * travelled;
+      // A bomb lands `fuse` seconds after release, so start releasing while
+      // the plane is still just outside the wall: the first blast then lands
+      // right at the room edge instead of leaving an empty strip behind the
+      // plane. The drop timer is held at zero until that point, so the carpet
+      // does not start a partial interval late.
+      const impactX = x + bomber.dirX * bomber.speed * bomber.spec.fuse;
+      const impactY = y + bomber.dirY * bomber.speed * bomber.spec.fuse;
+      const releasing =
+        impactX >= bounds.left &&
+        impactX <= bounds.right &&
+        impactY >= bounds.top &&
+        impactY <= bounds.bottom;
+      if (!releasing) {
+        bomber.dropTimer = 0;
+        continue;
+      }
+      bomber.dropTimer -= dt;
+      while (bomber.dropTimer <= 0) {
+        bomber.dropTimer += bomber.spec.dropInterval;
+        this.dropBomb(bomber, x, y);
+      }
+    }
+
+    for (let i = this.bombs.length - 1; i >= 0; i--) {
+      const bomb = this.bombs[i];
+      bomb.age += dt;
+      if (bomb.age >= bomb.fuse) {
+        this.explodeBomb(bomb);
+        this.bombs.splice(i, 1);
+      }
+    }
+
+    for (let i = this.fireRings.length - 1; i >= 0; i--) {
+      const ring = this.fireRings[i];
+      ring.life -= dt;
+      ring.pulse = Math.max(0, ring.pulse - dt * 4);
+      if (ring.life <= 0) {
+        this.fireRings.splice(i, 1);
+        continue;
+      }
+      ring.tickTimer -= dt;
+      while (ring.tickTimer <= 0) {
+        ring.tickTimer += ring.tickInterval;
+        this.tickFireRing(ring);
+      }
+      if (Math.random() < dt * 6) {
+        const angle = rand(0, TAU);
+        const radius = Math.sqrt(Math.random()) * ring.radius * 0.9;
+        this.particles.push({
+          x: ring.x + Math.cos(angle) * radius,
+          y: ring.y + Math.sin(angle) * radius,
+          vx: rand(-12, 12),
+          vy: rand(-46, -18),
+          life: rand(0.25, 0.6),
+          maxLife: 0.6,
+          size: rand(1.4, 3.2),
+          color: Math.random() < 0.4 ? '#ffd166' : ring.color,
+          drag: 1.2,
+        });
+      }
+    }
+  }
+
+  /** Drop one bomb from the plane, with a little lateral scatter. */
+  private dropBomb(bomber: Bomber, x: number, y: number) {
+    const spec = bomber.spec;
+    // Bombs keep the plane's forward speed, so their impact point is slightly
+    // ahead of where they were released.
+    const lead = bomber.speed * spec.fuse;
+    const lateral = rand(-spec.spread, spec.spread);
+    const groundX = x + bomber.dirX * lead - bomber.dirY * lateral;
+    const groundY = y + bomber.dirY * lead + bomber.dirX * lateral;
+    const bounds = this.roomBounds();
+    this.bombs.push({
+      startX: x,
+      startY: y - 22,
+      x: clamp(groundX, bounds.left + 12, bounds.right - 12),
+      y: clamp(groundY, bounds.top + 12, bounds.bottom - 12),
+      age: 0,
+      fuse: spec.fuse,
+      color: bomber.color,
+      spec,
+    });
+  }
+
+  private explodeBomb(bomb: Bomb) {
+    const spec = bomb.spec;
+    this.shockwaves.push({
+      x: bomb.x,
+      y: bomb.y,
+      maxRadius: spec.blastRadius * 1.25,
+      life: 0.42,
+      maxLife: 0.42,
+      color: '#ffb35c',
+    });
+    this.spawnBurst(bomb.x, bomb.y, '#ffb347', 14, 240, 0.55);
+    this.spawnBurst(bomb.x, bomb.y, '#fff3cf', 5, 140, 0.32);
+
+    for (const enemy of this.enemies) {
+      if (enemy.dead) continue;
+      if (dist(bomb.x, bomb.y, enemy.x, enemy.y) > spec.blastRadius + enemy.radius) {
+        continue;
+      }
+      this.damageEnemy(enemy, spec.blastDamage, enemy.x, enemy.y);
+    }
+
+    this.fireRings.push({
+      x: bomb.x,
+      y: bomb.y,
+      radius: spec.ringRadius,
+      life: spec.ringLife,
+      maxLife: spec.ringLife,
+      // The blast already hit at t=0; the first burn tick comes one interval
+      // later so the impact is not counted twice.
+      tickTimer: spec.ringTickInterval,
+      tickInterval: spec.ringTickInterval,
+      tickDamage: spec.ringTickDamage,
+      pulse: 1,
+      seed: rand(0, TAU),
+      color: '#ff8a3d',
+    });
+    if (this.fireRings.length > 24) this.fireRings.shift();
+    this.shake = Math.max(this.shake, 3.2);
+    this.sfx.play('bomb');
+  }
+
+  private tickFireRing(ring: FireRing) {
+    ring.pulse = 1;
+    for (const enemy of this.enemies) {
+      if (enemy.dead) continue;
+      if (dist(ring.x, ring.y, enemy.x, enemy.y) > ring.radius + enemy.radius) {
+        continue;
+      }
+      // Quiet damage: a burn tick on every enemy in every ring at 2 Hz would
+      // drown the mix in hit sounds.
+      this.damageEnemy(enemy, ring.tickDamage, enemy.x, enemy.y, true);
+    }
+  }
+
+  /**
    * Flamer: no projectiles, just a damage tick over the forward cone. Ticks
    * are fixed in game time, so the DPS stays the same on any frame rate.
    */
@@ -2266,6 +2552,9 @@ export class ShooterGame {
       this.arcs = [];
       this.shockwaves = [];
       this.stormDarts = [];
+      this.bombers = [];
+      this.bombs = [];
+      this.fireRings = [];
       this.laserBeams = [];
       this.laserCharge = 0;
       this.sfx.play('death');
@@ -3986,6 +4275,9 @@ export class ShooterGame {
     this.arcs = [];
     this.shockwaves = [];
     this.stormDarts = [];
+    this.bombers = [];
+    this.bombs = [];
+    this.fireRings = [];
     this.laserBeams = [];
     this.laserCharge = 0;
     this.turrets = [];
@@ -4377,8 +4669,10 @@ export class ShooterGame {
 
     this.drawFloor();
     this.drawWeaponRange();
+    this.drawBomberShadows();
     this.drawPortal();
     this.drawTelegraphs();
+    this.drawFireRings();
     this.drawPickups();
     this.drawTurrets();
     this.drawEnemyBullets();
@@ -4390,6 +4684,7 @@ export class ShooterGame {
     this.drawDashGhosts();
     this.drawPlayer();
     this.drawRecycleStatus();
+    this.drawBomberStatus();
     this.drawOrbs();
     this.drawLaserMuzzleGlow();
     this.drawStormDarts();
@@ -4399,6 +4694,7 @@ export class ShooterGame {
     this.drawShockwaves();
     this.drawParticles();
     this.drawFloaters();
+    this.drawBombers();
     this.drawAutoTarget();
 
     ctx.restore();
@@ -4861,6 +5157,288 @@ export class ShooterGame {
     ctx.beginPath();
     ctx.arc(0, 0, 30, 0, TAU);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Ground layer of the carpet bomber: the call-in corridor and the plane's
+   * shadow. The plane itself is drawn above everyone in drawBombers.
+   */
+  private drawBomberShadows() {
+    if (!this.bombers.length) return;
+    const ctx = this.ctx;
+    for (const bomber of this.bombers) {
+      const travelled = Math.max(
+        0,
+        (bomber.elapsed - bomber.callIn) * bomber.speed,
+      );
+      const x = bomber.startX + bomber.dirX * travelled;
+      const y = bomber.startY + bomber.dirY * travelled;
+
+      if (bomber.elapsed < bomber.callIn) {
+        // Dashed corridor before the plane arrives, so the run is telegraphed.
+        const angle = Math.atan2(bomber.dirY, bomber.dirX);
+        ctx.save();
+        ctx.strokeStyle = withAlpha(bomber.color, 0.32);
+        ctx.lineWidth = 2 / this.zoom;
+        ctx.setLineDash([18, 12]);
+        ctx.lineDashOffset = -this.ambientTime * 44;
+        ctx.beginPath();
+        ctx.moveTo(bomber.startX, bomber.startY);
+        ctx.lineTo(bomber.endX, bomber.endY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        for (let d = 150; d < bomber.length; d += 190) {
+          const px = bomber.startX + bomber.dirX * d;
+          const py = bomber.startY + bomber.dirY * d;
+          ctx.save();
+          ctx.translate(px, py);
+          ctx.rotate(angle);
+          ctx.strokeStyle = withAlpha(bomber.color, 0.5);
+          ctx.lineWidth = 2 / this.zoom;
+          ctx.beginPath();
+          ctx.moveTo(-6, -6);
+          ctx.lineTo(2, 0);
+          ctx.lineTo(-6, 6);
+          ctx.stroke();
+          ctx.restore();
+        }
+        ctx.restore();
+      } else if (travelled <= bomber.length) {
+        ctx.save();
+        ctx.translate(x + 10, y + 16);
+        ctx.rotate(Math.atan2(bomber.dirY, bomber.dirX));
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 23, 8, 0, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
+  /** Burning rings left by airstrike bombs: floor layer, under the enemies. */
+  private drawFireRings() {
+    if (!this.fireRings.length) return;
+    const ctx = this.ctx;
+    ctx.save();
+    // Scorch base in normal blending, then the fire itself additively.
+    for (const ring of this.fireRings) {
+      const fade = Math.min(1, ring.life / 0.55);
+      ctx.fillStyle = `rgba(26, 10, 4, ${0.17 * fade})`;
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, ring.radius * 0.92, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'lighter';
+    for (const ring of this.fireRings) {
+      const fade = Math.min(1, ring.life / 0.55);
+      const pulse = ring.pulse;
+      const flicker =
+        1 + Math.sin(this.ambientTime * 7 + ring.seed) * 0.035 + pulse * 0.05;
+      const radius = ring.radius * flicker;
+      const gradient = ctx.createRadialGradient(
+        ring.x,
+        ring.y,
+        radius * 0.2,
+        ring.x,
+        ring.y,
+        radius,
+      );
+      gradient.addColorStop(0, 'rgba(255, 120, 30, 0)');
+      gradient.addColorStop(0.55, 'rgba(255, 90, 20, 0)');
+      gradient.addColorStop(
+        0.8,
+        withAlpha('#ff5a1f', (0.1 + pulse * 0.06) * fade),
+      );
+      gradient.addColorStop(
+        0.93,
+        withAlpha('#ffb347', (0.3 + pulse * 0.08) * fade),
+      );
+      gradient.addColorStop(1, 'rgba(255, 180, 70, 0)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, radius, 0, TAU);
+      ctx.fill();
+
+      // Uneven burning rim instead of a perfect circle.
+      const steps = 28;
+      ctx.strokeStyle = withAlpha('#ffcf6b', (0.55 + pulse * 0.25) * fade);
+      ctx.lineWidth = 2 + pulse * 1.4;
+      ctx.beginPath();
+      for (let i = 0; i <= steps; i++) {
+        const angle = (i / steps) * TAU;
+        const wobble =
+          1 +
+          Math.sin(angle * 5 + this.ambientTime * 9 + ring.seed) * 0.035 +
+          Math.sin(angle * 9 - this.ambientTime * 6) * 0.018;
+        const r = radius * 0.94 * wobble;
+        const px = ring.x + Math.cos(angle) * r;
+        const py = ring.y + Math.sin(angle) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Falling bombs and the plane itself, above the battlefield. */
+  private drawBombers() {
+    if (!this.bombers.length && !this.bombs.length) return;
+    const ctx = this.ctx;
+
+    for (const bomb of this.bombs) {
+      const t = clamp(bomb.age / Math.max(0.001, bomb.fuse), 0, 1);
+      const x = bomb.startX + (bomb.x - bomb.startX) * t;
+      const y = bomb.startY + (bomb.y - bomb.startY) * t;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.beginPath();
+      ctx.ellipse(bomb.x, bomb.y, 4, 2.2, 0, 0, TAU);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = withAlpha('#ffd166', 0.8);
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(bomb.x, bomb.y, 5 + t * 4, 0, TAU);
+      ctx.stroke();
+      ctx.fillStyle = '#ffe9a8';
+      ctx.beginPath();
+      ctx.arc(x, y, 2.2, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    for (const bomber of this.bombers) {
+      if (bomber.elapsed < bomber.callIn) continue;
+      const travelled = (bomber.elapsed - bomber.callIn) * bomber.speed;
+      if (travelled > bomber.length) continue;
+      const x = bomber.startX + bomber.dirX * travelled;
+      const y = bomber.startY + bomber.dirY * travelled;
+      const angle = Math.atan2(bomber.dirY, bomber.dirX);
+      const bob = Math.sin(this.ambientTime * 7 + bomber.seed) * 1.6;
+
+      ctx.save();
+      ctx.translate(x, y - 22 + bob);
+      ctx.rotate(angle);
+      ctx.globalCompositeOperation = 'lighter';
+      const exhaust = ctx.createLinearGradient(-58, 0, -16, 0);
+      exhaust.addColorStop(0, 'rgba(255, 159, 28, 0)');
+      exhaust.addColorStop(1, withAlpha(bomber.color, 0.3));
+      ctx.fillStyle = exhaust;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-18, side * 10 - 2);
+        ctx.lineTo(
+          -58,
+          side * 10 + Math.sin(this.ambientTime * 20 + bomber.seed) * 2,
+        );
+        ctx.lineTo(-18, side * 10 + 3);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+
+      ctx.fillStyle = '#252a36';
+      ctx.strokeStyle = withAlpha(bomber.color, 0.9);
+      ctx.lineWidth = 1.4;
+      // Swept wings.
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(8, side * 4);
+        ctx.lineTo(-18, side * 30);
+        ctx.lineTo(-28, side * 30);
+        ctx.lineTo(-12, side * 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Tail fins.
+      ctx.fillStyle = '#2e3441';
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-22, side * 4);
+        ctx.lineTo(-34, side * 14);
+        ctx.lineTo(-38, side * 13);
+        ctx.lineTo(-28, side * 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Fuselage.
+      ctx.fillStyle = '#343b4a';
+      ctx.beginPath();
+      ctx.moveTo(34, 0);
+      ctx.lineTo(12, -7);
+      ctx.lineTo(-22, -6);
+      ctx.lineTo(-30, 0);
+      ctx.lineTo(-22, 6);
+      ctx.lineTo(12, 7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Cockpit and engine lights.
+      ctx.fillStyle = '#bfe8ff';
+      ctx.beginPath();
+      ctx.ellipse(15, 0, 7, 3.2, 0, 0, TAU);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = withAlpha(bomber.color, 0.9);
+        ctx.beginPath();
+        ctx.arc(-19, side * 12, 2.6, 0, TAU);
+        ctx.fill();
+      }
+      if (Math.sin(this.ambientTime * 9 + bomber.seed) > 0.2) {
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(-30, 0, 1.6, 0, TAU);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Bomber recharge ring. Unlike the recycler's dashed/solid ring this is a
+   * progress arc: the call-in has a long cooldown, so the player needs to see
+   * how much of the 6.5s is left even after switching guns and coming back.
+   */
+  private drawBomberStatus() {
+    const spec = WEAPONS[this.player.weapon];
+    if (!spec.bomber || this.player.dead) return;
+    const remaining = clamp(this.bomberCooldown, 0, spec.cooldown);
+    const progress = 1 - remaining / spec.cooldown;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(this.player.x, this.player.y);
+    ctx.globalCompositeOperation = 'lighter';
+
+    ctx.strokeStyle = withAlpha(spec.color, 0.16);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, 34, 0, TAU);
+    ctx.stroke();
+
+    if (remaining <= 0) {
+      const breathe = 0.5 + Math.sin(this.ambientTime * 3) * 0.5;
+      ctx.strokeStyle = withAlpha(spec.color, 0.4 + breathe * 0.15);
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 34, 0, TAU);
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = withAlpha(spec.color, 0.62);
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(0, 0, 34, -Math.PI / 2, -Math.PI / 2 + TAU * progress);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 

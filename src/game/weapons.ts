@@ -116,6 +116,32 @@ export interface WeaponSpec {
    */
   summon?: boolean;
   /**
+   * Carpet bomber: calls a plane down the player→lock line. It crosses the
+   * whole room, dropping bombs that blast enemies and leave burning rings on
+   * the floor. This is a long-cooldown area weapon, not a direct shot.
+   */
+  bomber?: {
+    /** Seconds between the call-in and the plane entering the room. */
+    callIn: number;
+    /** Plane speed across the room, in world px/s. */
+    planeSpeed: number;
+    /** How far outside the room the run starts and ends. */
+    margin: number;
+    /** Seconds between bomb drops. */
+    dropInterval: number;
+    /** Half-width of the carpet band, in world px. */
+    spread: number;
+    /** Seconds from drop to impact. */
+    fuse: number;
+    blastRadius: number;
+    blastDamage: number;
+    /** Burning ring left at each impact. */
+    ringRadius: number;
+    ringLife: number;
+    ringTickInterval: number;
+    ringTickDamage: number;
+  };
+  /**
    * Orbiting guards: balls circle the player, damage whatever they touch and
    * erase enemy bullets. Holding fire spins them out to `maxRadius`.
    */
@@ -160,6 +186,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'fission',
   'summoner',
   'recycler',
+  'bomber',
   'smg',
   'scatter',
   'rail',
@@ -170,10 +197,10 @@ export const ALL_WEAPONS: WeaponId[] = [
 ];
 
 // Temporarily expose the pulse rifle, storm dart, laser, ricochet gun, orbiting
-// guards, fission cannon, hive gun and salvage cannon. The other seven stay
-// implemented and fully specced, but cannot be reached from the in-game weapon
-// cycle. Raise this count to bring them back.
-const VISIBLE_WEAPONS = 8;
+// guards, fission cannon, hive gun, salvage cannon and carpet bomber. The other
+// seven stay implemented and fully specced, but cannot be reached from the
+// in-game weapon cycle. Raise this count to bring them back.
+const VISIBLE_WEAPONS = 9;
 
 export const WEAPON_ORDER: WeaponId[] = ALL_WEAPONS.slice(0, VISIBLE_WEAPONS);
 
@@ -443,6 +470,37 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     homing: true,
     turnRate: 14,
     recycle: true,
+  },
+  // Carpet bomber: one call-in per trigger pull. The plane follows the player→
+  // lock line from behind the player out the far side of the room, dropping
+  // bombs that blast and leave short-lived burning rings on the floor.
+  bomber: {
+    id: 'bomber',
+    name: '地毯轰炸',
+    tag: 'CARPET',
+    color: '#ff9f1c',
+    damage: 0,
+    cooldown: 6.5,
+    speed: 0,
+    radius: 0,
+    life: 0,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    bomber: {
+      callIn: 0.55,
+      planeSpeed: 540,
+      margin: 170,
+      dropInterval: 0.22,
+      spread: 40,
+      fuse: 0.16,
+      blastRadius: 95,
+      blastDamage: 8,
+      ringRadius: 80,
+      ringLife: 3,
+      ringTickInterval: 0.5,
+      ringTickDamage: 2.5,
+    },
   },
   // Concussion shell: explodes on contact and shoves the blast outward.
   shock: {
