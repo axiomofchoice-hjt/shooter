@@ -3,11 +3,11 @@
 import {
   AUTOAIM_RANGE,
   LOB_ACCEL,
+  LOB_INITIAL_SPEED,
   LOB_LATERAL_MAX,
   LOB_LIFE,
   LOB_MAX,
   LOB_MAX_SPEED,
-  LOB_OUTWARD_SPEED,
   LOB_RADIUS,
   STORM_PULSE_COUNT,
 } from '../core/config';
@@ -170,10 +170,10 @@ export function registerDropHit(
 }
 
 /**
- * Lobbed item: the initial velocity is a random left/right kick plus a kick
- * straight away from the player. A fixed acceleration toward the player's
- * position at the hit moment then bends the path into a parabola and pulls
- * the item back. The actual pickup effect is still being designed.
+ * Lobbed item: launched at exactly LOB_INITIAL_SPEED straight away from the
+ * player with a random sideways bend, then pulled back by a fixed acceleration
+ * toward the player's position at the hit moment. The actual pickup effect is
+ * still being designed.
  */
 function spawnLobItem(world: GameWorld, x: number, y: number, color: string) {
   if (world.lobItems.length >= LOB_MAX) return;
@@ -191,10 +191,15 @@ function spawnLobItem(world: GameWorld, x: number, y: number, color: string) {
   }
 
   // Perpendicular left/right is (-dy, dx); away from the player is (-dx, -dy).
+  // The random lateral component bends the launch direction; normalizing keeps
+  // the initial speed fixed at LOB_INITIAL_SPEED instead of growing with it.
   const side = Math.random() < 0.5 ? -1 : 1;
   const lateral = rand(0, LOB_LATERAL_MAX) * side;
-  const vx = -dy * lateral - dx * LOB_OUTWARD_SPEED;
-  const vy = dx * lateral - dy * LOB_OUTWARD_SPEED;
+  let vx = -dy * lateral - dx * LOB_INITIAL_SPEED;
+  let vy = dx * lateral - dy * LOB_INITIAL_SPEED;
+  const launchSpeed = Math.hypot(vx, vy);
+  vx *= LOB_INITIAL_SPEED / launchSpeed;
+  vy *= LOB_INITIAL_SPEED / launchSpeed;
 
   world.lobItems.push({
     x,
