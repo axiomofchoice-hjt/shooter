@@ -98,14 +98,12 @@ export interface WeaponSpec {
    */
   ring?: boolean;
   /**
-   * Fires a hitscan lane along one of the four cardinal axes only. The aim
-   * picks an axis with a hittable enemy first, then the axis closest to the
-   * nearest enemy, then the axis closest to the movement direction.
+   * Fires only along one of the four cardinal axes. The aim picks an axis with
+   * a hittable enemy first, then the axis closest to the nearest enemy, then
+   * the axis closest to the movement direction. The shot itself is an ordinary
+   * bullet, so `speed`, `radius` and `life` apply as usual.
    */
-  cardinal?: {
-    /** Half-width of the damage lane, in world px. */
-    halfWidth: number;
-  };
+  cardinal?: boolean;
   /** Wall bounces a shot survives; it breaks on the wall after the last one. */
   bounces?: number;
   /** Mother shot that bursts into `count` children the moment it lands on an
@@ -531,24 +529,24 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pierce: 0,
     shock: { blastRadius: 150, knockback: 430 },
   },
-  // Orthogonal cannon: the hull locks to the four cardinal axes and fires a
-  // hitscan lane along one of them. The aim prefers an axis with a hittable
-  // enemy, then snaps the nearest enemy's angle to the closest axis, then snaps
-  // the movement direction when nothing is in sight.
+  // Orthogonal cannon: an SMG-paced gun whose hull locks to the four cardinal
+  // axes. The aim prefers an axis with a hittable enemy, then snaps the nearest
+  // enemy's angle to the closest axis, then snaps the movement direction when
+  // nothing is in sight.
   ortho: {
     id: 'ortho',
     name: '正交炮',
     tag: 'ORTHO',
     color: '#e6f6ff',
-    damage: 14,
-    cooldown: 0.55,
-    speed: 0,
-    radius: 0,
-    life: 0,
+    damage: 1.3,
+    cooldown: 0.06,
+    speed: 1200,
+    radius: 3,
+    life: 0.95,
     pellets: 1,
     spread: 0,
     pierce: 0,
-    cardinal: { halfWidth: 18 },
+    cardinal: true,
   },
 };
 

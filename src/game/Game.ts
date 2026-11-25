@@ -700,8 +700,6 @@ interface LaserBeam {
   maxLife: number;
   color: string;
   seed: number;
-  /** Multiplier for the round glow at both ends; wide lanes use a smaller one. */
-  capScale?: number;
 }
 
 interface Particle {
@@ -1614,12 +1612,12 @@ export class ShooterGame {
    * 1. the axis holding the nearest enemy the shot can actually reach;
    * 2. otherwise the axis closest to the nearest enemy's angle;
    * 3. otherwise the axis closest to the movement direction.
-   * The corridor test in pass 1 uses the shot and enemy radii, so "an enemy
-   * in that direction" means "this shot would hit it", not a loose quadrant.
+   * The corridor test in pass 1 uses the bullet and enemy radii, so "an enemy
+   * in that direction" means "this bullet would hit it", not a loose quadrant.
    */
   private pickCardinalAngle(move: { x: number; y: number; magnitude: number }): number {
     const player = this.player;
-    const halfWidth = WEAPONS[player.weapon].cardinal?.halfWidth ?? 0;
+    const shotRadius = WEAPONS[player.weapon].radius + 2;
     let bestAxis: number | null = null;
     let bestAlong = Infinity;
     let nearest: Enemy | null = null;
@@ -1637,7 +1635,7 @@ export class ShooterGame {
       for (const dir of CARDINAL_DIRS) {
         const along = ex * dir.x + ey * dir.y;
         if (along <= 0) continue;
-        if (Math.abs(ex * dir.y - ey * dir.x) > enemy.radius + halfWidth) continue;
+        if (Math.abs(ex * dir.y - ey * dir.x) > enemy.radius + shotRadius) continue;
         if (along < bestAlong) {
           bestAlong = along;
           bestAxis = dir.angle;
@@ -1721,8 +1719,6 @@ export class ShooterGame {
       this.spawnStormDart(weapon);
     } else if (weapon.chain) {
       this.fireArc(weapon);
-    } else if (weapon.cardinal) {
-      this.fireCardinal(weapon);
     } else {
       for (let i = 0; i < weapon.pellets; i++) {
         if (weapon.recycle) {
@@ -1811,30 +1807,26 @@ export class ShooterGame {
         ? 4.2
         : weapon.laser
           ? 3
-          : weapon.cardinal
-            ? 2.4
-            : weapon.storm
-              ? 1.6
-              : weapon.chain
-                ? 2.2
-                : weapon.pellets > 1
-                  ? 2.6
-                  : 0.9,
+          : weapon.storm
+            ? 1.6
+            : weapon.chain
+              ? 2.2
+              : weapon.pellets > 1
+                ? 2.6
+                : 0.9,
     );
     this.sfx.play(
       weapon.bomber
         ? 'airstrike'
         : weapon.laser
           ? 'laser'
-          : weapon.cardinal
-            ? 'rail'
-            : weapon.storm || weapon.chain
-              ? 'arc'
-              : weapon.id === 'rail'
-                ? 'rail'
-                : weapon.id === 'scatter'
-                  ? 'scatter'
-                  : 'shoot',
+          : weapon.storm || weapon.chain
+            ? 'arc'
+            : weapon.id === 'rail'
+              ? 'rail'
+              : weapon.id === 'scatter'
+                ? 'scatter'
+                : 'shoot',
     );
   }
 
@@ -1895,53 +1887,6 @@ export class ShooterGame {
         enemy.y,
         true,
       );
-      this.spawnBurst(enemy.x, enemy.y, weapon.color, 9, 180, 0.32);
-    }
-  }
-
-  /**
-   * Orthogonal cannon: one hitscan lane along the locked cardinal axis. The
-   * lane runs to the room wall, damages everything whose body overlaps its
-   * half-width, and uses the same corridor test as the aim picker so a chosen
-   * axis is always a real hit.
-   */
-  private fireCardinal(weapon: WeaponSpec) {
-    const spec = weapon.cardinal;
-    if (!spec) return;
-    const player = this.player;
-    const dx = Math.cos(this.cardinalAim);
-    const dy = Math.sin(this.cardinalAim);
-    const bounds = this.roomBounds();
-    let length = AUTOAIM_RANGE;
-    if (dx > 0.00001) length = Math.min(length, (bounds.right - player.x) / dx);
-    else if (dx < -0.00001) length = Math.min(length, (bounds.left - player.x) / dx);
-    if (dy > 0.00001) length = Math.min(length, (bounds.bottom - player.y) / dy);
-    else if (dy < -0.00001) length = Math.min(length, (bounds.top - player.y) / dy);
-    length = Math.max(16, length);
-
-    this.laserBeams.push({
-      x1: player.x + dx * 22,
-      y1: player.y + dy * 22,
-      x2: player.x + dx * length,
-      y2: player.y + dy * length,
-      width: spec.halfWidth * 2,
-      life: 0.2,
-      maxLife: 0.2,
-      color: weapon.color,
-      seed: rand(0, 100),
-      capScale: 0.45,
-    });
-
-    for (const enemy of this.enemies) {
-      if (enemy.dead) continue;
-      if (this.outOfRoom(enemy.x, enemy.y, 0)) continue;
-      const relX = enemy.x - player.x;
-      const relY = enemy.y - player.y;
-      const along = relX * dx + relY * dy;
-      if (along < 0 || along > length + enemy.radius) continue;
-      const perpendicular = Math.abs(relX * dy - relY * dx);
-      if (perpendicular > spec.halfWidth + enemy.radius) continue;
-      this.damageEnemy(enemy, weapon.damage, enemy.x, enemy.y, true);
       this.spawnBurst(enemy.x, enemy.y, weapon.color, 9, 180, 0.32);
     }
   }
@@ -4816,7 +4761,6 @@ export class ShooterGame {
     this.drawDashGhosts();
     this.drawPlayer();
     this.drawRecycleStatus();
-    this.drawCardinalGuide();
     this.drawBomberStatus();
     this.drawOrbs();
     this.drawLaserMuzzleGlow();
@@ -5290,43 +5234,6 @@ export class ShooterGame {
     ctx.beginPath();
     ctx.arc(0, 0, 30, 0, TAU);
     ctx.stroke();
-    ctx.restore();
-  }
-
-  /**
-   * Four-axis guide for the orthogonal cannon: dim ticks mark the axes and the
-   * bright one is where the next shot will leave.
-   */
-  private drawCardinalGuide() {
-    const spec = WEAPONS[this.player.weapon];
-    if (!spec.cardinal || this.player.dead) return;
-    const ctx = this.ctx;
-    const player = this.player;
-    ctx.save();
-    ctx.translate(player.x, player.y);
-    ctx.globalCompositeOperation = 'lighter';
-    for (const dir of CARDINAL_DIRS) {
-      const active = Math.abs(angleDelta(this.cardinalAim, dir.angle)) < 0.001;
-      const far = active ? 78 : 46;
-      ctx.strokeStyle = withAlpha(spec.color, active ? 0.65 : 0.22);
-      ctx.lineWidth = active ? 2 : 1.2;
-      if (!active) {
-        ctx.setLineDash([3, 7]);
-        ctx.lineDashOffset = -this.ambientTime * 14;
-      }
-      ctx.beginPath();
-      ctx.moveTo(dir.x * 26, dir.y * 26);
-      ctx.lineTo(dir.x * far, dir.y * far);
-      ctx.stroke();
-      if (active) {
-        ctx.setLineDash([]);
-        ctx.fillStyle = withAlpha(spec.color, 0.75);
-        ctx.beginPath();
-        ctx.arc(dir.x * far, dir.y * far, 2.2, 0, TAU);
-        ctx.fill();
-      }
-      ctx.setLineDash([]);
-    }
     ctx.restore();
   }
 
@@ -5915,12 +5822,11 @@ export class ShooterGame {
         ctx.stroke();
       }
       ctx.fillStyle = withAlpha(beam.color, 0.22 * alpha);
-      const capScale = beam.capScale ?? 1;
       ctx.beginPath();
-      ctx.arc(beam.x1, beam.y1, beam.width * 2.2 * capScale, 0, TAU);
+      ctx.arc(beam.x1, beam.y1, beam.width * 2.2, 0, TAU);
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(beam.x2, beam.y2, beam.width * 1.5 * capScale, 0, TAU);
+      ctx.arc(beam.x2, beam.y2, beam.width * 1.5, 0, TAU);
       ctx.fill();
     }
     ctx.restore();
