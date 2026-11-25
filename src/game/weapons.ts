@@ -588,9 +588,9 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       missiles: 3,
       missileDamage: 6,
       missileSpeed: 700,
-      // Slow and wide: 3 rad/s at 700 px/s leaves a large turn radius, so the
-      // volley arcs toward the target instead of snapping onto it.
-      missileTurnRate: 3,
+      // 5 rad/s at 700 px/s: a visible arc, but tight enough for the 120° fan
+      // to pull the outer missiles back onto the target instead of looping.
+      missileTurnRate: 5,
       missileRadius: 4,
       blastRadius: 48,
       blastDamage: 5,
