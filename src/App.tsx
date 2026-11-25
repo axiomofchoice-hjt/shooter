@@ -308,6 +308,9 @@ export default function App() {
       }
 
       if (phaseRef.current === 'playing') {
+        // Tab is a game control while a run is live, so it must never move
+        // focus to the HUD buttons.
+        if (event.code === 'Tab') event.preventDefault();
         game.setKey(event.code, true);
         if (!event.repeat) {
           if (event.code === 'KeyK') {
@@ -316,6 +319,9 @@ export default function App() {
           } else if (event.code === 'KeyL') {
             event.preventDefault();
             game.triggerDodge();
+          } else if (event.code === 'Tab') {
+            // Tab cycles forward, Shift+Tab back, matching pad LB / RB.
+            game.cycleWeapon(event.shiftKey ? -1 : 1);
           }
         }
       }

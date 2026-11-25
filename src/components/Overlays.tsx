@@ -158,6 +158,11 @@ export function StartScreen({
                 <kbd className="key-wide">L</kbd>
                 <em>朝移动方向冲刺</em>
               </div>
+              <div className="control-row">
+                <span>换武器</span>
+                <kbd className="key-wide">TAB</kbd>
+                <em>Shift 反向</em>
+              </div>
             </article>
 
             <article className={`control-card mobile-card ${isTouch ? 'is-current' : ''}`}>
@@ -252,7 +257,7 @@ export function TestRoomSetup({
             <h3>
               武器 <span>{config.weapons.length} / {ALL_WEAPONS.length}</span>
             </h3>
-            <span>进入后按武器按钮或 LB / RB 切换</span>
+            <span>进入后按武器按钮、TAB 或 LB / RB 切换</span>
           </div>
           <div className="setup-chips">
             {ALL_WEAPONS.map((id) => {

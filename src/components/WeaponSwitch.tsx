@@ -21,7 +21,7 @@ export function WeaponSwitch({ weapon, onCycle }: WeaponSwitchProps) {
     >
       <span className="weapon-switch-tag">武器 · {spec.tag}</span>
       <strong>{spec.name}</strong>
-      <span className="weapon-switch-hint">点按切换</span>
+      <span className="weapon-switch-hint">TAB / 点按切换</span>
     </button>
   );
 }
