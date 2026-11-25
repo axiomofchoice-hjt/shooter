@@ -64,6 +64,18 @@ export interface WeaponSpec {
   /** Wall bounces a shot survives; it breaks on the wall after the last one. */
   bounces?: number;
   /**
+   * Mother shot that bursts into `count` children the moment it lands on an
+   * enemy or a wall. Children fly evenly around the mother's own heading and
+   * never split again.
+   */
+  split?: {
+    count: number;
+    childDamage: number;
+    childSpeed: number;
+    childLife: number;
+    childRadius: number;
+  };
+  /**
    * Orbiting guards: balls circle the player, damage whatever they touch and
    * erase enemy bullets. Holding fire spins them out to `maxRadius`.
    */
@@ -105,6 +117,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'laser',
   'carom',
   'orbit',
+  'fission',
   'smg',
   'scatter',
   'rail',
@@ -114,11 +127,11 @@ export const ALL_WEAPONS: WeaponId[] = [
   'shock',
 ];
 
-// Temporarily expose the pulse rifle, storm dart, laser, ricochet gun and
-// orbiting guards. The other seven stay implemented and fully specced, but
-// cannot be reached from the in-game weapon cycle. Raise this count to bring
-// them back.
-const VISIBLE_WEAPONS = 5;
+// Temporarily expose the pulse rifle, storm dart, laser, ricochet gun, orbiting
+// guards and fission cannon. The other seven stay implemented and fully
+// specced, but cannot be reached from the in-game weapon cycle. Raise this
+// count to bring them back.
+const VISIBLE_WEAPONS = 6;
 
 export const WEAPON_ORDER: WeaponId[] = ALL_WEAPONS.slice(0, VISIBLE_WEAPONS);
 
@@ -326,6 +339,29 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       sustain: 1,
       expandTime: 0.55,
       contractTime: 0.7,
+    },
+  },
+  // Fission shell: lands on an enemy or wall, then bursts into ten children
+  // spread evenly around the shell's own heading — never aimed at anything.
+  fission: {
+    id: 'fission',
+    name: '裂变炮',
+    tag: 'FISSION',
+    color: '#ff6b4a',
+    damage: 10,
+    cooldown: 0.6,
+    speed: 980,
+    radius: 6,
+    life: 1.3,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    split: {
+      count: 10,
+      childDamage: 1.5,
+      childSpeed: 720,
+      childLife: 0.65,
+      childRadius: 3.2,
     },
   },
   // Concussion shell: explodes on contact and shoves the blast outward.

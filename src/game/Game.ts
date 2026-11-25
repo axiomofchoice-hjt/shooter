@@ -475,6 +475,16 @@ interface Bullet {
   bounce?: {
     left: number;
   };
+  /** Mother shot: bursts into children on the first enemy or wall it hits. */
+  split?: {
+    count: number;
+    damage: number;
+    speed: number;
+    life: number;
+    radius: number;
+  };
+  /** Split child: the mother's victim is skipped so the ring can spread. */
+  ignoreId?: number;
 }
 
 interface EnemyBullet {
@@ -826,7 +836,7 @@ export class ShooterGame {
 
   start(mode: GameMode = 'dungeon', config?: TestRoomConfig) {
     this.mode = mode;
-    // The dungeon keeps its curated 5-weapon cycle; the test room uses the
+    // The dungeon keeps its curated 6-weapon cycle; the test room uses the
     // loadout picked on the start screen, hidden guns included.
     this.weaponPool = mode === 'boss' ? pickTestWeapons(config?.weapons) : WEAPON_ORDER;
     this.testEnemies = mode === 'boss' ? pickTestEnemies(config?.enemies) : ['grunt'];
@@ -1542,6 +1552,15 @@ export class ShooterGame {
               }
             : undefined,
           bounce: weapon.bounces ? { left: weapon.bounces } : undefined,
+          split: weapon.split
+            ? {
+                count: weapon.split.count,
+                damage: weapon.split.childDamage,
+                speed: weapon.split.childSpeed,
+                life: weapon.split.childLife,
+                radius: weapon.split.childRadius,
+              }
+            : undefined,
         });
       }
     }
@@ -2210,12 +2229,18 @@ export class ShooterGame {
           )
         ) {
           if (bullet.hitIds.includes(enemy.id)) continue;
+          if (enemy.id === bullet.ignoreId) continue;
           if (bullet.shock) {
             this.detonateShock(bullet, enemy.x, enemy.y);
             consumed = true;
             break;
           }
           this.damageEnemy(enemy, bullet.damage, bullet.x, bullet.y);
+          if (bullet.split) {
+            this.spawnSplitBullets(bullet, enemy.id);
+            consumed = true;
+            break;
+          }
           if (bullet.pierce > 0) {
             bullet.pierce -= 1;
             bullet.hitIds.push(enemy.id);
@@ -2240,6 +2265,25 @@ export class ShooterGame {
             clamp(bullet.x, bounds.left, bounds.right),
             clamp(bullet.y, bounds.top, bounds.bottom),
           );
+          consumed = true;
+        }
+      }
+
+      // Fission shells burst against the room wall as well. The burst keeps the
+      // shell's own heading, so about half of the children fly straight back
+      // into the wall and are lost — that is the geometry, not an aim assist.
+      if (!consumed && bullet.split) {
+        const bounds = this.roomBounds();
+        const r = bullet.radius;
+        const hitWall =
+          bullet.x <= bounds.left + r ||
+          bullet.x >= bounds.right - r ||
+          bullet.y <= bounds.top + r ||
+          bullet.y >= bounds.bottom - r;
+        if (hitWall) {
+          bullet.x = clamp(bullet.x, bounds.left + r, bounds.right - r);
+          bullet.y = clamp(bullet.y, bounds.top + r, bounds.bottom - r);
+          this.spawnSplitBullets(bullet);
           consumed = true;
         }
       }
@@ -2367,6 +2411,37 @@ export class ShooterGame {
       enemy.knockY += Math.sin(angle) * push;
       this.spawnBurst(enemy.x, enemy.y, bullet.color, 4, 130, 0.25);
     }
+  }
+
+  /**
+   * Fission burst: ten children evenly around the mother's own heading. The
+   * children are ordinary shots that never split again, so one landed shell
+   * can only ever produce this single ring.
+   */
+  private spawnSplitBullets(bullet: Bullet, ignoreEnemyId?: number) {
+    const split = bullet.split;
+    if (!split) return;
+    const base = Math.atan2(bullet.vy, bullet.vx);
+    for (let i = 0; i < split.count; i++) {
+      const angle = base + (i / split.count) * TAU;
+      this.bullets.push({
+        x: bullet.x,
+        y: bullet.y,
+        prevX: bullet.x,
+        prevY: bullet.y,
+        vx: Math.cos(angle) * split.speed,
+        vy: Math.sin(angle) * split.speed,
+        radius: split.radius,
+        damage: split.damage,
+        life: split.life,
+        color: bullet.color,
+        pierce: 0,
+        hitIds: [],
+        ignoreId: ignoreEnemyId,
+      });
+    }
+    this.spawnBurst(bullet.x, bullet.y, bullet.color, 8, 170, 0.3);
+    this.shake = Math.max(this.shake, 1.1);
   }
 
   private damageEnemy(
@@ -4478,7 +4553,11 @@ export class ShooterGame {
         continue;
       }
       const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
-      const tailLength = bullet.pierce > 0 || bullet.hitIds.length > 0 ? 62 : 27;
+      const tailLength = bullet.split
+        ? 42
+        : bullet.pierce > 0 || bullet.hitIds.length > 0
+          ? 62
+          : 27;
       const tailX = bullet.x - (bullet.vx / speed) * tailLength;
       const tailY = bullet.y - (bullet.vy / speed) * tailLength;
       ctx.strokeStyle = withAlpha(bullet.color, 0.22);
@@ -4495,8 +4574,15 @@ export class ShooterGame {
       ctx.stroke();
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, 2.8, 0, TAU);
+      ctx.arc(bullet.x, bullet.y, bullet.split ? 4.6 : 2.8, 0, TAU);
       ctx.fill();
+      if (bullet.split) {
+        ctx.strokeStyle = withAlpha(bullet.color, 0.75);
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(bullet.x, bullet.y, bullet.radius + 3, 0, TAU);
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }
