@@ -471,6 +471,16 @@ interface Bullet {
   };
   /** Short curved trail, so the visual offset reads as a homing turn. */
   trail?: Array<{ x: number; y: number }>;
+  /**
+   * Salvage bolt: the gun cannot fire again until this shot is back at the
+   * player. It flies out to its lock (or straight ahead), then turns around and
+   * flies home; a shot without a live lock stops at a wall. The launch cooldown
+   * is the minimum interval. Any removal also clears it, so a room change can
+   * never lock the weapon up.
+   */
+  recycle?: boolean;
+  /** Salvage bolt only: true once it has hit its mark (or a wall) and is flying home. */
+  returning?: boolean;
   /** Detonates on the first enemy or wall it touches. */
   shock?: {
     blastRadius: number;
@@ -1438,8 +1448,11 @@ export class ShooterGame {
 
     // Range-limited weapons only auto-aim at targets they can actually lock.
     // Past that ring there is no reticle and no turn: the shot just goes
-    // wherever the player is already facing.
-    const aimRange = WEAPONS[player.weapon].range ?? AUTOAIM_RANGE;
+    // wherever the player is already facing. The salvage cannon has no range
+    // cap, so it locks the nearest enemy anywhere on screen.
+    const equipped = WEAPONS[player.weapon];
+    const aimRange =
+      equipped.range ?? (equipped.recycle ? Infinity : AUTOAIM_RANGE);
     this.autoTarget = this.findNearestEnemy(player.x, player.y, aimRange, true);
     if (this.autoTarget) {
       player.angle = Math.atan2(this.autoTarget.y - player.y, this.autoTarget.x - player.x);
@@ -1478,7 +1491,11 @@ export class ShooterGame {
         if (activeWeapon.flame) {
           this.updateFlamer(dt);
         } else if (player.fireCooldown <= 0) {
-          this.firePlayerBullet();
+          // The salvage cannon cannot fire again until its bolt has flown all
+          // the way home. `fireCooldown` keeps the minimum interval.
+          const waitingForBolt =
+            activeWeapon.recycle && this.recycleBoltInFlight();
+          if (!waitingForBolt) this.firePlayerBullet();
         }
       } else {
         // Let the next held burst start on a fresh tick instead of waiting out
@@ -1534,6 +1551,14 @@ export class ShooterGame {
     this.emitHud(true);
   }
 
+  /** True while a salvage bolt is still flying; only one can be out at a time. */
+  private recycleBoltInFlight() {
+    for (const bullet of this.bullets) {
+      if (bullet.recycle) return true;
+    }
+    return false;
+  }
+
   private firePlayerBullet() {
     const player = this.player;
     const weapon = WEAPONS[player.weapon];
@@ -1551,6 +1576,10 @@ export class ShooterGame {
       this.fireArc(weapon);
     } else {
       for (let i = 0; i < weapon.pellets; i++) {
+        if (weapon.recycle) {
+          this.spawnRecycleBolt(weapon, offset);
+          continue;
+        }
         if (weapon.homing) {
           this.spawnMissile(weapon, offset);
           continue;
@@ -1967,6 +1996,51 @@ export class ShooterGame {
   }
 
   /**
+   * Salvage bolt: locks the current auto-target for its outbound leg and flies
+   * back to the player once it lands. With nothing to lock it flies straight
+   * ahead and comes home after hitting a wall. A locked shot ignores walls,
+   * like the seeker; the bolt blocks the next shot for the whole round trip.
+   */
+  private spawnRecycleBolt(weapon: WeaponSpec, offset: number) {
+    const player = this.player;
+    const target = this.autoTarget;
+    const angle = target
+      ? Math.atan2(target.y - player.y, target.x - player.x)
+      : player.angle;
+    const speed = weapon.speed;
+    const x = player.x + Math.cos(angle) * offset;
+    const y = player.y + Math.sin(angle) * offset;
+
+    this.bullets.push({
+      x,
+      y,
+      prevX: x,
+      prevY: y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: weapon.radius,
+      damage: weapon.damage,
+      life: weapon.life,
+      color: weapon.color,
+      pierce: 0,
+      hitIds: [],
+      trail: [{ x, y }],
+      recycle: true,
+      returning: false,
+      missile: target
+        ? {
+            targetId: target.id,
+            x: target.x,
+            y: target.y,
+            dead: false,
+            angle,
+            turnRate: weapon.turnRate ?? 14,
+          }
+        : undefined,
+    });
+  }
+
+  /**
    * Flamer: no projectiles, just a damage tick over the forward cone. Ticks
    * are fixed in game time, so the DPS stays the same on any frame rate.
    */
@@ -2223,7 +2297,16 @@ export class ShooterGame {
 
       const missile = bullet.missile;
       const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
-      if (missile) {
+      const returning = bullet.recycle === true && bullet.returning === true;
+      if (returning) {
+        // The salvage bolt is recalled: once it has hit its mark (or a wall)
+        // it homes straight back to the player. The next shot waits for this.
+        const want = Math.atan2(this.player.y - bullet.y, this.player.x - bullet.x);
+        bullet.vx = Math.cos(want) * speed;
+        bullet.vy = Math.sin(want) * speed;
+        bullet.trail?.push({ x: bullet.x, y: bullet.y });
+        if (bullet.trail && bullet.trail.length > 10) bullet.trail.shift();
+      } else if (missile) {
         // Refresh the lock point only while the locked target is alive. A dead
         // target leaves the last point (its death spot) in place.
         if (!missile.dead) {
@@ -2237,11 +2320,19 @@ export class ShooterGame {
             missile.dead = true;
           }
         }
-        const want = Math.atan2(missile.y - bullet.y, missile.x - bullet.x);
-        const maxTurn = missile.turnRate * dt;
-        missile.angle += clamp(angleDelta(missile.angle, want), -maxTurn, maxTurn);
-        bullet.vx = Math.cos(missile.angle) * speed;
-        bullet.vy = Math.sin(missile.angle) * speed;
+        // A salvage bolt that loses its lock keeps its heading and runs into a
+        // wall; every other missile flies on to the death spot.
+        if (!(bullet.recycle && missile.dead)) {
+          const want = Math.atan2(missile.y - bullet.y, missile.x - bullet.x);
+          const maxTurn = missile.turnRate * dt;
+          missile.angle += clamp(angleDelta(missile.angle, want), -maxTurn, maxTurn);
+          bullet.vx = Math.cos(missile.angle) * speed;
+          bullet.vy = Math.sin(missile.angle) * speed;
+        }
+        bullet.trail?.push({ x: bullet.x, y: bullet.y });
+        if (bullet.trail && bullet.trail.length > 10) bullet.trail.shift();
+      } else if (bullet.recycle) {
+        // An unguided salvage bolt still draws its trail on the way out.
         bullet.trail?.push({ x: bullet.x, y: bullet.y });
         if (bullet.trail && bullet.trail.length > 10) bullet.trail.shift();
       }
@@ -2249,6 +2340,34 @@ export class ShooterGame {
       bullet.x += bullet.vx * dt;
       bullet.y += bullet.vy * dt;
       bullet.life -= dt;
+
+      // Homeward leg: nothing hurts it and walls do not stop it, it only has
+      // to reach the player. Reaching them is what recycles the shot.
+      if (returning) {
+        const home =
+          bullet.life <= 0 ||
+          segmentCircleHit(
+            bullet.prevX,
+            bullet.prevY,
+            bullet.x,
+            bullet.y,
+            this.player.x,
+            this.player.y,
+            this.player.radius + bullet.radius + 2,
+          );
+        if (home) {
+          this.spawnBurst(
+            this.player.x,
+            this.player.y,
+            bullet.color,
+            3,
+            70,
+            0.16,
+          );
+          this.bullets.splice(i, 1);
+        }
+        continue;
+      }
 
       let consumed = false;
       for (const enemy of this.enemies) {
@@ -2272,6 +2391,11 @@ export class ShooterGame {
             break;
           }
           this.damageEnemy(enemy, bullet.damage, bullet.x, bullet.y);
+          if (bullet.recycle) {
+            // The bolt dealt its hit; from now on it is a recall round.
+            bullet.returning = true;
+            break;
+          }
           if (bullet.summonEvery !== undefined) {
             this.registerSummonHit(enemy, bullet.summonEvery, bullet.color);
           }
@@ -2287,6 +2411,29 @@ export class ShooterGame {
             consumed = true;
             break;
           }
+        }
+      }
+
+      // A salvage bolt with no live lock is an ordinary projectile: it stops at
+      // the room wall, then turns around and comes home.
+      if (
+        !consumed &&
+        bullet.recycle &&
+        !bullet.returning &&
+        (!missile || missile.dead)
+      ) {
+        const bounds = this.roomBounds();
+        const r = bullet.radius;
+        if (
+          bullet.x <= bounds.left + r ||
+          bullet.x >= bounds.right - r ||
+          bullet.y <= bounds.top + r ||
+          bullet.y >= bounds.bottom - r
+        ) {
+          bullet.x = clamp(bullet.x, bounds.left + r, bounds.right - r);
+          bullet.y = clamp(bullet.y, bounds.top + r, bounds.bottom - r);
+          bullet.returning = true;
+          this.spawnBurst(bullet.x, bullet.y, bullet.color, 4, 90, 0.22);
         }
       }
 
@@ -2372,11 +2519,13 @@ export class ShooterGame {
       }
 
       // Reached the spot where its locked target died: pop instead of
-      // continuing on to an unrelated enemy.
+      // continuing on to an unrelated enemy. A salvage bolt never does this —
+      // losing the lock sends it on to a wall so it can come home.
       if (
         !consumed &&
         missile &&
         missile.dead &&
+        !bullet.recycle &&
         dist(bullet.x, bullet.y, missile.x, missile.y) <=
           speed * dt + bullet.radius + 4
       ) {
@@ -2384,11 +2533,19 @@ export class ShooterGame {
         consumed = true;
       }
 
+      // A salvage bolt that somehow runs out of outbound time still turns
+      // around instead of vanishing.
+      if (!consumed && bullet.recycle && !bullet.returning && bullet.life <= 0) {
+        bullet.returning = true;
+        bullet.life = 2;
+      }
+
       if (
         consumed ||
         bullet.life <= 0 ||
-        // Seeker missiles are not stopped by room walls, only by their range.
-        (!missile && this.outOfRoom(bullet.x, bullet.y, 24))
+        // Locking missiles are not stopped by room walls, only by their range.
+        // Salvage bolts handle their own wall contact above.
+        (!missile && !bullet.recycle && this.outOfRoom(bullet.x, bullet.y, 24))
       ) {
         this.bullets.splice(i, 1);
       }
@@ -4232,6 +4389,7 @@ export class ShooterGame {
     this.drawBlasts();
     this.drawDashGhosts();
     this.drawPlayer();
+    this.drawRecycleStatus();
     this.drawOrbs();
     this.drawLaserMuzzleGlow();
     this.drawStormDarts();
@@ -4681,6 +4839,31 @@ export class ShooterGame {
     ctx.restore();
   }
 
+  /**
+   * Readiness ring for the salvage cannon: dashed while its bolt is still out
+   * or flying home (or the interval floor is ticking), solid once the next
+   * shot is ready.
+   */
+  private drawRecycleStatus() {
+    const spec = WEAPONS[this.player.weapon];
+    if (!spec.recycle || this.player.dead) return;
+    const waiting = this.player.fireCooldown > 0 || this.recycleBoltInFlight();
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(this.player.x, this.player.y);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = withAlpha(spec.color, waiting ? 0.22 : 0.45);
+    ctx.lineWidth = waiting ? 1.3 : 1.8;
+    if (waiting) {
+      ctx.setLineDash([4, 6]);
+      ctx.lineDashOffset = -this.ambientTime * 26;
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, 30, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   private drawPortal() {
     if (this.mode !== 'dungeon') return;
     const ctx = this.ctx;
@@ -4811,7 +4994,7 @@ export class ShooterGame {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const bullet of this.bullets) {
-      if (bullet.missile) {
+      if (bullet.missile || bullet.recycle) {
         this.drawMissile(bullet);
         continue;
       }
@@ -5294,6 +5477,19 @@ export class ShooterGame {
     const angle = Math.atan2(bullet.vy, bullet.vx);
     ctx.save();
     ctx.translate(bullet.x, bullet.y);
+    if (bullet.recycle) {
+      // Spinning salvage halo, so the bolt reads differently from the seeker.
+      ctx.save();
+      ctx.rotate(this.ambientTime * 3.2);
+      ctx.strokeStyle = withAlpha(bullet.color, 0.8);
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 5]);
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, TAU * 0.72);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
     ctx.rotate(angle);
     ctx.fillStyle = withAlpha(bullet.color, 0.35);
     ctx.beginPath();

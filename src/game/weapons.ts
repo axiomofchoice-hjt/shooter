@@ -53,6 +53,13 @@ export interface WeaponSpec {
   homing?: boolean;
   /** Steering rate in rad/s for homing shots. */
   turnRate?: number;
+  /**
+   * Salvage bolt: locks the nearest visible enemy with no range cap, flies back
+   * to the player after landing, and blocks the next shot for the whole round
+   * trip. `cooldown` is the minimum interval, so a point-blank target fires
+   * faster than a far one but never faster than this floor.
+   */
+  recycle?: boolean;
   /** Continuous cone weapon: no bullets, damage is applied while firing. */
   flame?: boolean;
   /** Half-angle of the damage cone, in radians. */
@@ -152,6 +159,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'orbit',
   'fission',
   'summoner',
+  'recycler',
   'smg',
   'scatter',
   'rail',
@@ -162,10 +170,10 @@ export const ALL_WEAPONS: WeaponId[] = [
 ];
 
 // Temporarily expose the pulse rifle, storm dart, laser, ricochet gun, orbiting
-// guards, fission cannon and hive gun. The other seven stay implemented and
-// fully specced, but cannot be reached from the in-game weapon cycle. Raise
-// this count to bring them back.
-const VISIBLE_WEAPONS = 7;
+// guards, fission cannon, hive gun and salvage cannon. The other seven stay
+// implemented and fully specced, but cannot be reached from the in-game weapon
+// cycle. Raise this count to bring them back.
+const VISIBLE_WEAPONS = 8;
 
 export const WEAPON_ORDER: WeaponId[] = ALL_WEAPONS.slice(0, VISIBLE_WEAPONS);
 
@@ -414,6 +422,27 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     spread: 0,
     pierce: 0,
     summon: true,
+  },
+  // Salvage cannon: one locking bolt per shot, no range cap. The bolt flies
+  // home after hitting its mark, so the next shot waits for the whole round
+  // trip: far targets fire slowly and close ones fast. The 0.24s cooldown is
+  // the floor that keeps point-blank shots sane.
+  recycler: {
+    id: 'recycler',
+    name: '回收炮',
+    tag: 'SALVAGE',
+    color: '#8dff6b',
+    damage: 12,
+    cooldown: 0.24,
+    speed: 1600,
+    radius: 5,
+    life: 2.5,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    homing: true,
+    turnRate: 14,
+    recycle: true,
   },
   // Concussion shell: explodes on contact and shoves the blast outward.
   shock: {
