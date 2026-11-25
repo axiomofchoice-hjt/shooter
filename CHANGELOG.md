@@ -25,6 +25,7 @@
 
 ### 调整
 
+- 抛物枪的抛物物品增加 800px/s 速度上限：每帧加速后按方向截断速度，远距离命中或错过玩家后不再把速度堆到几千 px/s，回程轨迹更稳定；初始速度（最大约 400px/s）仍低于上限，出手手感不变
 - 拆分 8000 行的 `src/game/Game.ts`：可变状态集中到 `GameWorld`，模拟按子系统拆进 `systems/`，渲染拆进 `render/`，`Game.ts` 只保留画布生命周期、主循环与输入门面；数值、配置与行为不变
 - 继续拆分系统内的超长函数：`updatePlayer`、`updateBullets`、`updateEnemies`、`updateHomings`、`drawEnemies`、`drawPlayer`、`drawFloor`、`drawBombers`、`drawFlamer` 等按单一职责拆成小函数，单个函数控制在 80 行以内；行为与数值不变
 - 抛物枪的抛物物品加速度从 1200px/s² 降到 900px/s²：弧线更平缓、物品能飞得更远一点，回到玩家身边也更慢

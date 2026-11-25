@@ -6,6 +6,7 @@ import {
   LOB_LATERAL_MAX,
   LOB_LIFE,
   LOB_MAX,
+  LOB_MAX_SPEED,
   LOB_OUTWARD_SPEED,
   LOB_RADIUS,
   STORM_PULSE_COUNT,
@@ -247,6 +248,14 @@ export function updateLobItems(world: GameWorld, dt: number) {
     item.prevY = item.y;
     item.vx += item.ax * dt;
     item.vy += item.ay * dt;
+    // Clamp the speed so a long return does not turn into a rocket: the pull
+    // keeps accelerating but the item stays at most LOB_MAX_SPEED.
+    const speed = Math.hypot(item.vx, item.vy);
+    if (speed > LOB_MAX_SPEED) {
+      const scale = LOB_MAX_SPEED / speed;
+      item.vx *= scale;
+      item.vy *= scale;
+    }
     item.x += item.vx * dt;
     item.y += item.vy * dt;
     item.age += dt;
