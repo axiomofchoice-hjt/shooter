@@ -2188,10 +2188,11 @@ export class ShooterGame {
   }
 
   /**
-   * Volley gun release: three homing missiles leave in a small fan. Each one
-   * locks the nearest enemy at this instant (so all three usually share a
-   * target) and carries a small blast for the impact. With no enemy the trio
-   * flies straight, keeping the trigger responsive even in an empty room.
+   * Volley gun release: three homing missiles leave in a 120° fan, one every
+   * 60°. Each one locks the nearest enemy at this instant (so all three
+   * usually share a target) and carries a small blast for the impact. With no
+   * enemy the trio flies straight along its fan, keeping the trigger
+   * responsive even in an empty room.
    */
   private fireVolleyMissiles(weapon: WeaponSpec) {
     const volley = weapon.volley;
@@ -2209,7 +2210,8 @@ export class ShooterGame {
     for (let i = 0; i < volley.missiles; i++) {
       const side = i - (volley.missiles - 1) / 2;
       const lateral = side * 14;
-      const launchAngle = player.angle + side * 0.16;
+      // Three initial headings 60° apart: left, forward and right, a 120° fan.
+      const launchAngle = player.angle + side * (Math.PI / 3);
       const x =
         player.x +
         Math.cos(player.angle) * 26 +
