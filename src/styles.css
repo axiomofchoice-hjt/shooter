@@ -266,12 +266,19 @@ svg {
     background 0.15s ease;
 }
 
-.weapon-switch:hover {
+.weapon-switch.is-static {
+  cursor: default;
+  opacity: 0.92;
+  /* 只显示当前武器，点按交给右侧「换枪」按钮 */
+  pointer-events: none;
+}
+
+.weapon-switch:not(.is-static):hover {
   border-color: color-mix(in srgb, var(--weapon-color) 70%, transparent);
   background: rgba(7, 27, 34, 0.94);
 }
 
-.weapon-switch:active {
+.weapon-switch:not(.is-static):active {
   transform: translateY(calc(-50% + 1px));
 }
 
@@ -1736,7 +1743,7 @@ kbd.accent,
   user-select: none;
   /* 控件尺寸集中在这里，按屏幕高度缩放并受宽度限制，竖屏 / 小屏也不会挤出界 */
   /* 全部位置按参考图量出来的百分比：摇杆 16.7%/80.5%，FIRE 73.9%/76.6%，
-     副武器 83.6%/53.3%，闪避 86.1%/75.5%；直径都是屏高的 24.6% / 16% / 16.7% */
+     换枪 83.6%/53.3%，闪避 86.1%/75.5%；直径都是屏高的 24.6% / 16% / 16.7% */
   --joy-size: min(24.6vh, 23vw);
   /* 视觉圆盘是 pad 的 84%（.joystick-base inset 8%），半径 0.42 × --joy-size；
      触摸感应半径取视觉半径的 2 倍 = 0.84 × --joy-size，即 ::before 向外扩 34%。
@@ -2037,21 +2044,21 @@ kbd.accent,
   transform: scale(0.93);
 }
 
-.ability-secondary {
-  /* 副武器：参考图 FIRE 右上那颗（83.6% / 53.3%） */
+.ability-switch {
+  /* 换枪：原来副武器那颗（83.6% / 53.3%），配色跟随当前武器 */
   left: calc(83.6% - var(--ability-half) + var(--safe-left));
   top: calc(53.3% - var(--ability-half));
-  color: #ffe3a9;
-  border: 1px solid rgba(255, 200, 87, 0.56);
+  color: var(--weapon-color, #c8fbff);
+  border: 1px solid color-mix(in srgb, var(--weapon-color, #5ff6ff) 56%, transparent);
   background: radial-gradient(
     circle at 46% 34%,
-    rgba(255, 200, 87, 0.22),
-    rgba(27, 19, 5, 0.88) 68%
+    color-mix(in srgb, var(--weapon-color, #5ff6ff) 20%, transparent),
+    rgba(5, 18, 24, 0.9) 68%
   );
   box-shadow:
-    0 0 0 4px rgba(255, 200, 87, 0.035),
-    0 0 22px rgba(255, 200, 87, 0.12),
-    inset 0 0 16px rgba(255, 200, 87, 0.07);
+    0 0 0 4px color-mix(in srgb, var(--weapon-color, #5ff6ff) 4%, transparent),
+    0 0 22px color-mix(in srgb, var(--weapon-color, #5ff6ff) 12%, transparent),
+    inset 0 0 16px color-mix(in srgb, var(--weapon-color, #5ff6ff) 7%, transparent);
 }
 
 .ability-dodge {

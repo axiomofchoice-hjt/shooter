@@ -233,10 +233,6 @@ export default function App() {
     gameRef.current?.setTouchFire(active);
   }, []);
 
-  const handleTouchSecondary = useCallback(() => {
-    gameRef.current?.triggerSecondary();
-  }, []);
-
   const handleTouchDodge = useCallback(() => {
     gameRef.current?.triggerDodge();
   }, []);
@@ -481,16 +477,17 @@ export default function App() {
       )}
 
       {phase === 'playing' && hud.weaponCount > 1 && (
-        <WeaponSwitch weapon={hud.weapon} onCycle={cycleWeapon} />
+        <WeaponSwitch weapon={hud.weapon} onCycle={cycleWeapon} readOnly={isTouch} />
       )}
 
       {phase === 'playing' && isTouch && (
         <TouchControls
           onMove={handleTouchMove}
           onFire={handleTouchFire}
-          onSecondary={handleTouchSecondary}
+          onCycleWeapon={cycleWeapon}
           onDodge={handleTouchDodge}
-          secondaryCooldown={hud.secondaryCooldown}
+          weapon={hud.weapon}
+          weaponCount={hud.weaponCount}
           dodgeCooldown={hud.dodgeCooldown}
         />
       )}

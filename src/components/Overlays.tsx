@@ -192,9 +192,9 @@ export function StartScreen({
                 <em>最近敌人</em>
               </div>
               <div className="control-row">
-                <span>副武器</span>
+                <span>换武器</span>
                 <span className="virtual-key">右上按钮</span>
-                <em>散射炮</em>
+                <em>点按切换</em>
               </div>
               <div className="control-row">
                 <span>闪避</span>

@@ -81,7 +81,6 @@ export interface HudSnapshot {
   comboTime: number;
   kills: number;
   muted: boolean;
-  secondaryCooldown: number;
   dodgeCooldown: number;
   bossHp: number;
   bossMaxHp: number;
@@ -129,7 +128,6 @@ export const INITIAL_HUD: HudSnapshot = {
   comboTime: 0,
   kills: 0,
   muted: false,
-  secondaryCooldown: 0,
   dodgeCooldown: 0,
   bossHp: 0,
   bossMaxHp: 0,

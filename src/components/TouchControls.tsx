@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { BurstIcon, DashIcon } from './Icons';
+import type { WeaponId } from '../game/types';
+import { WEAPONS } from '../game/weapons';
+import { DashIcon, SwapIcon } from './Icons';
 
 interface TouchControlsProps {
   onMove: (x: number, y: number) => void;
   onFire: (active: boolean) => void;
-  onSecondary: () => void;
+  onCycleWeapon: () => void;
   onDodge: () => void;
-  secondaryCooldown: number;
+  weapon: WeaponId;
+  weaponCount: number;
   dodgeCooldown: number;
 }
 
@@ -17,11 +20,13 @@ const MAX_KNOB_RATIO = 0.26;
 export function TouchControls({
   onMove,
   onFire,
-  onSecondary,
+  onCycleWeapon,
   onDodge,
-  secondaryCooldown,
+  weapon,
+  weaponCount,
   dodgeCooldown,
 }: TouchControlsProps) {
+  const weaponSpec = WEAPONS[weapon];
   const padRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
   const stickPointer = useRef<number | null>(null);
@@ -144,29 +149,27 @@ export function TouchControls({
         </button>
       </div>
 
-      <button
-        type="button"
-        tabIndex={-1}
-        className={`ability-button ability-secondary ${
-          secondaryCooldown > 0 ? 'is-cooling' : ''
-        }`}
-        style={{ '--cool': `${secondaryCooldown * 100}%` } as CSSProperties}
-        aria-label="副武器：散射炮"
-        title="副武器：散射炮"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          if (secondaryCooldown > 0) return;
-          onSecondary();
-          if ('vibrate' in navigator) navigator.vibrate(12);
-        }}
-        onContextMenu={(event) => event.preventDefault()}
-      >
-        <span className="ability-icon">
-          <BurstIcon />
-        </span>
-        <span className="ability-label">副武器</span>
-        <span className="ability-cool" aria-hidden="true" />
-      </button>
+      {weaponCount > 1 && (
+        <button
+          type="button"
+          tabIndex={-1}
+          className="ability-button ability-switch"
+          style={{ '--weapon-color': weaponSpec.color } as CSSProperties}
+          aria-label={`切换武器，当前 ${weaponSpec.name}`}
+          title={`切换武器（当前：${weaponSpec.name}）`}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            onCycleWeapon();
+            if ('vibrate' in navigator) navigator.vibrate(9);
+          }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <span className="ability-icon">
+            <SwapIcon />
+          </span>
+          <span className="ability-label">换枪</span>
+        </button>
+      )}
 
       <button
         type="button"

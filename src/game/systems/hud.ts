@@ -1,6 +1,6 @@
 /** Builds the HUD snapshot for React. */
 
-import { DODGE_COOLDOWN, DUNGEON_ROOMS, SECONDARY_COOLDOWN } from '../core/config';
+import { DODGE_COOLDOWN, DUNGEON_ROOMS } from '../core/config';
 import { clamp } from '../core/math';
 import type { GameWorld } from '../core/world';
 import type { EnemyKind, HudSnapshot, TestEnemyKind } from '../types';
@@ -47,7 +47,6 @@ export function emitHud(world: GameWorld, force = false) {
     comboTime: world.comboTimer,
     kills: world.kills,
     muted: world.sfx.muted,
-    secondaryCooldown: clamp(world.secondaryCooldown / SECONDARY_COOLDOWN, 0, 1),
     dodgeCooldown: clamp(world.dodgeCooldown / DODGE_COOLDOWN, 0, 1),
     bossHp,
     bossMaxHp: boss?.maxHp ?? 0,

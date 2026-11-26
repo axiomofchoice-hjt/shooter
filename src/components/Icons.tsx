@@ -192,3 +192,26 @@ export function FullscreenExitIcon() {
     </svg>
   );
 }
+
+export function SwapIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M4 8h13m-3.6-3.6L17 8l-3.6 3.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 16H7m3.6-3.6L7 16l3.6 3.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
