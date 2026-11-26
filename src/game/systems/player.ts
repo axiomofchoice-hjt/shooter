@@ -11,6 +11,7 @@ import {
   DUNGEON_ROOMS,
   PLAYER_COLOR,
   ROOM_SIZE,
+  TRAVEL_SPEED_SCALE,
   WALL_PAD,
 } from '../core/config';
 import type { Enemy, Player } from '../core/entities';
@@ -145,7 +146,7 @@ export function updatePlayer(world: GameWorld, dt: number) {
   player.trailTimer -= dt;
 
   if (player.dashTime > 0) updateDash(world, player, dt);
-  else updateWalk(player, move);
+  else updateWalk(world, player, move);
 
   // External impulses (contact hits, blasts) are tracked separately from the
   // stick velocity so they can shove the player without reintroducing drift.
@@ -227,6 +228,7 @@ function updateDash(world: GameWorld, player: Player, dt: number) {
 }
 
 function updateWalk(
+  world: GameWorld,
   player: Player,
   move: { x: number; y: number; magnitude: number },
 ) {
@@ -247,8 +249,12 @@ function updateWalk(
 
   // No inertia: velocity follows the stick exactly, so releasing it stops
   // the character in the same frame instead of sliding on.
-  player.vx = moveX * player.speed;
-  player.vy = moveY * player.speed;
+  const speed =
+    world.mode === 'dungeon' && !world.encounterActive
+      ? player.speed * TRAVEL_SPEED_SCALE
+      : player.speed;
+  player.vx = moveX * speed;
+  player.vy = moveY * speed;
 }
 
 /** Auto-aim, cardinal snapping and laser charge. */

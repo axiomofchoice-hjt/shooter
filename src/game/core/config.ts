@@ -53,6 +53,9 @@ export const PLAYER_COLOR = '#5ff6ff';
 export const ENEMY_GLOW = 0.16;
 
 export const PLAYER_SPEED = 270;
+// Walking between fights is pure traversal: outside a dungeon encounter the
+// ship moves at twice its combat speed. Dodging keeps its own fixed speed.
+export const TRAVEL_SPEED_SCALE = 2;
 export const PLAYER_START_ANGLE = -Math.PI / 2;
 
 // The orthogonal cannon may only leave along these four screen directions.
