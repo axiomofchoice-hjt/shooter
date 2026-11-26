@@ -1,6 +1,7 @@
 import { ENEMY_LABELS, type HudSnapshot } from '../game/types';
 import { WEAPONS } from '../game/weapons';
 import { PauseIcon, SoundOffIcon, SoundOnIcon } from './Icons';
+import { Minimap } from './Minimap';
 
 interface HudProps {
   hud: HudSnapshot;
@@ -150,6 +151,7 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
             <span className="fps-value">{hud.fps > 0 ? hud.fps : '--'}</span>
             <span className="fps-unit">FPS</span>
           </span>
+          <Minimap hud={hud} />
         </div>
       </div>
 
