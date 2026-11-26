@@ -5,6 +5,7 @@ import { TAU, angleDelta, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 import type { WeaponSpec } from '../weapons';
 import { WEAPONS } from '../weapons';
+import { updateCoopFunnels } from './coopFunnels';
 import { spawnBurst } from './fx';
 import { roomBounds } from './world';
 
@@ -22,12 +23,25 @@ export function clearFunnels(world: GameWorld) {
 }
 
 /**
+ * Dispatch to the funnel mode of the equipped weapon. The original funnel is
+ * fully autonomous; the cooperative one follows the player and focuses the
+ * player's target only while the trigger is held.
+ */
+export function updateFunnels(world: GameWorld, dt: number) {
+  if (WEAPONS[world.player.weapon].coopFunnel) {
+    updateCoopFunnels(world, dt);
+    return;
+  }
+  updateAutonomousFunnels(world, dt);
+}
+
+/**
  * Funnels run on their own. The trigger is deliberately not consulted: they
  * pick a target, fly to a clear spot near it, hold there while it is in range
  * and fire whenever their nose is lined up. With no enemy in the room they
  * trail the player instead. They are invulnerable and are never enemy targets.
  */
-export function updateFunnels(world: GameWorld, dt: number) {
+function updateAutonomousFunnels(world: GameWorld, dt: number) {
   const weapon = WEAPONS[world.player.weapon];
   const spec = weapon.funnel;
   if (!spec || world.player.dead) {

@@ -6,7 +6,13 @@ import { WEAPONS } from '../weapons';
 
 export function drawFunnels(world: GameWorld) {
   const weapon = WEAPONS[world.player.weapon];
-  if (!weapon.funnel || world.player.dead || world.funnels.length === 0) return;
+  if (
+    (!weapon.funnel && !weapon.coopFunnel) ||
+    world.player.dead ||
+    world.funnels.length === 0
+  ) {
+    return;
+  }
   const ctx = world.ctx;
   const player = world.player;
   const color = weapon.color;

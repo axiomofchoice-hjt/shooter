@@ -328,7 +328,7 @@ function updateTrigger(world: GameWorld, player: Player, dt: number) {
   // Leaving the orbit weapon drops whatever spin-up was left.
   world.orbitActive = 0;
   world.orbitExpand = Math.max(0, world.orbitExpand - dt * 4);
-  if (activeWeapon.funnel || activeWeapon.partner) {
+  if (activeWeapon.funnel || activeWeapon.coopFunnel || activeWeapon.partner) {
     // These weapons fight through their drones; the hull itself has no gun.
     world.flameTick = 0;
     return;
