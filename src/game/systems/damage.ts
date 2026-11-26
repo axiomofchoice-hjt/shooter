@@ -6,6 +6,7 @@ import { rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 import { bossDefeated } from './boss';
 import { spawnBurst } from './fx';
+import { clearFunnels } from './funnels';
 import { emitHud } from './hud';
 import { resetInputState } from './input';
 import { maybeDropPickup } from './pickups';
@@ -52,6 +53,7 @@ export function playerHit(world: GameWorld, damage: number) {
     world.fireRings = [];
     world.laserBeams = [];
     world.laserCharge = 0;
+    clearFunnels(world);
     world.sfx.play('death');
     emitHud(world, true);
     world.callbacks.onGameOver(

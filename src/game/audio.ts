@@ -19,6 +19,7 @@ type SoundName =
   | 'flame'
   | 'arc'
   | 'laser'
+  | 'funnel'
   | 'airstrike'
   | 'bomb'
   | 'dash'
@@ -36,6 +37,7 @@ export class SoundFX {
   private lastShoot = 0;
   private lastFlame = 0;
   private lastBomb = 0;
+  private lastFunnel = 0;
   private noiseBuffer: AudioBuffer | null = null;
 
   constructor() {
@@ -163,6 +165,14 @@ export class SoundFX {
         this.tone(2400, 300, 0.18, 'sawtooth', 0.11, 0);
         this.tone(1200, 160, 0.12, 'square', 0.045, 0.01);
         this.tone(90, 38, 0.24, 'sine', 0.08, 0);
+        break;
+      case 'funnel':
+        // Drones fire on their own; keep the tick soft and throttled so two
+        // of them do not turn into a constant rattle.
+        if (now - this.lastFunnel < 0.07) return;
+        this.lastFunnel = now;
+        this.tone(1180, 760, 0.05, 'sine', 0.045, 0);
+        this.tone(460, 280, 0.04, 'triangle', 0.02, 0.012);
         break;
       case 'airstrike':
         // Low descending siren: the call-in, not the gunshot.

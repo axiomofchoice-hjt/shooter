@@ -19,6 +19,7 @@ import type {
   FireRing,
   Floater,
   FloorMark,
+  Funnel,
   InputState,
   LaserBeam,
   LobItem,
@@ -73,6 +74,7 @@ export class GameWorld {
   laserBeams: LaserBeam[] = [];
   turrets: Turret[] = [];
   nextTurretId = 1;
+  funnels: Funnel[] = [];
   particles: Particle[] = [];
   ghosts: DashGhost[] = [];
   dashGhostTimer = 0;

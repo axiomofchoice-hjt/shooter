@@ -286,6 +286,22 @@ export interface Turret {
   seed: number;
 }
 
+// Autonomous escort drone. It has no HP and is never an enemy target: enemies
+// pick the player (or a sentry turret), and enemy bullets only test the player
+// and turrets. It fires on its own and is not bound to the trigger.
+export interface Funnel {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  angle: number;
+  cooldown: number;
+  muzzle: number;
+  /** Live target, or null while escorting the player. */
+  targetId: number | null;
+  seed: number;
+}
+
 // Small round blast left where a homing missile breaks.
 export interface Blast {
   x: number;

@@ -19,6 +19,7 @@ import type { GameWorld } from '../core/world';
 import type { EnemyKind } from '../types';
 import { ENEMY_LABELS } from '../types';
 import { spawnBurst } from './fx';
+import { clearFunnels } from './funnels';
 import { emitHud } from './hud';
 import { resetInputState } from './input';
 import { dropPickup } from './pickups';
@@ -88,6 +89,7 @@ function resetCombatState(world: GameWorld) {
   world.volleyFiring = false;
   world.turrets = [];
   world.nextTurretId = 1;
+  clearFunnels(world);
   world.orbitAngle = 0;
   world.orbitRadius = 0;
   world.orbitExpand = 0;
@@ -371,6 +373,7 @@ function nextFloor(world: GameWorld) {
   world.laserBeams = [];
   world.laserCharge = 0;
   world.turrets = [];
+  clearFunnels(world);
   world.orbitActive = 0;
   world.orbitExpand = 0;
   world.bullets = [];

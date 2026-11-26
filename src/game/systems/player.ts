@@ -18,6 +18,7 @@ import type { GameWorld } from '../core/world';
 import { WEAPONS, nextWeapon, previousWeapon } from '../weapons';
 import { updateFlamer } from './flamer';
 import { spawnBurst } from './fx';
+import { clearFunnels, updateFunnels } from './funnels';
 import { emitHud } from './hud';
 import { readMoveInput } from './input';
 import { updateOrbit } from './orbit';
@@ -108,6 +109,9 @@ function confinePlayer(world: GameWorld) {
       // Turrets and dropped items belong to the room they were left in.
       world.turrets = [];
       world.lobItems = [];
+      // Funnels reform around the player in the new room instead of flying
+      // through the wall.
+      clearFunnels(world);
       clampCamera(world);
     }
     return;
@@ -146,6 +150,8 @@ export function updatePlayer(world: GameWorld, dt: number) {
   player.muzzle = Math.max(0, player.muzzle - dt);
 
   updateAim(world, player, move, dt);
+  // Funnels are autonomous: they update even when the trigger is released.
+  updateFunnels(world, dt);
   updateTrigger(world, player, dt);
 }
 
@@ -291,7 +297,7 @@ function updateAim(
   }
 }
 
-/** Firing, volley release and the orbit spin-up. */
+/** Firing, volley release, the orbit spin-up and funnels. */
 function updateTrigger(world: GameWorld, player: Player, dt: number) {
   const firing = world.input.fireKey || world.input.touchFire || world.input.padFire;
   const activeWeapon = WEAPONS[player.weapon];
@@ -320,6 +326,12 @@ function updateTrigger(world: GameWorld, player: Player, dt: number) {
   // Leaving the orbit weapon drops whatever spin-up was left.
   world.orbitActive = 0;
   world.orbitExpand = Math.max(0, world.orbitExpand - dt * 4);
+  if (activeWeapon.funnel) {
+    // The drones fire themselves in updateFunnels; the trigger has no hull gun
+    // to fire while this weapon is equipped.
+    world.flameTick = 0;
+    return;
+  }
   if (!firing) {
     // Let the next held burst start on a fresh tick instead of waiting out
     // the remainder of the last one.
@@ -412,6 +424,9 @@ export function switchWeapon(world: GameWorld, direction: 1 | -1 = 1) {
   world.player.weapon = next;
   world.volleyShots = 0;
   world.volleyFiring = false;
+  // Drones belong to the gun that launched them; the next frame spawns a
+  // fresh pair if the new weapon is the funnel gun.
+  clearFunnels(world);
   const spec = WEAPONS[next];
   world.floaters.push({
     x: world.player.x,
