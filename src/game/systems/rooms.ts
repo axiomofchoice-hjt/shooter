@@ -194,6 +194,13 @@ export function updateTestRoom(world: GameWorld, dt: number) {
 }
 
 // ------------------------------------------------------------- dungeon logic
+// Every encounter should be fully on the floor within this many seconds. The
+// per-enemy telegraph still plays in full (SPAWN_TELEGRAPH); only the gap
+// between telegraphs shrinks, and that gap depends on the head count alone.
+const SPAWN_WINDOW = 3;
+const SPAWN_FIRST_DELAY = 0.2;
+const SPAWN_TELEGRAPH = 0.65;
+
 export function beginRun(world: GameWorld) {
   world.floor = 1;
   world.roomIndex = 0;
@@ -201,6 +208,7 @@ export function beginRun(world: GameWorld) {
   world.encounterActive = false;
   world.spawnQueue = [];
   world.spawnTimer = 0;
+  world.spawnInterval = 0;
   world.banner = {
     title: 'FLOOR 01',
     sub: '起始房 · 沿右侧闸门深入',
@@ -230,7 +238,10 @@ export function updateDungeon(world: GameWorld, dt: number) {
 function startEncounter(world: GameWorld, room: number) {
   world.encounterActive = true;
   world.spawnQueue = buildEncounter(world.floor, room);
-  world.spawnTimer = 0.2;
+  world.spawnTimer = SPAWN_FIRST_DELAY;
+  world.spawnInterval =
+    (SPAWN_WINDOW - SPAWN_FIRST_DELAY - SPAWN_TELEGRAPH) /
+    Math.max(1, world.spawnQueue.length - 1);
   world.telegraphs = [];
   world.banner = {
     title: `ROOM 0${room}`,
@@ -282,24 +293,18 @@ function buildEncounter(floor: number, room: number): EnemyKind[] {
 function updateEncounter(world: GameWorld, dt: number) {
   world.spawnTimer -= dt;
   if (world.spawnQueue.length > 0 && world.spawnTimer <= 0) {
-    const groupSize = Math.min(
-      world.spawnQueue.length,
-      1 + Math.floor((world.floor - 1) / 2) + (world.roomIndex >= 3 ? 1 : 0),
-    );
-    for (let i = 0; i < groupSize; i++) {
-      const kind = world.spawnQueue.shift();
-      if (!kind) break;
+    const kind = world.spawnQueue.shift();
+    if (kind) {
       const point = pickSpawnPoint(world);
       world.telegraphs.push({
         x: point.x,
         y: point.y,
         kind,
-        timer: 0.65,
-        duration: 0.65,
+        timer: SPAWN_TELEGRAPH,
+        duration: SPAWN_TELEGRAPH,
       });
     }
-    // Send the queue in sooner without touching the 0.65s telegraph itself.
-    world.spawnTimer = Math.max(0.24, 0.52 - world.floor * 0.035);
+    world.spawnTimer = world.spawnInterval;
   }
 
   for (let i = world.telegraphs.length - 1; i >= 0; i--) {
@@ -364,6 +369,7 @@ function nextFloor(world: GameWorld) {
   world.roomIndex = 0;
   world.encounterActive = false;
   world.spawnQueue = [];
+  world.spawnInterval = 0;
   world.telegraphs = [];
   world.enemies = [];
   world.enemyBullets = [];

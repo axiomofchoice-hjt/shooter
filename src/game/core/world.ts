@@ -139,6 +139,8 @@ export class GameWorld {
   encounterActive = false;
   spawnQueue: EnemyKind[] = [];
   spawnTimer = 0;
+  // Seconds between spawn telegraphs in the current encounter (count-based).
+  spawnInterval = 0;
   nextEnemyId = 1;
   autoTarget: Enemy | null = null;
   dodgeCooldown = 0;
