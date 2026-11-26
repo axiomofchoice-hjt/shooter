@@ -299,10 +299,10 @@ export interface Funnel {
   muzzle: number;
   /** Live target, or null while escorting the player. */
   targetId: number | null;
-  /** Seconds left in the brace-before-fire or recover-after-fire hold. */
-  holdTimer: number;
-  /** True once the drone has settled on a firing spot. */
-  settled: boolean;
+  /** Fly to a spot, wind up, fire, recover, or hold ready at the spot. */
+  phase: 'chase' | 'brace' | 'recover' | 'ready';
+  /** Seconds left in the brace or recover phase. */
+  timer: number;
   seed: number;
 }
 

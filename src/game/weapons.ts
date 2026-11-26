@@ -221,7 +221,7 @@ export interface WeaponSpec {
     /** Inside this band a drone with a clear shot stops and holds. */
     minStandoff: number;
     maxStandoff: number;
-    /** Seconds it holds still before the first shot from a new firing spot. */
+    /** Committed wind-up before a shot from a firing spot. */
     braceTime: number;
     /** Seconds it holds still after every shot. */
     recoverTime: number;
