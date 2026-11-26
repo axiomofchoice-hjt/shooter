@@ -46,10 +46,8 @@ export const VIEW_MAX_ZOOM = 1.28;
 export const CAMERA = {
   /** Exponential follow rate; higher is snappier. */
   followRate: 2.5,
-  /** How quickly the enemy offset itself eases, after the death hold. */
+  /** How quickly the enemy offset itself eases. */
   biasRate: 1.2,
-  /** Seconds the enemy offset is held after an enemy dies. */
-  deathHold: 0.8,
   /** Fraction of the weighted enemy offset applied to the target. */
   enemyBias: 0.28,
   /** Enemies farther than this do not pull the camera. */

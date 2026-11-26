@@ -16,8 +16,6 @@ import type { GameWorld } from '../core/world';
 export function resetCameraBias(world: GameWorld) {
   world.cameraBiasX = 0;
   world.cameraBiasY = 0;
-  world.cameraBiasHold = 0;
-  world.cameraEnemyCount = 0;
 }
 
 export function updateCamera(world: GameWorld, dt: number) {
@@ -31,16 +29,13 @@ export function updateCamera(world: GameWorld, dt: number) {
     targetY += (world.boss.y - targetY) * 0.28;
   } else {
     // Weighted average of nearby enemy offsets. The desired offset is kept
-    // separate from a persistent bias: when an enemy dies the old bias is
-    // held for a moment, then eased out, so the camera never snaps back to
-    // the player on the kill.
+    // separate from a persistent bias and eased into it, so an enemy death
+    // only starts a slow drift instead of a sudden retarget.
     let sumX = 0;
     let sumY = 0;
     let weight = 0;
-    let living = 0;
     for (const enemy of world.enemies) {
       if (enemy.dead) continue;
-      living += 1;
       const d = dist(player.x, player.y, enemy.x, enemy.y);
       if (d > CAMERA.enemyRange) continue;
       const w = 1 - d / CAMERA.enemyRange;
@@ -48,12 +43,6 @@ export function updateCamera(world: GameWorld, dt: number) {
       sumY += (enemy.y - player.y) * w * w;
       weight += w * w;
     }
-
-    if (living < world.cameraEnemyCount) {
-      world.cameraBiasHold = CAMERA.deathHold;
-    }
-    world.cameraEnemyCount = living;
-    world.cameraBiasHold = Math.max(0, world.cameraBiasHold - stepDt);
 
     let desiredX = 0;
     let desiredY = 0;
@@ -68,11 +57,9 @@ export function updateCamera(world: GameWorld, dt: number) {
       }
     }
 
-    if (world.cameraBiasHold <= 0) {
-      const bk = 1 - Math.exp(-CAMERA.biasRate * stepDt);
-      world.cameraBiasX += (desiredX - world.cameraBiasX) * bk;
-      world.cameraBiasY += (desiredY - world.cameraBiasY) * bk;
-    }
+    const bk = 1 - Math.exp(-CAMERA.biasRate * stepDt);
+    world.cameraBiasX += (desiredX - world.cameraBiasX) * bk;
+    world.cameraBiasY += (desiredY - world.cameraBiasY) * bk;
     targetX += world.cameraBiasX;
     targetY += world.cameraBiasY;
   }
