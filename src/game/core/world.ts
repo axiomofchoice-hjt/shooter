@@ -140,9 +140,6 @@ export class GameWorld {
   spawnTimer = 0;
   nextEnemyId = 1;
   autoTarget: Enemy | null = null;
-  /** Centroid of every targetable enemy; the hull aims here. */
-  autoAimX = 0;
-  autoAimY = 0;
   secondaryCooldown = 0;
   dodgeCooldown = 0;
   // The bomber's recharge is tracked separately: its 6.5s cooldown must not
