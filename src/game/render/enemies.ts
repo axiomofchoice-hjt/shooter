@@ -6,6 +6,7 @@ import { ENEMY_BEHAVIOR } from '../core/enemyDefs';
 import type { Enemy } from '../core/entities';
 import { TAU, clamp, withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';
+import { enemyAttackPoint } from '../systems/turrets';
 
 export function drawEnemies(world: GameWorld) {
   for (const enemy of world.enemies) {
@@ -433,6 +434,7 @@ function drawAttackWindup(
   t: number,
 ) {
   const ctx = world.ctx;
+  const target = enemyAttackPoint(world, enemy);
   ctx.strokeStyle = withAlpha(color, 0.16 + t * 0.34);
   ctx.lineWidth = 1.6 / world.zoom;
   ctx.setLineDash([7 / world.zoom, 9 / world.zoom]);
@@ -442,7 +444,7 @@ function drawAttackWindup(
   } else if (atk.mode === 'shell') {
     // The shell lands on a snapshot, so a long aim line would lie; show a
     // short muzzle pointer plus a charging ring instead.
-    const aim = Math.atan2(world.player.y - enemy.y, world.player.x - enemy.x);
+    const aim = Math.atan2(target.y - enemy.y, target.x - enemy.x);
     ctx.moveTo(enemy.x, enemy.y);
     ctx.lineTo(
       enemy.x + Math.cos(aim) * (enemy.radius + 34),
@@ -450,14 +452,14 @@ function drawAttackWindup(
     );
   } else if (atk.mode === 'homing') {
     // The missile steers, so only the launch direction is promised.
-    const aim = Math.atan2(world.player.y - enemy.y, world.player.x - enemy.x);
+    const aim = Math.atan2(target.y - enemy.y, target.x - enemy.x);
     ctx.moveTo(enemy.x, enemy.y);
     ctx.lineTo(
       enemy.x + Math.cos(aim) * (enemy.radius + 22),
       enemy.y + Math.sin(aim) * (enemy.radius + 22),
     );
   } else {
-    const aim = Math.atan2(world.player.y - enemy.y, world.player.x - enemy.x);
+    const aim = Math.atan2(target.y - enemy.y, target.x - enemy.x);
     ctx.moveTo(enemy.x, enemy.y);
     ctx.lineTo(
       enemy.x + Math.cos(aim) * atk.reach * 0.55,
@@ -477,8 +479,7 @@ function drawAttackWindup(
     ctx.arc(enemy.x, enemy.y, atk.reach * 0.94, spin, spin + 0.45 + t * 0.5);
     ctx.stroke();
   } else if (atk.mode === 'homing') {
-    // Lock brackets close in on the player: this shot will chase.
-    const target = world.player;
+    // Lock brackets close in on the attack target: this shot will chase.
     const lockRadius = 48 - t * 24;
     ctx.strokeStyle = withAlpha(color, 0.22 + t * 0.5);
     ctx.lineWidth = (1.4 + t * 1.2) / world.zoom;
