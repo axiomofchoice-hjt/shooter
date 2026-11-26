@@ -120,22 +120,16 @@ function updateFunnel(
     const clear = hasClearShot(world, funnel, target);
     const inBand =
       targetDistance >= spec.minStandoff && targetDistance <= spec.maxStandoff;
-    const nearPlayer =
-      dist(funnel.x, funnel.y, player.x, player.y) <= spec.leash;
-    if (clear && inBand && nearPlayer) {
+    if (clear && inBand) {
       // Already close enough with a clean line: this is a firing spot.
       canShoot = true;
     } else {
+      // Fly all the way to the standoff ring. The drones are not leashed to
+      // the player: stopping halfway would leave them parked out of range
+      // and not firing, which reads as a broken weapon.
       const angle = firingAngle(world, funnel, target, index, spec);
       desiredX = target.x + Math.cos(angle) * spec.standoff;
       desiredY = target.y + Math.sin(angle) * spec.standoff;
-      const dx = desiredX - player.x;
-      const dy = desiredY - player.y;
-      const leashDistance = Math.hypot(dx, dy);
-      if (leashDistance > spec.leash) {
-        desiredX = player.x + (dx / leashDistance) * spec.leash;
-        desiredY = player.y + (dy / leashDistance) * spec.leash;
-      }
     }
   } else {
     const angle = escortAngle(world, index, spec);
@@ -145,6 +139,29 @@ function updateFunnel(
 
   desiredX = clamp(desiredX, bounds.left + 18, bounds.right - 18);
   desiredY = clamp(desiredY, bounds.top + 18, bounds.bottom - 18);
+
+  if (target && !canShoot) {
+    // A slot clamped against a wall can end up on top of the target. If that
+    // happened, take the same standoff on the room-centre side instead, so
+    // the drone always has a real firing spot to reach rather than parking
+    // too close and never shooting.
+    const fromTarget = Math.hypot(desiredX - target.x, desiredY - target.y);
+    if (fromTarget < spec.minStandoff) {
+      const centerX = (bounds.left + bounds.right) / 2;
+      const centerY = (bounds.top + bounds.bottom) / 2;
+      const away = Math.atan2(centerY - target.y, centerX - target.x);
+      desiredX = clamp(
+        target.x + Math.cos(away) * spec.standoff,
+        bounds.left + 18,
+        bounds.right - 18,
+      );
+      desiredY = clamp(
+        target.y + Math.sin(away) * spec.standoff,
+        bounds.top + 18,
+        bounds.bottom - 18,
+      );
+    }
+  }
 
   if (funnel.holdTimer > 0) {
     // Brace before a shot or recover after one: stay planted for the window.

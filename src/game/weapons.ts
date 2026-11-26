@@ -225,8 +225,6 @@ export interface WeaponSpec {
     braceTime: number;
     /** Seconds it holds still after every shot. */
     recoverTime: number;
-    /** Maximum distance from the player a drone will chase. */
-    leash: number;
     /** Drone flight speed, in px/s. */
     droneSpeed: number;
     /** Aim turn rate, rad/s. */
@@ -685,7 +683,6 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       maxStandoff: 260,
       braceTime: 0.2,
       recoverTime: 0.28,
-      leash: 460,
       droneSpeed: 380,
       turnRate: 11,
       leadTime: 0.18,
