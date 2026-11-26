@@ -144,9 +144,10 @@ function updateFunnel(
   desiredY = clamp(desiredY, bounds.top + 18, bounds.bottom - 18);
 
   if (holding) {
-    const damping = Math.exp(-7 * dt);
-    funnel.vx *= damping;
-    funnel.vy *= damping;
+    // No inertia: the moment it is in position, it stops dead instead of
+    // gliding past the slot.
+    funnel.vx = 0;
+    funnel.vy = 0;
   } else {
     steerTo(funnel, desiredX, desiredY, spec, dt);
   }
@@ -260,23 +261,17 @@ function steerTo(
   const dx = tx - funnel.x;
   const dy = ty - funnel.y;
   const distance = Math.hypot(dx, dy);
-  let wantX = 0;
-  let wantY = 0;
-  if (distance > 6) {
-    wantX = (dx / distance) * spec.droneSpeed;
-    wantY = (dy / distance) * spec.droneSpeed;
+  if (distance < 0.001) {
+    funnel.vx = 0;
+    funnel.vy = 0;
+    return;
   }
-  const dvx = wantX - funnel.vx;
-  const dvy = wantY - funnel.vy;
-  const dv = Math.hypot(dvx, dvy);
-  const maxDv = spec.droneAccel * dt;
-  if (dv > maxDv && dv > 0.0001) {
-    funnel.vx += (dvx / dv) * maxDv;
-    funnel.vy += (dvy / dv) * maxDv;
-  } else {
-    funnel.vx = wantX;
-    funnel.vy = wantY;
-  }
+  // No inertia: velocity points straight at the slot at a fixed cruise speed,
+  // and is capped so the last step lands exactly on the slot. There is no
+  // acceleration or residual drift, so a stopped drone stops immediately.
+  const speed = Math.min(spec.droneSpeed, distance / Math.max(dt, 0.001));
+  funnel.vx = (dx / distance) * speed;
+  funnel.vy = (dy / distance) * speed;
 }
 
 function confineFunnel(

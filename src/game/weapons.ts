@@ -223,9 +223,8 @@ export interface WeaponSpec {
     maxStandoff: number;
     /** Maximum distance from the player a drone will chase. */
     leash: number;
-    /** Drone flight speed and acceleration, in px/s and px/s². */
+    /** Drone flight speed, in px/s. */
     droneSpeed: number;
-    droneAccel: number;
     /** Aim turn rate, rad/s. */
     turnRate: number;
     /** Longest target lead, in seconds. */
@@ -682,7 +681,6 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       maxStandoff: 260,
       leash: 460,
       droneSpeed: 380,
-      droneAccel: 900,
       turnRate: 11,
       leadTime: 0.18,
       slotArc: 0.9,
