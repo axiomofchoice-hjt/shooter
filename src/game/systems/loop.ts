@@ -52,7 +52,7 @@ export function update(world: GameWorld, dt: number) {
   if (world.mode === 'dungeon') updateDungeon(world, dt);
   else updateTestRoom(world, dt);
   updateFx(world, dt);
-  updateCamera(world);
+  updateCamera(world, dt);
 
   if (world.victoryTimer > 0) {
     world.victoryTimer -= dt;

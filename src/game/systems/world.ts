@@ -1,6 +1,7 @@
 /** Camera, room geometry, decorations and targeting helpers. */
 
 import {
+  CAMERA,
   DUNGEON_ROOMS,
   ROOM_SIZE,
   VIEW_MAX_ZOOM,
@@ -12,17 +13,48 @@ import type { Enemy, FloorMark } from '../core/entities';
 import { TAU, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 
-export function updateCamera(world: GameWorld) {
-  // The camera is locked to the player instead of easing behind them, so the
-  // view never keeps drifting after the stick is released.
-  let targetX = world.player.x;
-  let targetY = world.player.y;
+export function updateCamera(world: GameWorld, dt: number) {
+  const player = world.player;
+  let targetX = player.x;
+  let targetY = player.y;
+
   if (world.mode === 'boss' && world.boss && !world.boss.dead) {
     targetX += (world.boss.x - targetX) * 0.28;
     targetY += (world.boss.y - targetY) * 0.28;
+  } else {
+    // Weighted average of nearby enemy offsets, then a capped bias so the
+    // player never leaves the frame. Enemies on opposite sides cancel out.
+    let sumX = 0;
+    let sumY = 0;
+    let weight = 0;
+    for (const enemy of world.enemies) {
+      if (enemy.dead) continue;
+      const d = dist(player.x, player.y, enemy.x, enemy.y);
+      if (d > CAMERA.enemyRange) continue;
+      const w = 1 - d / CAMERA.enemyRange;
+      sumX += (enemy.x - player.x) * w * w;
+      sumY += (enemy.y - player.y) * w * w;
+      weight += w * w;
+    }
+    if (weight > 0) {
+      let ox = (sumX / weight) * CAMERA.enemyBias;
+      let oy = (sumY / weight) * CAMERA.enemyBias;
+      const offset = Math.hypot(ox, oy);
+      if (offset > CAMERA.maxOffset) {
+        const scale = CAMERA.maxOffset / offset;
+        ox *= scale;
+        oy *= scale;
+      }
+      targetX += ox;
+      targetY += oy;
+    }
   }
-  world.camera.x = targetX;
-  world.camera.y = targetY;
+
+  // Ease toward the target. The factor is capped so a long frame (tab switch,
+  // hitch) does not turn the follow into a teleport.
+  const k = Math.min(0.25, 1 - Math.exp(-CAMERA.followRate * dt));
+  world.camera.x += (targetX - world.camera.x) * k;
+  world.camera.y += (targetY - world.camera.y) * k;
   clampCamera(world);
 }
 
@@ -45,14 +77,13 @@ function roomLeft(index: number) {
 export function clampCamera(world: GameWorld) {
   const halfW = world.width / (2 * world.zoom);
   const halfH = world.height / (2 * world.zoom);
-  // Dungeon rooms are viewed one at a time: the camera never leaves the
-  // current room, which also makes the room transition read as a clean cut.
-  const viewW = world.mode === 'boss' ? world.worldW : ROOM_SIZE;
-  const left = world.mode === 'boss' ? 0 : roomLeft(world.roomIndex);
-  if (halfW * 2 < viewW) {
-    world.camera.x = clamp(world.camera.x, left + halfW, left + viewW - halfW);
+  // Allow the view to cross room boundaries. The player is still confined to
+  // the current room, but the camera can show the neighbouring room through
+  // the doorway instead of stopping at the wall.
+  if (halfW * 2 < world.worldW) {
+    world.camera.x = clamp(world.camera.x, halfW, world.worldW - halfW);
   } else {
-    world.camera.x = left + viewW / 2;
+    world.camera.x = world.worldW / 2;
   }
   if (halfH * 2 < world.worldH) {
     world.camera.y = clamp(world.camera.y, halfH, world.worldH - halfH);

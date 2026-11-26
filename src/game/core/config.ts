@@ -40,6 +40,20 @@ export const VIEW_WORLD_H = 660;
 export const VIEW_MIN_ZOOM = 0.62;
 export const VIEW_MAX_ZOOM = 1.28;
 
+// Camera: ease toward the player, biased a little toward nearby enemies so
+// the action stays framed. It is not locked to one room, so the edge of the
+// view can show the neighbouring room.
+export const CAMERA = {
+  /** Exponential follow rate; higher is snappier. */
+  followRate: 7.5,
+  /** Fraction of the weighted enemy offset applied to the target. */
+  enemyBias: 0.35,
+  /** Enemies farther than this do not pull the camera. */
+  enemyRange: 560,
+  /** Largest camera offset from the player, in world px. */
+  maxOffset: 150,
+} as const;
+
 export const PLAYER_COLOR = '#5ff6ff';
 export const SECONDARY_COLOR = '#ffc857';
 export const ENEMY_GLOW = 0.16;
