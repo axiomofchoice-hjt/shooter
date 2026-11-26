@@ -24,12 +24,19 @@ import { emitHud } from './hud';
 import { resetInputState } from './input';
 import { dropPickup } from './pickups';
 import { pickSpawnPoint, spawnDummy, spawnEnemy, updateDummy } from './spawn';
-import { buildDecorations, clampCamera, countCleared, roomBounds } from './world';
+import {
+  buildDecorations,
+  clampCamera,
+  countCleared,
+  resetCameraBias,
+  roomBounds,
+} from './world';
 
 export function resetWorld(world: GameWorld) {
   world.player = createPlayer(world);
   world.camera.x = world.player.x;
   world.camera.y = world.player.y;
+  resetCameraBias(world);
   resetCombatState(world);
   resetRunState(world);
   world.hudTimer = 0;
@@ -388,6 +395,7 @@ function nextFloor(world: GameWorld) {
   world.player.hp = Math.min(world.player.maxHp, world.player.hp + FLOOR_HEAL);
   world.camera.x = world.player.x;
   world.camera.y = world.player.y;
+  resetCameraBias(world);
   clampCamera(world);
   world.score += 150 * world.floor;
   world.healFlash = 1;

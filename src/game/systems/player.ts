@@ -30,6 +30,7 @@ import {
   findNearestEnemy,
   isDoorOpen,
   recycleBoltInFlight,
+  resetCameraBias,
   roomBounds,
 } from './world';
 
@@ -113,6 +114,7 @@ function confinePlayer(world: GameWorld) {
       // Funnels reform around the player in the new room instead of flying
       // through the wall.
       clearFunnels(world);
+      resetCameraBias(world);
       clampCamera(world);
     }
     return;

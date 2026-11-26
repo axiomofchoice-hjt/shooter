@@ -13,8 +13,16 @@ import type { Enemy, FloorMark } from '../core/entities';
 import { TAU, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 
+export function resetCameraBias(world: GameWorld) {
+  world.cameraBiasX = 0;
+  world.cameraBiasY = 0;
+  world.cameraBiasHold = 0;
+  world.cameraEnemyCount = 0;
+}
+
 export function updateCamera(world: GameWorld, dt: number) {
   const player = world.player;
+  const stepDt = Math.min(dt, 0.05);
   let targetX = player.x;
   let targetY = player.y;
 
@@ -22,13 +30,17 @@ export function updateCamera(world: GameWorld, dt: number) {
     targetX += (world.boss.x - targetX) * 0.28;
     targetY += (world.boss.y - targetY) * 0.28;
   } else {
-    // Weighted average of nearby enemy offsets, then a capped bias so the
-    // player never leaves the frame. Enemies on opposite sides cancel out.
+    // Weighted average of nearby enemy offsets. The desired offset is kept
+    // separate from a persistent bias: when an enemy dies the old bias is
+    // held for a moment, then eased out, so the camera never snaps back to
+    // the player on the kill.
     let sumX = 0;
     let sumY = 0;
     let weight = 0;
+    let living = 0;
     for (const enemy of world.enemies) {
       if (enemy.dead) continue;
+      living += 1;
       const d = dist(player.x, player.y, enemy.x, enemy.y);
       if (d > CAMERA.enemyRange) continue;
       const w = 1 - d / CAMERA.enemyRange;
@@ -36,24 +48,38 @@ export function updateCamera(world: GameWorld, dt: number) {
       sumY += (enemy.y - player.y) * w * w;
       weight += w * w;
     }
+
+    if (living < world.cameraEnemyCount) {
+      world.cameraBiasHold = CAMERA.deathHold;
+    }
+    world.cameraEnemyCount = living;
+    world.cameraBiasHold = Math.max(0, world.cameraBiasHold - stepDt);
+
+    let desiredX = 0;
+    let desiredY = 0;
     if (weight > 0) {
-      let ox = (sumX / weight) * CAMERA.enemyBias;
-      let oy = (sumY / weight) * CAMERA.enemyBias;
-      const offset = Math.hypot(ox, oy);
+      desiredX = (sumX / weight) * CAMERA.enemyBias;
+      desiredY = (sumY / weight) * CAMERA.enemyBias;
+      const offset = Math.hypot(desiredX, desiredY);
       if (offset > CAMERA.maxOffset) {
         const scale = CAMERA.maxOffset / offset;
-        ox *= scale;
-        oy *= scale;
+        desiredX *= scale;
+        desiredY *= scale;
       }
-      targetX += ox;
-      targetY += oy;
     }
+
+    if (world.cameraBiasHold <= 0) {
+      const bk = 1 - Math.exp(-CAMERA.biasRate * stepDt);
+      world.cameraBiasX += (desiredX - world.cameraBiasX) * bk;
+      world.cameraBiasY += (desiredY - world.cameraBiasY) * bk;
+    }
+    targetX += world.cameraBiasX;
+    targetY += world.cameraBiasY;
   }
 
   // Ease toward the target. There is no hard speed cap; the exponential
   // factor does the smoothing. Step time is capped only so a long frame (tab
   // switch, hitch) cannot turn the follow into a teleport.
-  const stepDt = Math.min(dt, 0.05);
   const k = 1 - Math.exp(-CAMERA.followRate * stepDt);
   world.camera.x += (targetX - world.camera.x) * k;
   world.camera.y += (targetY - world.camera.y) * k;

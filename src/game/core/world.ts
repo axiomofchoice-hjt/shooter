@@ -116,6 +116,12 @@ export class GameWorld {
   };
 
   readonly camera = { x: ROOM_SIZE / 2, y: ROOM_SIZE / 2 };
+  // Enemy-derived camera offset is kept separately so a kill does not snap
+  // the framing back to the player.
+  cameraBiasX = 0;
+  cameraBiasY = 0;
+  cameraBiasHold = 0;
+  cameraEnemyCount = 0;
   zoom = 1;
   shake = 0;
   hurtFlash = 0;
