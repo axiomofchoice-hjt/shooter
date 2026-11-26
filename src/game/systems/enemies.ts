@@ -27,7 +27,7 @@ import { updateBossAttack } from './boss';
 import { compactEnemies } from './combat';
 import { damageTurret, playerHit } from './damage';
 import { spawnBurst } from './fx';
-import { enemyAttackPoint, findTauntTurret, turretById } from './turrets';
+import { enemyAttackPoint, findNearestTurret, turretById } from './turrets';
 import type { RoomBounds } from './world';
 import { roomBounds } from './world';
 
@@ -249,8 +249,17 @@ function beginEnemyAction(world: GameWorld, enemy: Enemy, action: EnemyAction) {
     return;
   }
   if (action === 'attack') {
-    // A turret nearby pulls this attack off the player.
-    enemy.brain.turretId = findTauntTurret(world, enemy)?.id;
+    // Pick the nearest target among the player, partner and sentry turrets.
+    const turret = findNearestTurret(world, enemy);
+    const player = world.player;
+    const playerDist = player.dead
+      ? Infinity
+      : dist(enemy.x, enemy.y, player.x, player.y);
+    const turretDist = turret
+      ? dist(enemy.x, enemy.y, turret.x, turret.y)
+      : Infinity;
+    enemy.brain.turretId =
+      turret && turretDist < playerDist ? turret.id : undefined;
     const atk = ENEMY_BEHAVIOR[enemy.kind].attack;
     enemy.brain.phase = 'windup';
     enemy.brain.timer = atk.windup * rand(0.9, 1.1);

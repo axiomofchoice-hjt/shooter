@@ -28,6 +28,7 @@
 
 ### 调整
 
+- 敌人索敌改为在玩家、浮游伙伴和哨戒炮之间选择最近的目标，不再只锁玩家，也不再只按炮台 200px 的嘲讽范围判断；目标在攻击开始时锁定，目标消失后转回玩家
 - 抛物枪的抛物物品速度上限从 600px/s 降到 300px/s，与初速一致：出手后只减速再被拉回，回程不会超过 300px/s；回拉加速度仍为 600px/s²
 - 拆分 8000 行的 `src/game/Game.ts`：可变状态集中到 `GameWorld`，模拟按子系统拆进 `systems/`，渲染拆进 `render/`，`Game.ts` 只保留画布生命周期、主循环与输入门面；数值、配置与行为不变
 - 继续拆分系统内的超长函数：`updatePlayer`、`updateBullets`、`updateEnemies`、`updateHomings`、`drawEnemies`、`drawPlayer`、`drawFloor`、`drawBombers`、`drawFlamer` 等按单一职责拆成小函数，单个函数控制在 80 行以内；行为与数值不变

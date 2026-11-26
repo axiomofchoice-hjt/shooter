@@ -2,13 +2,14 @@
 
 import { BOSS_COLOR, BOSS_VICTORY_DELAY } from '../core/config';
 import type { Enemy } from '../core/entities';
-import { TAU, clamp, rand } from '../core/math';
+import { TAU, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 import type { EnemyKind } from '../types';
 import { spawnBurst } from './fx';
 import { emitHud } from './hud';
 import { resetInputState } from './input';
 import { spawnEnemy } from './spawn';
+import { findNearestTurret } from './turrets';
 
 export function updateBossAttack(world: GameWorld, enemy: Enemy, dt: number) {
   if (world.bossWindup > 0) {
@@ -73,7 +74,17 @@ function releaseBossAttack(world: GameWorld, enemy: Enemy) {
     world.shake = Math.max(world.shake, 7);
   } else {
     const count = phase2 ? 5 : 3;
-    const base = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+    // The aimed volley also picks the nearest target, not just the player.
+    const turret = findNearestTurret(world, enemy);
+    const playerDist = player.dead
+      ? Infinity
+      : dist(enemy.x, enemy.y, player.x, player.y);
+    const turretDist = turret
+      ? dist(enemy.x, enemy.y, turret.x, turret.y)
+      : Infinity;
+    const target =
+      turret && turretDist < playerDist ? turret : player;
+    const base = Math.atan2(target.y - enemy.y, target.x - enemy.x);
     for (let i = 0; i < count; i++) {
       const spread = i / (count - 1) - 0.5;
       const angle = base + spread * 0.32;

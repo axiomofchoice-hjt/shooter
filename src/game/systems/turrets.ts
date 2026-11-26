@@ -99,10 +99,10 @@ export function turretById(world: GameWorld, id: number | undefined): Turret | n
   return world.turrets.find((turret) => turret.id === id) ?? null;
 }
 
-/** Nearest live turret within taunt range, so attacks can be pulled onto it. */
-export function findTauntTurret(world: GameWorld, enemy: Enemy): Turret | null {
+/** Nearest live turret or partner drone, regardless of range. */
+export function findNearestTurret(world: GameWorld, enemy: Enemy): Turret | null {
   let best: Turret | null = null;
-  let bestDist = TURRET.tauntRange;
+  let bestDist = Infinity;
   for (const turret of world.turrets) {
     const d = dist(enemy.x, enemy.y, turret.x, turret.y);
     if (d < bestDist) {
@@ -114,8 +114,8 @@ export function findTauntTurret(world: GameWorld, enemy: Enemy): Turret | null {
 }
 
 /**
- * Where this enemy's current attack is pointed: the turret it was taunted by,
- * or the player once that turret is gone.
+ * Where this enemy's current attack is pointed: the nearest ally chosen when
+ * the attack began, or the player once that ally is gone.
  */
 export function enemyAttackPoint(world: GameWorld, enemy: Enemy): { x: number; y: number } {
   const turret = turretById(world, enemy.brain.turretId);

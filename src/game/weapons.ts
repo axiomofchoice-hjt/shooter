@@ -20,8 +20,6 @@ export const TURRET = {
   spawnGap: 34,
   /** How much punishment a turret survives. */
   hp: 40,
-  /** Enemies this close pick a turret as their attack target. */
-  tauntRange: 200,
   /** Target acquisition radius, also drawn as the range ring. */
   range: 280,
   fireInterval: 0.3,
