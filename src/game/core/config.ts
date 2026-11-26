@@ -40,9 +40,10 @@ export const VIEW_WORLD_H = 660;
 export const VIEW_MIN_ZOOM = 0.62;
 export const VIEW_MAX_ZOOM = 1.28;
 
-// Camera: ease toward the player, biased a little toward nearby enemies so
-// the action stays framed. It is not locked to one room, so the edge of the
-// view can show the neighbouring room.
+// Camera has two framing modes. With no enemy in range it looks ahead of the
+// player's movement; with enemies in range it frames the midpoint between the
+// player and the centroid of every in-range enemy. It is not locked to one
+// room, so the edge of the view can show the neighbouring room.
 export const CAMERA = {
   /** Exponential follow rate; higher is snappier. */
   followRate: 2.5,
@@ -52,14 +53,10 @@ export const CAMERA = {
   leadTime: 0.4,
   /** Maximum look-ahead distance, in world px. */
   maxLead: 140,
-  /** How quickly the enemy offset itself eases. */
+  /** How quickly the combat framing offset itself eases. */
   biasRate: 1.2,
-  /** Fraction of the weighted enemy offset applied to the target. */
-  enemyBias: 0.28,
-  /** Enemies farther than this do not pull the camera. */
-  enemyRange: 560,
-  /** Largest camera offset from the player, in world px. */
-  maxOffset: 120,
+  /** Enemies within this radius count for the combat centroid. */
+  combatRange: AUTOAIM_RANGE,
   /** How far past the world edge the camera centre may travel. */
   outsidePad: 240,
 } as const;

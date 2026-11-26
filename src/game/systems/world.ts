@@ -23,13 +23,37 @@ export function resetCameraBias(world: GameWorld) {
 export function updateCamera(world: GameWorld, dt: number) {
   const player = world.player;
   const stepDt = Math.min(dt, 0.05);
+  const bossFight =
+    world.mode === 'boss' && !!world.boss && !world.boss.dead;
 
-  // Look ahead in the movement direction. The lead grows with speed up to a
-  // cap, and is itself eased so a direction change does not snap the frame.
+  // Combat mode: every living enemy within range contributes one equal vote
+  // to the centroid. The framing target is the midpoint of the player and
+  // that centroid; the movement lead is dropped.
+  let count = 0;
+  let sumX = 0;
+  let sumY = 0;
+  if (!bossFight) {
+    for (const enemy of world.enemies) {
+      if (enemy.dead || enemy.dummy) continue;
+      if (
+        dist(player.x, player.y, enemy.x, enemy.y) > CAMERA.combatRange
+      ) {
+        continue;
+      }
+      sumX += enemy.x;
+      sumY += enemy.y;
+      count += 1;
+    }
+  }
+  const inCombat = count > 0;
+
+  // No enemy in range: look ahead in the movement direction. The lead grows
+  // with speed up to a cap, and is itself eased so a direction change does
+  // not snap the frame.
   const speed = Math.hypot(player.vx, player.vy);
   let desiredLeadX = 0;
   let desiredLeadY = 0;
-  if (speed > 1) {
+  if (!inCombat && speed > 1) {
     const lead = Math.min(CAMERA.maxLead, speed * CAMERA.leadTime);
     desiredLeadX = (player.vx / speed) * lead;
     desiredLeadY = (player.vy / speed) * lead;
@@ -38,59 +62,38 @@ export function updateCamera(world: GameWorld, dt: number) {
   world.cameraLeadX += (desiredLeadX - world.cameraLeadX) * leadK;
   world.cameraLeadY += (desiredLeadY - world.cameraLeadY) * leadK;
 
-  let targetX = player.x + world.cameraLeadX;
-  let targetY = player.y + world.cameraLeadY;
+  // In combat the offset is half-way from the player toward the centroid, so
+  // the target is their midpoint. It is eased separately to keep centroid
+  // changes (especially a kill) from snapping the frame.
+  let desiredBiasX = 0;
+  let desiredBiasY = 0;
+  if (inCombat) {
+    desiredBiasX = (sumX / count - player.x) * 0.5;
+    desiredBiasY = (sumY / count - player.y) * 0.5;
+  }
+  const biasK = 1 - Math.exp(-CAMERA.biasRate * stepDt);
+  world.cameraBiasX += (desiredBiasX - world.cameraBiasX) * biasK;
+  world.cameraBiasY += (desiredBiasY - world.cameraBiasY) * biasK;
 
-  if (world.mode === 'boss' && world.boss && !world.boss.dead) {
+  let targetX = player.x + world.cameraLeadX + world.cameraBiasX;
+  let targetY = player.y + world.cameraLeadY + world.cameraBiasY;
+
+  if (bossFight && world.boss) {
     targetX += (world.boss.x - targetX) * 0.28;
     targetY += (world.boss.y - targetY) * 0.28;
-  } else {
-    // Weighted average of nearby enemy offsets. The desired offset is kept
-    // separate from a persistent bias and eased into it, so an enemy death
-    // only starts a slow drift instead of a sudden retarget.
-    let sumX = 0;
-    let sumY = 0;
-    let weight = 0;
-    for (const enemy of world.enemies) {
-      if (enemy.dead) continue;
-      const d = dist(player.x, player.y, enemy.x, enemy.y);
-      if (d > CAMERA.enemyRange) continue;
-      const w = 1 - d / CAMERA.enemyRange;
-      sumX += (enemy.x - player.x) * w * w;
-      sumY += (enemy.y - player.y) * w * w;
-      weight += w * w;
-    }
-
-    let desiredX = 0;
-    let desiredY = 0;
-    if (weight > 0) {
-      desiredX = (sumX / weight) * CAMERA.enemyBias;
-      desiredY = (sumY / weight) * CAMERA.enemyBias;
-      const offset = Math.hypot(desiredX, desiredY);
-      if (offset > CAMERA.maxOffset) {
-        const scale = CAMERA.maxOffset / offset;
-        desiredX *= scale;
-        desiredY *= scale;
-      }
-    }
-
-    const bk = 1 - Math.exp(-CAMERA.biasRate * stepDt);
-    world.cameraBiasX += (desiredX - world.cameraBiasX) * bk;
-    world.cameraBiasY += (desiredY - world.cameraBiasY) * bk;
-    targetX += world.cameraBiasX;
-    targetY += world.cameraBiasY;
   }
 
-  // Ease toward the target plus the player's own step. The feed-forward term
-  // cancels the first-order lag, so the camera actually sits at the look-ahead
-  // point instead of trailing behind the player and cancelling the lead out.
-  // Step time is capped only so a long frame cannot turn the follow into a
-  // teleport.
+  // Ease toward the target. Out of combat, feed the player's own step forward
+  // so the camera actually reaches the look-ahead point instead of trailing
+  // behind it. In combat movement must not influence the framing, so that
+  // term is disabled. Step time is capped only so a long frame cannot turn
+  // the follow into a teleport.
   const k = 1 - Math.exp(-CAMERA.followRate * stepDt);
+  const feedForward = inCombat ? 0 : 1;
   world.camera.x +=
-    (targetX - world.camera.x) * k + player.vx * stepDt;
+    (targetX - world.camera.x) * k + player.vx * stepDt * feedForward;
   world.camera.y +=
-    (targetY - world.camera.y) * k + player.vy * stepDt;
+    (targetY - world.camera.y) * k + player.vy * stepDt * feedForward;
   clampCamera(world);
 }
 
