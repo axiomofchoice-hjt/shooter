@@ -84,6 +84,7 @@ function resetCombatState(world: GameWorld) {
   world.blasts = [];
   world.arcs = [];
   world.shockwaves = [];
+  world.ramBlasts = [];
   world.stormDarts = [];
   world.bombers = [];
   world.bombs = [];
@@ -370,6 +371,7 @@ function nextFloor(world: GameWorld) {
   world.blasts = [];
   world.arcs = [];
   world.shockwaves = [];
+  world.ramBlasts = [];
   world.stormDarts = [];
   world.bombers = [];
   world.bombs = [];

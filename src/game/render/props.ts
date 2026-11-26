@@ -13,10 +13,35 @@ import { WEAPONS } from '../weapons';
  */
 export function drawWeaponRange(world: GameWorld) {
   const spec = WEAPONS[world.player.weapon];
-  if (!spec.range || world.player.dead) return;
+  if (world.player.dead) return;
   const ctx = world.ctx;
   const player = world.player;
   const breathe = 0.5 + Math.sin(world.ambientTime * 2.2) * 0.5;
+
+  // The impact cannon reaches as a rectangle, not a circle.
+  if (spec.ram) {
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.rotate(player.angle);
+    ctx.fillStyle = withAlpha(spec.color, 0.03 + breathe * 0.02);
+    ctx.strokeStyle = withAlpha(spec.color, 0.2 + breathe * 0.08);
+    ctx.lineWidth = 2 / world.zoom;
+    ctx.setLineDash([10, 12]);
+    ctx.lineDashOffset = -world.ambientTime * 20;
+    ctx.beginPath();
+    ctx.rect(
+      player.radius,
+      -spec.ram.halfWidth,
+      spec.ram.length,
+      spec.ram.halfWidth * 2,
+    );
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (!spec.range) return;
   ctx.save();
   ctx.fillStyle = withAlpha(spec.color, 0.025);
   ctx.strokeStyle = withAlpha(spec.color, 0.2 + breathe * 0.08);

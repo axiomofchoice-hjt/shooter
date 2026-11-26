@@ -33,6 +33,7 @@ import {
   drawFlamer,
   drawLaserBeams,
   drawLaserMuzzleGlow,
+  drawRamBlasts,
   drawRecycleStatus,
 } from './weapons';
 
@@ -80,6 +81,7 @@ export function render(world: GameWorld) {
   drawArcs(world);
   drawLaserBeams(world);
   drawShockwaves(world);
+  drawRamBlasts(world);
   drawParticles(world);
   drawFloaters(world);
   drawBombers(world);

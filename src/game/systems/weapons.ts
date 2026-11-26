@@ -6,6 +6,7 @@ import { TAU, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 import type { WeaponSpec } from '../weapons';
 import { TURRET, WEAPONS } from '../weapons';
+import { knockbackResistance } from './combat';
 import { damageEnemy } from './damage';
 import { spawnBurst } from './fx';
 import { launchBomber, spawnStormDart } from './weaponItems';
@@ -19,7 +20,9 @@ export function firePlayerBullet(world: GameWorld) {
   player.fireCooldown = weapon.bomber ? 0.25 : weapon.cooldown;
   if (weapon.bomber) world.bomberCooldown = weapon.cooldown;
   player.muzzle =
-    weapon.pellets > 1 || weapon.id === 'rail' || weapon.laser ? 0.1 : 0.06;
+    weapon.pellets > 1 || weapon.id === 'rail' || weapon.laser || weapon.ram
+      ? 0.12
+      : 0.06;
   player.muzzleColor = weapon.color;
   if (weapon.volley) world.volleyShots += 1;
 
@@ -32,7 +35,9 @@ export function firePlayerBullet(world: GameWorld) {
 
 /** Special weapons resolve immediately; everything else spawns bullets. */
 function fireWeapon(world: GameWorld, weapon: WeaponSpec, offset: number) {
-  if (weapon.bomber) {
+  if (weapon.ram) {
+    fireRam(world, weapon);
+  } else if (weapon.bomber) {
     launchBomber(world, weapon);
   } else if (weapon.laser) {
     fireLaser(world, weapon);
@@ -112,17 +117,19 @@ function spawnMuzzleParticles(
   offset: number,
 ) {
   const player = world.player;
-  const muzzleCount = weapon.laser
-    ? 10
-    : weapon.storm
-      ? 6
-      : weapon.chain
-        ? 8
-        : weapon.pellets > 1
-          ? 10
-          : weapon.id === 'rail'
-            ? 12
-            : 4;
+  const muzzleCount = weapon.ram
+    ? 12
+    : weapon.laser
+      ? 10
+      : weapon.storm
+        ? 6
+        : weapon.chain
+          ? 8
+          : weapon.pellets > 1
+            ? 10
+            : weapon.id === 'rail'
+              ? 12
+              : 4;
   for (let i = 0; i < muzzleCount; i++) {
     const spread = player.angle + Math.PI + rand(-0.6, 0.6);
     const velocity = rand(40, weapon.id === 'rail' ? 320 : 150);
@@ -141,6 +148,7 @@ function spawnMuzzleParticles(
 }
 
 function shotShake(weapon: WeaponSpec) {
+  if (weapon.ram) return 5.5;
   if (weapon.id === 'rail') return 4.2;
   if (weapon.laser) return 3;
   if (weapon.storm) return 1.6;
@@ -150,12 +158,75 @@ function shotShake(weapon: WeaponSpec) {
 }
 
 function shotSound(weapon: WeaponSpec) {
+  if (weapon.ram) return 'sweep';
   if (weapon.bomber) return 'airstrike';
   if (weapon.laser) return 'laser';
   if (weapon.storm || weapon.chain) return 'arc';
   if (weapon.id === 'rail') return 'rail';
   if (weapon.id === 'scatter') return 'scatter';
   return 'shoot';
+}
+
+/**
+ * Impact cannon: the hitbox is a rectangle projected from the hull along the
+ * aim heading. It is resolved on the trigger — no projectile, so it cannot be
+ * dodged by a moving enemy after the shot — and every enemy inside takes the
+ * hit and a shove along the same heading.
+ */
+function fireRam(world: GameWorld, weapon: WeaponSpec) {
+  const spec = weapon.ram;
+  if (!spec) return;
+  const player = world.player;
+  const cos = Math.cos(player.angle);
+  const sin = Math.sin(player.angle);
+  const start = player.radius;
+  const reach = start + spec.length;
+
+  world.ramBlasts.push({
+    x: player.x + cos * start,
+    y: player.y + sin * start,
+    angle: player.angle,
+    length: spec.length,
+    halfWidth: spec.halfWidth,
+    life: 0.22,
+    maxLife: 0.22,
+    color: weapon.color,
+  });
+  spawnBurst(
+    world,
+    player.x + cos * (start + 24),
+    player.y + sin * (start + 24),
+    weapon.color,
+    14,
+    260,
+    0.28,
+  );
+
+  let hits = 0;
+  for (const enemy of world.enemies) {
+    if (enemy.dead) continue;
+    // Never reach through a wall into the neighbouring room.
+    if (outOfRoom(world, enemy.x, enemy.y, 0)) continue;
+    const dx = enemy.x - player.x;
+    const dy = enemy.y - player.y;
+    const forward = dx * cos + dy * sin;
+    if (forward < 0 || forward > reach) continue;
+    if (Math.abs(-dx * sin + dy * cos) > spec.halfWidth + enemy.radius) continue;
+
+    hits += 1;
+    damageEnemy(world, enemy, weapon.damage, enemy.x, enemy.y, true);
+    // The shove is strongest at the muzzle and tapers toward the far edge.
+    const falloff = 1 - clamp(forward / reach, 0, 1) * 0.35;
+    const push = spec.knockback * falloff * knockbackResistance(enemy);
+    enemy.knockX += cos * push;
+    enemy.knockY += sin * push;
+    spawnBurst(world, enemy.x, enemy.y, weapon.color, 7, 170, 0.3);
+  }
+
+  if (hits > 0) {
+    world.sfx.play('hit');
+    world.shake = Math.max(world.shake, 3 + Math.min(hits, 5) * 1.4);
+  }
 }
 
 /**

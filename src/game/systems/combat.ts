@@ -10,7 +10,7 @@ import { registerSummonHit } from './turrets';
 import { outOfRoom, roomBounds } from './world';
 
 // ------------------------------------------------------------------ bullets
-function shockResistance(enemy: Enemy) {
+export function knockbackResistance(enemy: Enemy) {
   if (enemy.kind === 'boss') return 0.15;
   if (enemy.radius >= 22) return 0.55;
   return 1;
@@ -418,7 +418,7 @@ function detonateShock(world: GameWorld, bullet: Bullet, x: number, y: number) {
     const distance = dist(x, y, enemy.x, enemy.y);
     if (distance > shock.blastRadius + enemy.radius) continue;
     damageEnemy(world, enemy, shock.damage, enemy.x, enemy.y, true);
-    const resistance = shockResistance(enemy);
+    const resistance = knockbackResistance(enemy);
     const falloff =
       1 - clamp(distance / (shock.blastRadius + enemy.radius), 0, 1) * 0.55;
     const angle =

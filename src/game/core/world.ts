@@ -27,6 +27,7 @@ import type {
   Phase,
   Pickup,
   Player,
+  RamBlast,
   Shockwave,
   StormDart,
   Telegraph,
@@ -66,6 +67,7 @@ export class GameWorld {
   // ~11 frames and allocating a fresh point list each one was pure GC churn.
   arcPoints: number[] = [];
   shockwaves: Shockwave[] = [];
+  ramBlasts: RamBlast[] = [];
   stormDarts: StormDart[] = [];
   bombers: Bomber[] = [];
   bombs: Bomb[] = [];

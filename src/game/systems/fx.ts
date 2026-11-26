@@ -45,6 +45,10 @@ export function updateFx(world: GameWorld, dt: number) {
     world.shockwaves[i].life -= dt;
     if (world.shockwaves[i].life <= 0) world.shockwaves.splice(i, 1);
   }
+  for (let i = world.ramBlasts.length - 1; i >= 0; i--) {
+    world.ramBlasts[i].life -= dt;
+    if (world.ramBlasts[i].life <= 0) world.ramBlasts.splice(i, 1);
+  }
   for (let i = world.laserBeams.length - 1; i >= 0; i--) {
     world.laserBeams[i].life -= dt;
     if (world.laserBeams[i].life <= 0) world.laserBeams.splice(i, 1);

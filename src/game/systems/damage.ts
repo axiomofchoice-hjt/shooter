@@ -48,6 +48,7 @@ export function playerHit(world: GameWorld, damage: number) {
     world.blasts = [];
     world.arcs = [];
     world.shockwaves = [];
+    world.ramBlasts = [];
     world.stormDarts = [];
     world.bombers = [];
     world.bombs = [];

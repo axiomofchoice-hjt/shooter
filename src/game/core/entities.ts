@@ -344,6 +344,19 @@ export interface Shockwave {
   color: string;
 }
 
+// Rectangular shove from the impact cannon: the area is resolved instantly,
+// this record only keeps the flash alive for a couple of frames.
+export interface RamBlast {
+  x: number;
+  y: number;
+  angle: number;
+  length: number;
+  halfWidth: number;
+  life: number;
+  maxLife: number;
+  color: string;
+}
+
 type BomberSpec = NonNullable<WeaponSpec['bomber']>;
 
 // Plane called in by the carpet bomber. It crosses the room along the aim line

@@ -96,6 +96,19 @@ export interface WeaponSpec {
     /** Damage multiplier applied on every jump. */
     falloff: number;
   };
+  /**
+   * Impact cannon: an instant rectangular hitbox in front of the hull. Every
+   * enemy inside it takes `damage` and is shoved along the aim heading; there
+   * is no projectile and no travel time.
+   */
+  ram?: {
+    /** Reach measured from the hull edge, in world px. */
+    length: number;
+    /** Half the rectangle's width, in world px. */
+    halfWidth: number;
+    /** Outward shove imparted to every enemy caught in the rectangle. */
+    knockback: number;
+  };
   /** Projectile that detonates on an enemy or wall. */
   shock?: {
     /** Damage radius of the blast. */
@@ -285,6 +298,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'funnel',
   'coop',
   'partner',
+  'ram',
 ];
 
 /**
@@ -303,6 +317,7 @@ export const DUNGEON_LOADOUT: WeaponId[] = [
   'funnel',
   'coop',
   'partner',
+  'ram',
 ];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
@@ -757,6 +772,26 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       hp: 70,
       respawnTime: 6,
     },
+  },
+  // Impact cannon: a short, instant rectangle of force in front of the ship.
+  // No projectile: the hitbox is resolved on the trigger, damages everything
+  // inside and shoves it straight along the aim. The 1s cadence makes it a
+  // spacing tool rather than a DPS gun; lighter enemies die, tanks slide back.
+  ram: {
+    id: 'ram',
+    name: '冲击炮',
+    tag: 'RAM',
+    color: '#ff7043',
+    damage: 8,
+    cooldown: 1,
+    speed: 0,
+    radius: 0,
+    life: 0,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    range: 240,
+    ram: { length: 230, halfWidth: 70, knockback: 620 },
   },
 };
 

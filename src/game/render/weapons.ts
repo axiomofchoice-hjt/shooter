@@ -31,6 +31,53 @@ export function drawRecycleStatus(world: GameWorld) {
   ctx.restore();
 }
 
+/** Rectangular force flash from the impact cannon. */
+export function drawRamBlasts(world: GameWorld) {
+  if (!world.ramBlasts.length) return;
+  const ctx = world.ctx;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const blast of world.ramBlasts) {
+    const t = 1 - blast.life / blast.maxLife;
+    const fade = 1 - t;
+    const reach = blast.length * (0.45 + 0.55 * (1 - Math.pow(1 - t, 3)));
+    const half = blast.halfWidth * (0.85 + 0.15 * t);
+
+    ctx.save();
+    ctx.translate(blast.x, blast.y);
+    ctx.rotate(blast.angle);
+
+    const fill = ctx.createLinearGradient(0, 0, Math.max(1, reach), 0);
+    fill.addColorStop(0, withAlpha(blast.color, 0.3 * fade));
+    fill.addColorStop(0.55, withAlpha(blast.color, 0.15 * fade));
+    fill.addColorStop(1, withAlpha(blast.color, 0));
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.rect(0, -half, reach, half * 2);
+    ctx.fill();
+
+    // White-hot leading edge plus faint side rails, so the rectangle reads as
+    // a deliberate hitbox rather than a generic explosion.
+    ctx.strokeStyle = withAlpha('#fff3e0', 0.75 * fade);
+    ctx.lineWidth = 3.4 * fade + 1;
+    ctx.beginPath();
+    ctx.moveTo(reach, -half);
+    ctx.lineTo(reach, half);
+    ctx.stroke();
+
+    ctx.strokeStyle = withAlpha(blast.color, 0.5 * fade);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(0, -half);
+    ctx.lineTo(reach, -half);
+    ctx.moveTo(0, half);
+    ctx.lineTo(reach, half);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 /** Falling bombs and the plane itself, above the battlefield. */
 export function drawBombers(world: GameWorld) {
   if (!world.bombers.length && !world.bombs.length) return;
