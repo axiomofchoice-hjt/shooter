@@ -32,6 +32,31 @@ export const TURRET = {
   shotLife: 0.28,
 };
 
+export interface FunnelSpec {
+  /** Drones kept with the player. */
+  count: number;
+  /** Radius and angular spread of the idle escort formation behind the player. */
+  escortRadius: number;
+  escortSpread: number;
+  /** Preferred firing distance from the target. */
+  standoff: number;
+  /** Inside this band a drone with a clear shot stops and holds. */
+  minStandoff: number;
+  maxStandoff: number;
+  /** Committed wind-up before a shot from a firing spot. */
+  braceTime: number;
+  /** Seconds it holds still after every shot. */
+  recoverTime: number;
+  /** Drone flight speed, in px/s. */
+  droneSpeed: number;
+  /** Aim turn rate, rad/s. */
+  turnRate: number;
+  /** Longest target lead, in seconds. */
+  leadTime: number;
+  /** Angle between adjacent firing slots around one target, radians. */
+  slotArc: number;
+}
+
 export interface WeaponSpec {
   id: WeaponId;
   name: string;
@@ -210,51 +235,16 @@ export interface WeaponSpec {
    * the drones are invulnerable and are never enemy targets. Their shots have
    * no range cap and only stop on a hit or at the room wall.
    */
-  funnel?: {
-    /** Drones kept with the player. */
-    count: number;
-    /** Radius and angular spread of the idle escort formation behind the player. */
-    escortRadius: number;
-    escortSpread: number;
-    /** Preferred firing distance from the target. */
-    standoff: number;
-    /** Inside this band a drone with a clear shot stops and holds. */
-    minStandoff: number;
-    maxStandoff: number;
-    /** Committed wind-up before a shot from a firing spot. */
-    braceTime: number;
-    /** Seconds it holds still after every shot. */
-    recoverTime: number;
-    /** Drone flight speed, in px/s. */
-    droneSpeed: number;
-    /** Aim turn rate, rad/s. */
-    turnRate: number;
-    /** Longest target lead, in seconds. */
-    leadTime: number;
-    /** Angle between adjacent firing slots around one target, radians. */
-    slotArc: number;
-  };
+  funnel?: FunnelSpec;
   /**
-   * Cooperative escort funnels: two drones trail the player and only join in
-   * while the trigger is held, focusing the player's auto-target. Unlike the
-   * autonomous funnel, they never choose targets on their own.
+   * A single partner drone using the same autonomous flight and firing as the
+   * funnel. It has HP and is a valid enemy target, and redeploys after death.
    */
-  coopFunnel?: {
-    /** Drones kept with the player. */
-    count: number;
-    /** Radius and angular spread of the idle formation behind the player. */
-    followRadius: number;
-    followSpread: number;
-    /** How far from the player the slot search will look. */
-    followMaxRadius: number;
-    /** Minimum gap between the two drones. */
-    followSeparation: number;
-    /** Drone flight speed, in px/s. */
-    droneSpeed: number;
-    /** Aim turn rate, rad/s. */
-    turnRate: number;
-    /** Longest target lead, in seconds. */
-    leadTime: number;
+  partner?: FunnelSpec & {
+    /** Partner hull points. */
+    hp: number;
+    /** Seconds after destruction before it redeploys beside the player. */
+    respawnTime: number;
   };
 }
 
@@ -279,7 +269,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'volley',
   'parabola',
   'funnel',
-  'coop',
+  'partner',
 ];
 
 /**
@@ -297,7 +287,7 @@ export const DUNGEON_LOADOUT: WeaponId[] = [
   'volley',
   'parabola',
   'funnel',
-  'coop',
+  'partner',
 ];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
@@ -713,13 +703,13 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       slotArc: 0.9,
     },
   },
-  // Cooperative funnels: the pair stays in formation around the player and
-  // only shoots while the trigger is held, all at the player's auto-target.
-  coop: {
-    id: 'coop',
-    name: '协同浮游炮',
-    tag: 'COOP',
-    color: '#7ef0d0',
+  // Partner drone: one autonomous escort, attackable and redeployed after
+  // death. It uses the same flight/fire tuning as the funnel, but only one.
+  partner: {
+    id: 'partner',
+    name: '浮游伙伴',
+    tag: 'PARTNER',
+    color: '#ff9f6b',
     damage: 4,
     cooldown: 0.55,
     speed: 1000,
@@ -728,15 +718,21 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pellets: 1,
     spread: 0,
     pierce: 0,
-    coopFunnel: {
-      count: 2,
-      followRadius: 64,
-      followSpread: 0.55,
-      followMaxRadius: 128,
-      followSeparation: 30,
+    partner: {
+      count: 1,
+      escortRadius: 58,
+      escortSpread: 0,
+      standoff: 210,
+      minStandoff: 120,
+      maxStandoff: 260,
+      braceTime: 0.2,
+      recoverTime: 0.28,
       droneSpeed: 380,
       turnRate: 11,
       leadTime: 0.18,
+      slotArc: 0.9,
+      hp: 70,
+      respawnTime: 6,
     },
   },
 };

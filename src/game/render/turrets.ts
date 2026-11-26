@@ -9,6 +9,7 @@ export function drawTurrets(world: GameWorld) {
   if (world.turrets.length === 0) return;
   const ctx = world.ctx;
   for (const turret of world.turrets) {
+    if (turret.partner) continue;
     const color = turret.color;
     const pulse = 0.5 + Math.sin(world.ambientTime * 3 + turret.seed) * 0.5;
     ctx.save();

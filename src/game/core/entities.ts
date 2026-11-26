@@ -268,8 +268,20 @@ export interface EnemyHoming {
   turretId?: number;
 }
 
+// Autonomous partner drone. It uses the same taunt/damage plumbing as a
+// sentry turret so enemies can target and hit it, but it moves and fights on
+// its own.
+export interface PartnerBrain {
+  vx: number;
+  vy: number;
+  targetId: number | null;
+  phase: 'chase' | 'brace' | 'recover' | 'ready';
+  timer: number;
+}
+
 // Sentry turret summoned by the hive gun. It shoots for a few seconds, pulls
-// enemy attacks, and has enough HP to soak a hit or two.
+// enemy attacks, and has enough HP to soak a hit or two. The partner drone
+// shares this body with a `partner` brain; hive turrets leave it undefined.
 export interface Turret {
   id: number;
   x: number;
@@ -284,6 +296,7 @@ export interface Turret {
   muzzle: number;
   color: string;
   seed: number;
+  partner?: PartnerBrain;
 }
 
 // Autonomous escort drone. It has no HP and is never an enemy target: enemies

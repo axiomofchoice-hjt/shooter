@@ -5,7 +5,6 @@ import { TAU, angleDelta, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 import type { WeaponSpec } from '../weapons';
 import { WEAPONS } from '../weapons';
-import { updateCoopFunnels } from './coopFunnels';
 import { spawnBurst } from './fx';
 import { roomBounds } from './world';
 
@@ -14,19 +13,12 @@ type FunnelSpec = NonNullable<WeaponSpec['funnel']>;
 /** Drop every drone: weapon switch, room change, death or run reset. */
 export function clearFunnels(world: GameWorld) {
   if (world.funnels.length > 0) world.funnels.length = 0;
-}
-
-/**
- * Dispatch to the funnel mode of the equipped weapon. The original funnel is
- * fully autonomous; the cooperative one follows the player and focuses the
- * player's target only while the trigger is held.
- */
-export function updateFunnels(world: GameWorld, dt: number) {
-  if (WEAPONS[world.player.weapon].coopFunnel) {
-    updateCoopFunnels(world, dt);
-    return;
+  // The attackable partner shares the turret plumbing; clear it on the same
+  // weapon switch / room change / death transitions.
+  for (let i = world.turrets.length - 1; i >= 0; i--) {
+    if (world.turrets[i].partner) world.turrets.splice(i, 1);
   }
-  updateAutonomousFunnels(world, dt);
+  world.partnerRespawn = 0;
 }
 
 /**
@@ -35,11 +27,12 @@ export function updateFunnels(world: GameWorld, dt: number) {
  * and fire whenever their nose is lined up. With no enemy in the room they
  * trail the player instead. They are invulnerable and are never enemy targets.
  */
-function updateAutonomousFunnels(world: GameWorld, dt: number) {
+export function updateFunnels(world: GameWorld, dt: number) {
   const weapon = WEAPONS[world.player.weapon];
   const spec = weapon.funnel;
   if (!spec || world.player.dead) {
-    clearFunnels(world);
+    // Only drop the autonomous pair; the partner drone is managed separately.
+    if (world.funnels.length > 0) world.funnels.length = 0;
     return;
   }
 

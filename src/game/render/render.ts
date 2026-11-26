@@ -4,7 +4,7 @@ import { rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 import { drawEnemies } from './enemies';
 import { drawAutoTarget, drawFloaters, drawOverlayEffects, drawParticles } from './fx';
-import { drawFunnels } from './funnels';
+import { drawFunnels, drawPartner } from './funnels';
 import { drawBanner, drawMenuAtmosphere } from './overlay';
 import { drawDashGhosts, drawPlayer } from './player';
 import {
@@ -72,6 +72,7 @@ export function render(world: GameWorld) {
   drawDashGhosts(world);
   drawPlayer(world);
   drawFunnels(world);
+  drawPartner(world);
   drawRecycleStatus(world);
   drawBomberStatus(world);
   drawOrbs(world);

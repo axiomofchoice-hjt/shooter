@@ -10,6 +10,7 @@ import { clearFunnels } from './funnels';
 import { emitHud } from './hud';
 import { resetInputState } from './input';
 import { maybeDropPickup } from './pickups';
+import { WEAPONS } from '../weapons';
 import { countCleared } from './world';
 
 export function playerHit(world: GameWorld, damage: number) {
@@ -78,6 +79,10 @@ export function damageTurret(world: GameWorld, turret: Turret, damage: number) {
   turret.hitFlash = 0.1;
   spawnBurst(world, turret.x, turret.y, turret.color, 4, 110, 0.25);
   if (turret.hp > 0) return;
+  if (turret.partner) {
+    world.partnerRespawn =
+      WEAPONS[world.player.weapon].partner?.respawnTime ?? 6;
+  }
   const index = world.turrets.indexOf(turret);
   if (index >= 0) world.turrets.splice(index, 1);
   spawnBurst(world, turret.x, turret.y, turret.color, 16, 220, 0.45);

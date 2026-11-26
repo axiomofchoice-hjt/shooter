@@ -39,7 +39,8 @@ export function drawFloaters(world: GameWorld) {
 export function drawAutoTarget(world: GameWorld) {
   // The funnel gun's drones acquire their own targets; drawing the hull's
   // reticle would imply a shared lock that does not exist.
-  if (WEAPONS[world.player.weapon].funnel) return;
+  const weapon = WEAPONS[world.player.weapon];
+  if (weapon.funnel || weapon.partner) return;
   if (!world.autoTarget || world.autoTarget.dead) return;
   const ctx = world.ctx;
   const target = world.autoTarget;

@@ -66,7 +66,14 @@ function summonTurret(
     ty = clamp(y + Math.sin(start) * gap, bounds.top + margin, bounds.bottom - margin);
   }
 
-  if (world.turrets.length >= TURRET.maxCount) world.turrets.shift();
+  // The partner drone shares this array but does not count toward the hive
+  // turret cap; drop the oldest hive turret instead.
+  const hive = world.turrets.filter((turret) => !turret.partner);
+  if (hive.length >= TURRET.maxCount) {
+    const oldest = hive[0];
+    const index = world.turrets.indexOf(oldest);
+    if (index >= 0) world.turrets.splice(index, 1);
+  }
   world.turrets.push({
     id: world.nextTurretId++,
     x: tx,
@@ -120,6 +127,8 @@ export function enemyAttackPoint(world: GameWorld, enemy: Enemy): { x: number; y
 export function updateTurrets(world: GameWorld, dt: number) {
   for (let i = world.turrets.length - 1; i >= 0; i--) {
     const turret = world.turrets[i];
+    // The partner drone has its own movement/fire system.
+    if (turret.partner) continue;
     turret.life -= dt;
     turret.hitFlash = Math.max(0, turret.hitFlash - dt);
     turret.muzzle = Math.max(0, turret.muzzle - dt);

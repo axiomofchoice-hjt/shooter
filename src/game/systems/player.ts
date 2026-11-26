@@ -22,6 +22,7 @@ import { clearFunnels, updateFunnels } from './funnels';
 import { emitHud } from './hud';
 import { readMoveInput } from './input';
 import { updateOrbit } from './orbit';
+import { updatePartner } from './partner';
 import { removeDummy } from './spawn';
 import { firePlayerBullet, fireVolleyMissiles } from './weapons';
 import {
@@ -150,8 +151,9 @@ export function updatePlayer(world: GameWorld, dt: number) {
   player.muzzle = Math.max(0, player.muzzle - dt);
 
   updateAim(world, player, move, dt);
-  // Funnels are autonomous: they update even when the trigger is released.
+  // Escorts are autonomous: they update even when the trigger is released.
   updateFunnels(world, dt);
+  updatePartner(world, dt);
   updateTrigger(world, player, dt);
 }
 
@@ -326,9 +328,8 @@ function updateTrigger(world: GameWorld, player: Player, dt: number) {
   // Leaving the orbit weapon drops whatever spin-up was left.
   world.orbitActive = 0;
   world.orbitExpand = Math.max(0, world.orbitExpand - dt * 4);
-  if (activeWeapon.funnel || activeWeapon.coopFunnel) {
-    // The drones read the trigger inside updateFunnels; the hull itself has no
-    // gun while one of these weapons is equipped.
+  if (activeWeapon.funnel || activeWeapon.partner) {
+    // These weapons fight through their drones; the hull itself has no gun.
     world.flameTick = 0;
     return;
   }

@@ -75,6 +75,8 @@ export class GameWorld {
   turrets: Turret[] = [];
   nextTurretId = 1;
   funnels: Funnel[] = [];
+  /** Seconds until the downed partner drone redeploys. */
+  partnerRespawn = 0;
   particles: Particle[] = [];
   ghosts: DashGhost[] = [];
   dashGhostTimer = 0;
