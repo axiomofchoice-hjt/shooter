@@ -230,7 +230,7 @@ export function updateDungeon(world: GameWorld, dt: number) {
 function startEncounter(world: GameWorld, room: number) {
   world.encounterActive = true;
   world.spawnQueue = buildEncounter(world.floor, room);
-  world.spawnTimer = 0.55;
+  world.spawnTimer = 0.2;
   world.telegraphs = [];
   world.banner = {
     title: `ROOM 0${room}`,
@@ -298,7 +298,8 @@ function updateEncounter(world: GameWorld, dt: number) {
         duration: 0.65,
       });
     }
-    world.spawnTimer = Math.max(0.4, 0.86 - world.floor * 0.05);
+    // Send the queue in sooner without touching the 0.65s telegraph itself.
+    world.spawnTimer = Math.max(0.24, 0.52 - world.floor * 0.035);
   }
 
   for (let i = world.telegraphs.length - 1; i >= 0; i--) {
