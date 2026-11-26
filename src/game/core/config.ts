@@ -46,6 +46,12 @@ export const VIEW_MAX_ZOOM = 1.28;
 export const CAMERA = {
   /** Exponential follow rate; higher is snappier. */
   followRate: 2.5,
+  /** How quickly the movement lead itself eases. */
+  leadRate: 4,
+  /** Seconds of travel to look ahead at the current speed. */
+  leadTime: 0.4,
+  /** Maximum look-ahead distance, in world px. */
+  maxLead: 140,
   /** How quickly the enemy offset itself eases. */
   biasRate: 1.2,
   /** Fraction of the weighted enemy offset applied to the target. */

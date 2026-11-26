@@ -120,6 +120,8 @@ export class GameWorld {
   // the framing back to the player.
   cameraBiasX = 0;
   cameraBiasY = 0;
+  cameraLeadX = 0;
+  cameraLeadY = 0;
   zoom = 1;
   shake = 0;
   hurtFlash = 0;

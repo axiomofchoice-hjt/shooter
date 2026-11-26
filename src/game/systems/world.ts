@@ -16,13 +16,30 @@ import type { GameWorld } from '../core/world';
 export function resetCameraBias(world: GameWorld) {
   world.cameraBiasX = 0;
   world.cameraBiasY = 0;
+  world.cameraLeadX = 0;
+  world.cameraLeadY = 0;
 }
 
 export function updateCamera(world: GameWorld, dt: number) {
   const player = world.player;
   const stepDt = Math.min(dt, 0.05);
-  let targetX = player.x;
-  let targetY = player.y;
+
+  // Look ahead in the movement direction. The lead grows with speed up to a
+  // cap, and is itself eased so a direction change does not snap the frame.
+  const speed = Math.hypot(player.vx, player.vy);
+  let desiredLeadX = 0;
+  let desiredLeadY = 0;
+  if (speed > 1) {
+    const lead = Math.min(CAMERA.maxLead, speed * CAMERA.leadTime);
+    desiredLeadX = (player.vx / speed) * lead;
+    desiredLeadY = (player.vy / speed) * lead;
+  }
+  const leadK = 1 - Math.exp(-CAMERA.leadRate * stepDt);
+  world.cameraLeadX += (desiredLeadX - world.cameraLeadX) * leadK;
+  world.cameraLeadY += (desiredLeadY - world.cameraLeadY) * leadK;
+
+  let targetX = player.x + world.cameraLeadX;
+  let targetY = player.y + world.cameraLeadY;
 
   if (world.mode === 'boss' && world.boss && !world.boss.dead) {
     targetX += (world.boss.x - targetX) * 0.28;
@@ -64,12 +81,16 @@ export function updateCamera(world: GameWorld, dt: number) {
     targetY += world.cameraBiasY;
   }
 
-  // Ease toward the target. There is no hard speed cap; the exponential
-  // factor does the smoothing. Step time is capped only so a long frame (tab
-  // switch, hitch) cannot turn the follow into a teleport.
+  // Ease toward the target plus the player's own step. The feed-forward term
+  // cancels the first-order lag, so the camera actually sits at the look-ahead
+  // point instead of trailing behind the player and cancelling the lead out.
+  // Step time is capped only so a long frame cannot turn the follow into a
+  // teleport.
   const k = 1 - Math.exp(-CAMERA.followRate * stepDt);
-  world.camera.x += (targetX - world.camera.x) * k;
-  world.camera.y += (targetY - world.camera.y) * k;
+  world.camera.x +=
+    (targetX - world.camera.x) * k + player.vx * stepDt;
+  world.camera.y +=
+    (targetY - world.camera.y) * k + player.vy * stepDt;
   clampCamera(world);
 }
 
