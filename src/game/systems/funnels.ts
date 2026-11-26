@@ -31,22 +31,16 @@ export function updateFunnels(world: GameWorld, dt: number) {
 
   ensureFunnels(world, weapon, spec);
 
-  // Reserve the live target of every drone first, so a drone that just lost
-  // its target does not steal a target another drone is already handling.
-  const taken = new Set<number>();
-  for (const funnel of world.funnels) {
-    const current = currentTarget(world, funnel);
-    if (current) taken.add(current.id);
-  }
-
+  // Every drone targets on its own: no shared target and no "you take this
+  // one" hand-off between the two. They may pick the same enemy, which is
+  // fine — that is what independent acquisition means.
   for (let i = 0; i < world.funnels.length; i++) {
     const funnel = world.funnels[i];
     let target = currentTarget(world, funnel);
     if (!target) {
-      target = pickTarget(world, funnel, taken);
+      target = pickTarget(world, funnel);
       funnel.targetId = target ? target.id : null;
     }
-    if (target) taken.add(target.id);
     updateFunnel(world, funnel, target, i, dt, weapon, spec);
   }
 }
@@ -73,7 +67,8 @@ function ensureFunnels(world: GameWorld, weapon: WeaponSpec, spec: FunnelSpec) {
       vx: 0,
       vy: 0,
       angle,
-      cooldown: 0.25,
+      // Stagger the first shot so the two drones do not fire as one volley.
+      cooldown: 0.25 + (index * weapon.cooldown) / spec.count,
       muzzle: 0,
       targetId: null,
       holdTimer: 0,
@@ -226,35 +221,15 @@ function isTargetable(world: GameWorld, enemy: Enemy) {
   return inRoom(world, enemy.x, enemy.y);
 }
 
-/** Prefer an enemy nobody else is shooting at, then let the drones share. */
-function pickTarget(
-  world: GameWorld,
-  funnel: Funnel,
-  taken: Set<number>,
-): Enemy | null {
-  const unclaimed = nearestTarget(world, funnel, true, taken);
-  return unclaimed ?? nearestTarget(world, funnel, false, taken);
-}
-
-function nearestTarget(
-  world: GameWorld,
-  funnel: Funnel,
-  skipTaken: boolean,
-  taken: Set<number>,
-): Enemy | null {
-  const player = world.player;
+/** Nearest valid enemy to this drone, with no coordination with the other. */
+function pickTarget(world: GameWorld, funnel: Funnel): Enemy | null {
   let best: Enemy | null = null;
-  let bestScore = Infinity;
+  let bestDistance = Infinity;
   for (const enemy of world.enemies) {
     if (!isTargetable(world, enemy)) continue;
-    if (skipTaken && taken.has(enemy.id)) continue;
-    // Slight bias toward enemies near the player so the drones do not all
-    // run to the far corner of the room.
-    const score =
-      dist(funnel.x, funnel.y, enemy.x, enemy.y) +
-      dist(player.x, player.y, enemy.x, enemy.y) * 0.3;
-    if (score < bestScore) {
-      bestScore = score;
+    const distance = dist(funnel.x, funnel.y, enemy.x, enemy.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
       best = enemy;
     }
   }
