@@ -145,7 +145,7 @@ export function updatePlayer(world: GameWorld, dt: number) {
   player.trailTimer -= dt;
 
   if (player.dashTime > 0) updateDash(world, player, dt);
-  else updateWalk(world, player, move);
+  else updateWalk(player, move);
 
   // External impulses (contact hits, blasts) are tracked separately from the
   // stick velocity so they can shove the player without reintroducing drift.
@@ -227,7 +227,6 @@ function updateDash(world: GameWorld, player: Player, dt: number) {
 }
 
 function updateWalk(
-  world: GameWorld,
   player: Player,
   move: { x: number; y: number; magnitude: number },
 ) {
@@ -250,24 +249,6 @@ function updateWalk(
   // the character in the same frame instead of sliding on.
   player.vx = moveX * player.speed;
   player.vy = moveY * player.speed;
-
-  if (
-    (Math.abs(player.vx) > 60 || Math.abs(player.vy) > 60) &&
-    player.trailTimer <= 0
-  ) {
-    player.trailTimer = 0.055;
-    world.particles.push({
-      x: player.x - player.vx * 0.03 + rand(-5, 5),
-      y: player.y - player.vy * 0.03 + rand(-5, 5),
-      vx: -player.vx * 0.08 + rand(-12, 12),
-      vy: -player.vy * 0.08 + rand(-12, 12),
-      life: rand(0.18, 0.36),
-      maxLife: 0.36,
-      size: rand(1.5, 3.2),
-      color: PLAYER_COLOR,
-      drag: 2.5,
-    });
-  }
 }
 
 /** Auto-aim, cardinal snapping and laser charge. */
