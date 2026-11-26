@@ -177,6 +177,62 @@ export function recycleBoltInFlight(world: GameWorld) {
   return false;
 }
 
+
+/** Centroid of every enemy that passes the auto-aim filter. */
+export function findTargetCentroid(
+  world: GameWorld,
+  x: number,
+  y: number,
+  maxDistance: number,
+  visibleOnly = false,
+): { x: number; y: number; enemy: Enemy } | null {
+  const viewHalfW = world.width / (2 * world.zoom) + 30;
+  const viewHalfH = world.height / (2 * world.zoom) + 30;
+  let sumX = 0;
+  let sumY = 0;
+  let count = 0;
+  for (const enemy of world.enemies) {
+    if (enemy.dead) continue;
+    if (
+      visibleOnly &&
+      (Math.abs(enemy.x - x) > viewHalfW ||
+        Math.abs(enemy.y - y) > viewHalfH)
+    ) {
+      continue;
+    }
+    const d = dist(x, y, enemy.x, enemy.y);
+    if (d > maxDistance) continue;
+    sumX += enemy.x;
+    sumY += enemy.y;
+    count += 1;
+  }
+  if (count === 0) return null;
+  const cx = sumX / count;
+  const cy = sumY / count;
+
+  // Systems that need a concrete Enemy (homing, co-op drones, recycle) lock
+  // the one closest to the centroid.
+  let nearest: Enemy | null = null;
+  let nearestDist = Infinity;
+  for (const enemy of world.enemies) {
+    if (enemy.dead) continue;
+    if (
+      visibleOnly &&
+      (Math.abs(enemy.x - x) > viewHalfW ||
+        Math.abs(enemy.y - y) > viewHalfH)
+    ) {
+      continue;
+    }
+    if (dist(x, y, enemy.x, enemy.y) > maxDistance) continue;
+    const d = dist(cx, cy, enemy.x, enemy.y);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearest = enemy;
+    }
+  }
+  return nearest ? { x: cx, y: cy, enemy: nearest } : null;
+}
+
 export function findNearestEnemy(
   world: GameWorld,
   x: number,

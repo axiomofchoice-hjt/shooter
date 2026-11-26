@@ -27,7 +27,7 @@ import { removeDummy } from './spawn';
 import { firePlayerBullet, fireVolleyMissiles } from './weapons';
 import {
   clampCamera,
-  findNearestEnemy,
+  findTargetCentroid,
   isDoorOpen,
   recycleBoltInFlight,
   resetCameraBias,
@@ -272,14 +272,23 @@ function updateAim(
   const equipped = WEAPONS[player.weapon];
   const aimRange =
     equipped.range ?? (equipped.recycle ? Infinity : AUTOAIM_RANGE);
-  world.autoTarget = findNearestEnemy(world, player.x, player.y, aimRange, true);
+  const centroid = findTargetCentroid(
+    world,
+    player.x,
+    player.y,
+    aimRange,
+    true,
+  );
+  world.autoTarget = centroid?.enemy ?? null;
+  world.autoAimX = centroid?.x ?? 0;
+  world.autoAimY = centroid?.y ?? 0;
   if (equipped.cardinal) {
     // The orthogonal cannon snaps the hull itself to one of the four screen
     // axes, so the ship, its muzzle and the secondary scatter all agree.
     world.cardinalAim = pickCardinalAngle(world, move);
     player.angle = world.cardinalAim;
-  } else if (world.autoTarget) {
-    player.angle = Math.atan2(world.autoTarget.y - player.y, world.autoTarget.x - player.x);
+  } else if (centroid) {
+    player.angle = Math.atan2(centroid.y - player.y, centroid.x - player.x);
   } else if (move.magnitude > 0.12) {
     player.angle = Math.atan2(move.y, move.x);
   }

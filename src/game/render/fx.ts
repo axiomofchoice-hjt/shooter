@@ -44,10 +44,11 @@ export function drawAutoTarget(world: GameWorld) {
   if (!world.autoTarget || world.autoTarget.dead) return;
   const ctx = world.ctx;
   const target = world.autoTarget;
-  const radius = target.radius + 12;
+  // The reticle marks the group centroid, not a single enemy.
+  const radius = Math.max(22, target.radius + 12);
   const time = world.ambientTime;
   ctx.save();
-  ctx.translate(target.x, target.y);
+  ctx.translate(world.autoAimX, world.autoAimY);
   ctx.strokeStyle = withAlpha(PLAYER_COLOR, 0.85);
   ctx.lineWidth = 1.6 / world.zoom;
   ctx.setLineDash([8, 8]);
