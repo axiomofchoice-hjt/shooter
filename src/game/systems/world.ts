@@ -50,22 +50,13 @@ export function updateCamera(world: GameWorld, dt: number) {
     }
   }
 
-  // Ease toward the target, then enforce a hard speed cap. The step time is
-  // capped too, so a long frame (tab switch, hitch) cannot turn the follow
-  // into a teleport.
+  // Ease toward the target. There is no hard speed cap; the exponential
+  // factor does the smoothing. Step time is capped only so a long frame (tab
+  // switch, hitch) cannot turn the follow into a teleport.
   const stepDt = Math.min(dt, 0.05);
-  const k = Math.min(0.25, 1 - Math.exp(-CAMERA.followRate * stepDt));
-  let stepX = (targetX - world.camera.x) * k;
-  let stepY = (targetY - world.camera.y) * k;
-  const stepLength = Math.hypot(stepX, stepY);
-  const maxStep = CAMERA.maxSpeed * stepDt;
-  if (stepLength > maxStep) {
-    const scale = maxStep / stepLength;
-    stepX *= scale;
-    stepY *= scale;
-  }
-  world.camera.x += stepX;
-  world.camera.y += stepY;
+  const k = 1 - Math.exp(-CAMERA.followRate * stepDt);
+  world.camera.x += (targetX - world.camera.x) * k;
+  world.camera.y += (targetY - world.camera.y) * k;
   clampCamera(world);
 }
 

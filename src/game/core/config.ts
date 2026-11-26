@@ -45,15 +45,13 @@ export const VIEW_MAX_ZOOM = 1.28;
 // view can show the neighbouring room.
 export const CAMERA = {
   /** Exponential follow rate; higher is snappier. */
-  followRate: 4.5,
+  followRate: 3,
   /** Fraction of the weighted enemy offset applied to the target. */
   enemyBias: 0.28,
   /** Enemies farther than this do not pull the camera. */
   enemyRange: 560,
   /** Largest camera offset from the player, in world px. */
   maxOffset: 120,
-  /** Hard cap on camera travel, in px/s. */
-  maxSpeed: 240,
   /** How far past the world edge the camera centre may travel. */
   outsidePad: 240,
 } as const;
