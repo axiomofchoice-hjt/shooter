@@ -186,14 +186,16 @@ export function findNearestEnemy(
 ): Enemy | null {
   let nearest: Enemy | null = null;
   let nearestDist = maxDistance;
+  // Visibility for targeting is centred on the actor (player or turret), not
+  // the camera: moving the camera ahead must not change what can be locked.
   const viewHalfW = world.width / (2 * world.zoom) + 30;
   const viewHalfH = world.height / (2 * world.zoom) + 30;
   for (const enemy of world.enemies) {
     if (enemy.dead) continue;
     if (
       visibleOnly &&
-      (Math.abs(enemy.x - world.camera.x) > viewHalfW ||
-        Math.abs(enemy.y - world.camera.y) > viewHalfH)
+      (Math.abs(enemy.x - x) > viewHalfW ||
+        Math.abs(enemy.y - y) > viewHalfH)
     ) {
       continue;
     }
