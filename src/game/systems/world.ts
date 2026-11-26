@@ -50,11 +50,22 @@ export function updateCamera(world: GameWorld, dt: number) {
     }
   }
 
-  // Ease toward the target. The factor is capped so a long frame (tab switch,
-  // hitch) does not turn the follow into a teleport.
-  const k = Math.min(0.25, 1 - Math.exp(-CAMERA.followRate * dt));
-  world.camera.x += (targetX - world.camera.x) * k;
-  world.camera.y += (targetY - world.camera.y) * k;
+  // Ease toward the target, then enforce a hard speed cap. The step time is
+  // capped too, so a long frame (tab switch, hitch) cannot turn the follow
+  // into a teleport.
+  const stepDt = Math.min(dt, 0.05);
+  const k = Math.min(0.25, 1 - Math.exp(-CAMERA.followRate * stepDt));
+  let stepX = (targetX - world.camera.x) * k;
+  let stepY = (targetY - world.camera.y) * k;
+  const stepLength = Math.hypot(stepX, stepY);
+  const maxStep = CAMERA.maxSpeed * stepDt;
+  if (stepLength > maxStep) {
+    const scale = maxStep / stepLength;
+    stepX *= scale;
+    stepY *= scale;
+  }
+  world.camera.x += stepX;
+  world.camera.y += stepY;
   clampCamera(world);
 }
 
@@ -75,21 +86,19 @@ function roomLeft(index: number) {
 }
 
 export function clampCamera(world: GameWorld) {
-  const halfW = world.width / (2 * world.zoom);
-  const halfH = world.height / (2 * world.zoom);
-  // Allow the view to cross room boundaries. The player is still confined to
-  // the current room, but the camera can show the neighbouring room through
-  // the doorway instead of stopping at the wall.
-  if (halfW * 2 < world.worldW) {
-    world.camera.x = clamp(world.camera.x, halfW, world.worldW - halfW);
-  } else {
-    world.camera.x = world.worldW / 2;
-  }
-  if (halfH * 2 < world.worldH) {
-    world.camera.y = clamp(world.camera.y, halfH, world.worldH - halfH);
-  } else {
-    world.camera.y = world.worldH / 2;
-  }
+  // Keep the camera near the dungeon, but do not stop at the outer wall: the
+  // player can see the void beyond the start room's left edge. The generous
+  // pad is only a runaway guard, not a framing limit.
+  world.camera.x = clamp(
+    world.camera.x,
+    -CAMERA.outsidePad,
+    world.worldW + CAMERA.outsidePad,
+  );
+  world.camera.y = clamp(
+    world.camera.y,
+    -CAMERA.outsidePad,
+    world.worldH + CAMERA.outsidePad,
+  );
 }
 
 export function countCleared(world: GameWorld) {

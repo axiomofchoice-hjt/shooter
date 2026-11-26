@@ -52,6 +52,10 @@ export const CAMERA = {
   enemyRange: 560,
   /** Largest camera offset from the player, in world px. */
   maxOffset: 150,
+  /** Hard cap on camera travel, in px/s. */
+  maxSpeed: 420,
+  /** How far past the world edge the camera centre may travel. */
+  outsidePad: 240,
 } as const;
 
 export const PLAYER_COLOR = '#5ff6ff';
