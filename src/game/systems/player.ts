@@ -126,9 +126,8 @@ function enterRoom(world: GameWorld, room: number) {
   world.roomIndex = next;
   // The dummy belongs to the start room; it is rebuilt on the way back.
   removeDummy(world);
-  // Turrets and dropped items belong to the room they were left in.
+  // Turrets belong to the room they were left in.
   world.turrets = [];
-  world.lobItems = [];
   // Funnels reform around the player in the new room instead of flying
   // through the wall.
   clearFunnels(world);

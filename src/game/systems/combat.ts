@@ -7,7 +7,6 @@ import { TURRET } from '../weapons';
 import { damageEnemy, damageTurret, playerHit } from './damage';
 import { spawnBurst } from './fx';
 import { registerSummonHit } from './turrets';
-import { registerDropHit } from './weaponItems';
 import { outOfRoom, roomBounds } from './world';
 
 // ------------------------------------------------------------------ bullets
@@ -221,9 +220,6 @@ function collideWithEnemies(world: GameWorld, bullet: Bullet) {
     }
 
     damageEnemy(world, enemy, bullet.damage, bullet.x, bullet.y);
-    if (bullet.dropEvery !== undefined) {
-      registerDropHit(world, bullet.x, bullet.y, bullet.dropEvery, bullet.color);
-    }
     if (bullet.blast) {
       // The direct target already took the hit; the blast only spreads
       // to the neighbours.

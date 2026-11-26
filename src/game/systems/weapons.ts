@@ -108,7 +108,6 @@ function spawnStandardBullets(
           }
         : undefined,
       summonEvery: weapon.summon ? TURRET.hitsPerSummon : undefined,
-      dropEvery: weapon.dropEvery,
     });
   }
 }

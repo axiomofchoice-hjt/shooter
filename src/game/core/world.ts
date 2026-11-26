@@ -22,7 +22,6 @@ import type {
   Funnel,
   InputState,
   LaserBeam,
-  LobItem,
   Mote,
   Particle,
   Phase,
@@ -157,9 +156,6 @@ export class GameWorld {
   // for its damage numbers. It cannot be destroyed.
   dummy: Enemy | null = null;
   dummyFloatTimer = 0;
-  // Parabola gun: enemy hits since the last drop, plus the lobbed items.
-  dropHits = 0;
-  lobItems: LobItem[] = [];
   // Orbit weapon: current spin/radius, how far it is spun out (0..1), and the
   // remaining seconds of the timed spin-up started by a trigger press.
   orbitAngle = 0;

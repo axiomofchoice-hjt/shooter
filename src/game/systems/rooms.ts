@@ -77,8 +77,6 @@ function resetCombatState(world: GameWorld) {
   world.enemies = [];
   world.dummy = null;
   world.dummyFloatTimer = 0;
-  world.dropHits = 0;
-  world.lobItems = [];
   world.bullets = [];
   world.enemyBullets = [];
   world.shells = [];

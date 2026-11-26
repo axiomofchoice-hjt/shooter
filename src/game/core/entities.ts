@@ -192,26 +192,6 @@ export interface Bullet {
   ignoreId?: number;
   /** Hive shot: hits per turret summon, carried so mid-flight swaps are safe. */
   summonEvery?: number;
-  /** Every N hits with this bullet's weapon drops a parabola item. */
-  dropEvery?: number;
-}
-
-export interface LobItem {
-  x: number;
-  y: number;
-  prevX: number;
-  prevY: number;
-  vx: number;
-  vy: number;
-  ax: number;
-  ay: number;
-  radius: number;
-  age: number;
-  life: number;
-  maxLife: number;
-  spin: number;
-  color: string;
-  trail: { x: number; y: number }[];
 }
 
 export interface EnemyBullet {

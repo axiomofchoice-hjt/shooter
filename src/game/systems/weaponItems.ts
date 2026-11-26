@@ -1,18 +1,11 @@
-/** Storm darts, lobbed items, bombers and recycler bolts. */
+/** Storm darts, bombers, fire rings and recycler bolts. */
 
 import {
   AUTOAIM_RANGE,
-  LOB_ACCEL,
-  LOB_INITIAL_SPEED,
-  LOB_LATERAL_MAX,
-  LOB_LIFE,
-  LOB_MAX,
-  LOB_MAX_SPEED,
-  LOB_RADIUS,
   STORM_PULSE_COUNT,
 } from '../core/config';
-import type { Bomb, Bomber, FireRing, LobItem, StormDart } from '../core/entities';
-import { TAU, clamp, dist, rand, segmentCircleHit } from '../core/math';
+import type { Bomb, Bomber, FireRing, StormDart } from '../core/entities';
+import { TAU, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 import type { WeaponSpec } from '../weapons';
 import { damageEnemy } from './damage';
@@ -150,146 +143,6 @@ function stormPulse(world: GameWorld, dart: StormDart) {
     spawnBurst(world, enemy.x, enemy.y, dart.color, 4, 120, 0.25);
   }
   if (hitAny) world.shake = Math.max(world.shake, 2);
-}
-
-/**
- * Parabola gun hit streak. Every fifth enemy hit (different enemies all
- * count) drops one lobbed item at that hit point.
- */
-export function registerDropHit(
-  world: GameWorld,
-  x: number,
-  y: number,
-  every: number,
-  color: string,
-) {
-  world.dropHits += 1;
-  if (world.dropHits < every) return;
-  world.dropHits = 0;
-  spawnLobItem(world, x, y, color);
-}
-
-/**
- * Lobbed item: launched at exactly LOB_INITIAL_SPEED straight away from the
- * player with a random sideways bend, then pulled back by a fixed acceleration
- * toward the player's position at the hit moment. The actual pickup effect is
- * still being designed.
- */
-function spawnLobItem(world: GameWorld, x: number, y: number, color: string) {
-  if (world.lobItems.length >= LOB_MAX) return;
-  const player = world.player;
-  let dx = player.x - x;
-  let dy = player.y - y;
-  const length = Math.hypot(dx, dy);
-  if (length < 0.001) {
-    const angle = rand(0, TAU);
-    dx = Math.cos(angle);
-    dy = Math.sin(angle);
-  } else {
-    dx /= length;
-    dy /= length;
-  }
-
-  // Perpendicular left/right is (-dy, dx); away from the player is (-dx, -dy).
-  // The random lateral component bends the launch direction; normalizing keeps
-  // the initial speed fixed at LOB_INITIAL_SPEED instead of growing with it.
-  const side = Math.random() < 0.5 ? -1 : 1;
-  const lateral = rand(0, LOB_LATERAL_MAX) * side;
-  let vx = -dy * lateral - dx * LOB_INITIAL_SPEED;
-  let vy = dx * lateral - dy * LOB_INITIAL_SPEED;
-  const launchSpeed = Math.hypot(vx, vy);
-  vx *= LOB_INITIAL_SPEED / launchSpeed;
-  vy *= LOB_INITIAL_SPEED / launchSpeed;
-
-  world.lobItems.push({
-    x,
-    y,
-    prevX: x,
-    prevY: y,
-    vx,
-    vy,
-    ax: dx * LOB_ACCEL,
-    ay: dy * LOB_ACCEL,
-    radius: LOB_RADIUS,
-    age: 0,
-    life: LOB_LIFE,
-    maxLife: LOB_LIFE,
-    spin: rand(0, TAU),
-    color,
-    trail: [{ x, y }],
-  });
-  spawnBurst(world, x, y, color, 10, 150, 0.35);
-}
-
-function collectLobItem(world: GameWorld, item: LobItem) {
-  spawnBurst(world, item.x, item.y, item.color, 18, 220, 0.45);
-  spawnBurst(world, item.x, item.y, '#fff4cf', 6, 140, 0.3);
-  world.shockwaves.push({
-    x: item.x,
-    y: item.y,
-    maxRadius: 30,
-    life: 0.28,
-    maxLife: 0.28,
-    color: item.color,
-  });
-  world.floaters.push({
-    x: world.player.x,
-    y: world.player.y - 38,
-    text: '拾取',
-    color: item.color,
-    life: 0.9,
-    maxLife: 0.9,
-    size: 14,
-  });
-  world.sfx.play('pickup');
-  // TODO: the pickup's special effect is intentionally not implemented yet.
-}
-
-export function updateLobItems(world: GameWorld, dt: number) {
-  const player = world.player;
-  for (let i = world.lobItems.length - 1; i >= 0; i--) {
-    const item = world.lobItems[i];
-    item.prevX = item.x;
-    item.prevY = item.y;
-    item.vx += item.ax * dt;
-    item.vy += item.ay * dt;
-    // Clamp the speed so a long return does not turn into a rocket: the pull
-    // keeps accelerating but the item stays at most LOB_MAX_SPEED.
-    const speed = Math.hypot(item.vx, item.vy);
-    if (speed > LOB_MAX_SPEED) {
-      const scale = LOB_MAX_SPEED / speed;
-      item.vx *= scale;
-      item.vy *= scale;
-    }
-    item.x += item.vx * dt;
-    item.y += item.vy * dt;
-    item.age += dt;
-    item.life -= dt;
-    item.spin += dt * 5;
-    item.trail.push({ x: item.x, y: item.y });
-    if (item.trail.length > 12) item.trail.shift();
-
-    if (
-      !player.dead &&
-      segmentCircleHit(
-        item.prevX,
-        item.prevY,
-        item.x,
-        item.y,
-        player.x,
-        player.y,
-        player.radius + item.radius + 2,
-      )
-    ) {
-      collectLobItem(world, item);
-      world.lobItems.splice(i, 1);
-      continue;
-    }
-
-    if (item.life <= 0 || outOfRoom(world, item.x, item.y, 60)) {
-      world.lobItems.splice(i, 1);
-    }
-  }
 }
 
 /**

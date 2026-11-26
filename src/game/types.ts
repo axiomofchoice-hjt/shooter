@@ -28,7 +28,6 @@ export type WeaponId =
   | 'bomber'
   | 'ortho'
   | 'volley'
-  | 'parabola'
   | 'funnel'
   | 'coop'
   | 'partner';

@@ -12,18 +12,6 @@ export const DOOR_Y = ROOM_SIZE / 2;
 // Practice dummy: below the player, clear of the start banner and the door.
 export const DUMMY_X = ROOM_SIZE / 2;
 export const DUMMY_Y = ROOM_SIZE / 2 + 150;
-// Parabola-gun item: a fixed pull toward the player at the hit moment, plus a
-// random sideways bend on launch, so it loops away and back.
-export const LOB_ACCEL = 600;
-export const LOB_INITIAL_SPEED = 300;
-export const LOB_LATERAL_MAX = 240;
-// Speed cap for the item, applied after each acceleration step. The launch
-// sits at the cap, so the pull can only slow the outbound leg; the return leg
-// holds a steady 300px/s.
-export const LOB_MAX_SPEED = 300;
-export const LOB_RADIUS = 7;
-export const LOB_LIFE = 4.5;
-export const LOB_MAX = 16;
 export const PORTAL_X = (DUNGEON_ROOMS - 1) * ROOM_SIZE + ROOM_SIZE / 2;
 export const PORTAL_Y = ROOM_SIZE / 2;
 export const PORTAL_RADIUS = 46;

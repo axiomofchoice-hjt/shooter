@@ -12,7 +12,7 @@ import { updatePickups } from './pickups';
 import { updatePlayer } from './player';
 import { updateDungeon, updateTestRoom } from './rooms';
 import { updateTurrets } from './turrets';
-import { updateBombers, updateLobItems, updateStormDarts } from './weaponItems';
+import { updateBombers, updateStormDarts } from './weaponItems';
 import { updateCamera } from './world';
 
 /**
@@ -40,7 +40,6 @@ export function sampleFps(world: GameWorld, frameSeconds: number) {
 export function update(world: GameWorld, dt: number) {
   updatePlayer(world, dt);
   updateBullets(world, dt);
-  updateLobItems(world, dt);
   updateStormDarts(world, dt);
   updateBombers(world, dt);
   updateEnemies(world, dt);
