@@ -6,7 +6,6 @@ import { sampleFps, update, updateAmbient } from './systems/loop';
 import { beginDodge, switchWeapon } from './systems/player';
 import { resetWorld } from './systems/rooms';
 import { resetToMenu, startRun } from './systems/session';
-import { fireSecondary } from './systems/weapons';
 import { buildDecorations, resize } from './systems/world';
 import type { GameCallbacks, GameMode, TestRoomConfig } from './types';
 
@@ -84,19 +83,6 @@ export class ShooterGame {
 
   setGamepadFire(active: boolean) {
     this.world.input.padFire = active;
-  }
-
-  triggerSecondary() {
-    const world = this.world;
-    if (
-      world.phase !== 'playing' ||
-      world.paused ||
-      world.player.dead ||
-      world.secondaryCooldown > 0
-    ) {
-      return;
-    }
-    fireSecondary(world);
   }
 
   triggerDodge() {

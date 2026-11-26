@@ -50,7 +50,6 @@ export const CAMERA = {
 } as const;
 
 export const PLAYER_COLOR = '#5ff6ff';
-export const SECONDARY_COLOR = '#ffc857';
 export const ENEMY_GLOW = 0.16;
 
 export const PLAYER_SPEED = 270;
@@ -96,8 +95,6 @@ export const FLAME_TICK = 0.05;
 // Storm dart zaps at 90%, 95%, 100%, 105% and 110% of the target distance.
 export const STORM_PULSE_COUNT = 5;
 
-export const SECONDARY_COOLDOWN = 3.4;
-export const SECONDARY_PELLETS = 7;
 // Dodge: a fixed 170px slide covered in 0.33s (~515px/s, 1.91x the walk
 // speed). The 0.6s cooldown only starts counting once the slide is over.
 export const DODGE_COOLDOWN = 0.6;

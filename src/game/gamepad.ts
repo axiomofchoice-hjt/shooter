@@ -3,7 +3,6 @@ export const PAD_BUTTON = {
   dodge: 0,
   back: 1,
   fire: 2,
-  secondary: 3,
   weaponPrev: 4,
   weaponNext: 5,
   pause: 9,

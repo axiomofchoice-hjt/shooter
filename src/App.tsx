@@ -309,10 +309,7 @@ export default function App() {
         if (event.code === 'Tab') event.preventDefault();
         game.setKey(event.code, true);
         if (!event.repeat) {
-          if (event.code === 'KeyK') {
-            event.preventDefault();
-            game.triggerSecondary();
-          } else if (event.code === 'KeyL') {
+          if (event.code === 'KeyL') {
             event.preventDefault();
             game.triggerDodge();
           } else if (event.code === 'Tab') {
@@ -394,7 +391,6 @@ export default function App() {
           game.setGamepadMove(pad.moveX, pad.moveY);
           game.setGamepadFire(pad.fire);
           if (pad.pressed.has(PAD_BUTTON.dodge)) game.triggerDodge();
-          if (pad.pressed.has(PAD_BUTTON.secondary)) game.triggerSecondary();
           if (pad.pressed.has(PAD_BUTTON.weaponPrev)) game.cycleWeapon(-1);
           if (pad.pressed.has(PAD_BUTTON.weaponNext)) game.cycleWeapon();
         } else {

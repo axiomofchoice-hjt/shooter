@@ -1,11 +1,6 @@
 /** Main-weapon firing, lasers, arcs and missiles. */
 
-import {
-  AUTOAIM_RANGE,
-  SECONDARY_COLOR,
-  SECONDARY_COOLDOWN,
-  SECONDARY_PELLETS,
-} from '../core/config';
+import { AUTOAIM_RANGE } from '../core/config';
 import type { Enemy } from '../core/entities';
 import { TAU, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
@@ -13,7 +8,6 @@ import type { WeaponSpec } from '../weapons';
 import { TURRET, WEAPONS } from '../weapons';
 import { damageEnemy } from './damage';
 import { spawnBurst } from './fx';
-import { emitHud } from './hud';
 import { launchBomber, spawnStormDart } from './weaponItems';
 import { findNearestEnemy, outOfRoom, roomBounds } from './world';
 
@@ -411,7 +405,7 @@ export function fireVolleyMissiles(world: GameWorld, weapon: WeaponSpec) {
   player.muzzle = 0.12;
   player.muzzleColor = weapon.color;
   world.shake = Math.max(world.shake, 2.4);
-  world.sfx.play('secondary');
+  world.sfx.play('volley');
   spawnBurst(world, player.x, player.y, weapon.color, 12, 150, 0.32);
 }
 
@@ -460,52 +454,3 @@ function spawnRecycleBolt(world: GameWorld, weapon: WeaponSpec, offset: number) 
   });
 }
 
-export function fireSecondary(world: GameWorld) {
-  const player = world.player;
-  world.secondaryCooldown = SECONDARY_COOLDOWN;
-  player.muzzle = 0.1;
-  player.muzzleColor = SECONDARY_COLOR;
-
-  const offset = 30;
-  const speed = 940;
-  for (let i = 0; i < SECONDARY_PELLETS; i++) {
-    const t = i / (SECONDARY_PELLETS - 1) - 0.5;
-    const angle = player.angle + t * 0.52 + rand(-0.018, 0.018);
-    const x = player.x + Math.cos(angle) * offset;
-    const y = player.y + Math.sin(angle) * offset;
-    world.bullets.push({
-      x,
-      y,
-      prevX: x,
-      prevY: y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      radius: 4.5,
-      damage: 2.2,
-      life: 0.95,
-      color: SECONDARY_COLOR,
-      pierce: 0,
-      hitIds: [],
-    });
-  }
-
-  for (let i = 0; i < 12; i++) {
-    const spread = player.angle + Math.PI + rand(-0.85, 0.85);
-    const velocity = rand(70, 260);
-    world.particles.push({
-      x: player.x + Math.cos(player.angle) * offset + rand(-4, 4),
-      y: player.y + Math.sin(player.angle) * offset + rand(-4, 4),
-      vx: Math.cos(spread) * velocity,
-      vy: Math.sin(spread) * velocity,
-      life: rand(0.1, 0.28),
-      maxLife: 0.28,
-      size: rand(2, 4.5),
-      color: SECONDARY_COLOR,
-      drag: 6,
-    });
-  }
-
-  world.shake = Math.max(world.shake, 5);
-  world.sfx.play('secondary');
-  emitHud(world, true);
-}

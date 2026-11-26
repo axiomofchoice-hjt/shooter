@@ -141,7 +141,6 @@ export function updatePlayer(world: GameWorld, dt: number) {
   if (player.dead) return;
   const move = readMoveInput(world);
 
-  world.secondaryCooldown = Math.max(0, world.secondaryCooldown - dt);
   world.dodgeCooldown = Math.max(0, world.dodgeCooldown - dt);
   player.trailTimer -= dt;
 
@@ -288,7 +287,7 @@ function updateAim(
   world.autoTarget = findNearestEnemy(world, player.x, player.y, aimRange, true);
   if (equipped.cardinal) {
     // The orthogonal cannon snaps the hull itself to one of the four screen
-    // axes, so the ship, its muzzle and the secondary scatter all agree.
+    // axes, so the ship and its muzzle agree.
     world.cardinalAim = pickCardinalAngle(world, move);
     player.angle = world.cardinalAim;
   } else if (world.autoTarget) {

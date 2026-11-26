@@ -2045,7 +2045,7 @@ kbd.accent,
 }
 
 .ability-switch {
-  /* 换枪：原来副武器那颗（83.6% / 53.3%），配色跟随当前武器 */
+  /* 换枪：FIRE 右上方那颗（83.6% / 53.3%），配色跟随当前武器 */
   left: calc(83.6% - var(--ability-half) + var(--safe-left));
   top: calc(53.3% - var(--ability-half));
   color: var(--weapon-color, #c8fbff);

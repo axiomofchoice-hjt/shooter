@@ -133,7 +133,6 @@ function resetRunState(world: GameWorld) {
   world.healFlash = 0;
   world.killFlash = 0;
   world.autoTarget = null;
-  world.secondaryCooldown = 0;
   world.dodgeCooldown = 0;
   world.bomberCooldown = 0;
   world.flameTick = 0;

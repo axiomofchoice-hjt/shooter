@@ -139,7 +139,6 @@ export class GameWorld {
   spawnTimer = 0;
   nextEnemyId = 1;
   autoTarget: Enemy | null = null;
-  secondaryCooldown = 0;
   dodgeCooldown = 0;
   // The bomber's recharge is tracked separately: its 6.5s cooldown must not
   // lock out every other weapon just because the player switched guns.

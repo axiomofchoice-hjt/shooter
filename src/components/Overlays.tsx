@@ -149,11 +149,6 @@ export function StartScreen({
                 <em>按住连射</em>
               </div>
               <div className="control-row">
-                <span>副武器</span>
-                <kbd>K</kbd>
-                <em>散射炮</em>
-              </div>
-              <div className="control-row">
                 <span>闪避</span>
                 <kbd className="key-wide">L</kbd>
                 <em>朝移动方向冲刺</em>
@@ -213,7 +208,7 @@ export function StartScreen({
 
         <footer className="menu-footer">
           <span>SECTOR 07 · SIGNAL LOST</span>
-          <span>WASD 移动 &nbsp;·&nbsp; J 开火 &nbsp;·&nbsp; K 副武器 &nbsp;·&nbsp; L 闪避 &nbsp;·&nbsp; B 测试房</span>
+          <span>WASD 移动 &nbsp;·&nbsp; J 开火 &nbsp;·&nbsp; L 闪避 &nbsp;·&nbsp; TAB 换武器 &nbsp;·&nbsp; B 测试房</span>
         </footer>
       </main>
     </div>

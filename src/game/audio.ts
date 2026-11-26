@@ -13,7 +13,7 @@ type SoundName =
   | 'lock'
   | 'blast'
   | 'sweep'
-  | 'secondary'
+  | 'volley'
   | 'scatter'
   | 'rail'
   | 'flame'
@@ -134,7 +134,7 @@ export class SoundFX {
         this.tone(520, 130, 0.2, 'sawtooth', 0.05, 0);
         this.tone(250, 90, 0.24, 'triangle', 0.04, 0.02);
         break;
-      case 'secondary':
+      case 'volley':
         this.tone(210, 58, 0.22, 'sawtooth', 0.16, 0);
         this.tone(760, 210, 0.16, 'square', 0.07, 0);
         this.tone(120, 48, 0.28, 'triangle', 0.11, 0.02);
