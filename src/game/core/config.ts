@@ -31,6 +31,26 @@ export const CLEAR_HEAL = 12;
 export const FLOOR_HEAL = 18;
 export const AUTOAIM_RANGE = 1400;
 
+// Two permanent escort drones. They stay in a loose formation around the
+// player and only join in when the player is firing, focusing the player's
+// current auto-target. Their shots have no range cap; the drones themselves
+// never leave the player's vicinity.
+export const FUNNEL = {
+  count: 2,
+  followRadius: 64,
+  followSpread: 0.55,
+  followMaxRadius: 128,
+  followSeparation: 30,
+  moveSpeed: 380,
+  damage: 4,
+  cooldown: 0.55,
+  bulletSpeed: 1000,
+  bulletRadius: 3,
+  color: '#c7b3ff',
+  turnRate: 11,
+  leadTime: 0.18,
+} as const;
+
 // Camera framing is the same on every device: the view keeps roughly one
 // screen-height of world (VIEW_WORLD_H) visible vertically, and never shows
 // less than the full 1000-wide room. Phones used to see ~518 world pixels of

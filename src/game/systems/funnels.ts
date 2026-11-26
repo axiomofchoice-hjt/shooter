@@ -1,311 +1,205 @@
-/** Autonomous escort funnels: target picking, flight and firing. */
+/**
+ * Two escort drones that trail the player. They are companions, not a weapon:
+ * they follow in a loose formation and only join the fight while the player is
+ * firing, all focusing the player's current auto-target.
+ */
 
+import { FUNNEL } from '../core/config';
 import type { Enemy, Funnel } from '../core/entities';
 import { TAU, angleDelta, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
-import type { WeaponSpec } from '../weapons';
-import { WEAPONS } from '../weapons';
 import { spawnBurst } from './fx';
 import { roomBounds } from './world';
 
-type FunnelSpec = NonNullable<WeaponSpec['funnel']>;
+const SLOT_MARGIN = 18;
+const SLOT_STEP = 0.35;
+const SLOT_RADII = [
+  FUNNEL.followRadius,
+  FUNNEL.followRadius + 24,
+  FUNNEL.followRadius + 48,
+];
 
-/** Drop every drone: weapon switch, room change, death or run reset. */
+/** Drop every drone: room change, death or run reset. */
 export function clearFunnels(world: GameWorld) {
   if (world.funnels.length > 0) world.funnels.length = 0;
 }
 
 /**
- * Funnels run on their own. The trigger is deliberately not consulted: they
- * pick a target, fly to a clear spot near it, hold there while it is in range
- * and fire whenever their nose is lined up. With no enemy in the room they
- * trail the player instead. They are invulnerable and are never enemy targets.
+ * Keep the pair alive and move them with the player. The drones are not a
+ * weapon slot and never pick targets on their own: while the trigger is held
+ * they all shoot the player's auto-target, and otherwise they simply follow.
  */
 export function updateFunnels(world: GameWorld, dt: number) {
-  const weapon = WEAPONS[world.player.weapon];
-  const spec = weapon.funnel;
-  if (!spec || world.player.dead) {
+  if (world.player.dead) {
     clearFunnels(world);
     return;
   }
+  ensureFunnels(world);
 
-  ensureFunnels(world, weapon, spec);
-
-  // Every drone targets on its own: no shared target and no "you take this
-  // one" hand-off between the two. They may pick the same enemy, which is
-  // fine — that is what independent acquisition means.
+  const target = playerTarget(world);
+  const slots: { x: number; y: number }[] = [];
   for (let i = 0; i < world.funnels.length; i++) {
-    const funnel = world.funnels[i];
-    let target = currentTarget(world, funnel);
-    if (!target) {
-      target = pickTarget(world, funnel);
-      funnel.targetId = target ? target.id : null;
-    }
-    updateFunnel(world, funnel, target, i, dt, weapon, spec);
+    slots.push(findFollowSlot(world, i, target, slots));
+  }
+  for (let i = 0; i < world.funnels.length; i++) {
+    updateFunnel(world, world.funnels[i], target, slots[i], dt);
   }
 }
 
-function ensureFunnels(world: GameWorld, weapon: WeaponSpec, spec: FunnelSpec) {
-  const player = world.player;
-  const bounds = roomBounds(world);
-  while (world.funnels.length < spec.count) {
+/** The player's current lock, but only while the trigger is actually held. */
+function playerTarget(world: GameWorld): Enemy | null {
+  const firing =
+    world.input.fireKey || world.input.touchFire || world.input.padFire;
+  if (!firing) return null;
+  const target = world.autoTarget;
+  return target && !target.dead ? target : null;
+}
+
+function ensureFunnels(world: GameWorld) {
+  while (world.funnels.length < FUNNEL.count) {
     const index = world.funnels.length;
-    const angle = escortAngle(world, index, spec);
-    const x = clamp(
-      player.x + Math.cos(angle) * spec.escortRadius,
-      bounds.left + 18,
-      bounds.right - 18,
-    );
-    const y = clamp(
-      player.y + Math.sin(angle) * spec.escortRadius,
-      bounds.top + 18,
-      bounds.bottom - 18,
-    );
+    const slot = findFollowSlot(world, index, null, []);
     world.funnels.push({
-      x,
-      y,
+      x: slot.x,
+      y: slot.y,
       vx: 0,
       vy: 0,
-      angle,
-      cooldown: 0.25 + (index * weapon.cooldown) / spec.count,
+      angle: escortAngle(world, index),
+      cooldown: 0.25,
       muzzle: 0,
-      targetId: null,
-      phase: 'chase',
-      timer: 0,
       seed: rand(0, TAU),
     });
-    spawnBurst(world, x, y, weapon.color, 6, 100, 0.28);
+    spawnBurst(world, slot.x, slot.y, FUNNEL.color, 6, 100, 0.28);
   }
 }
 
-/** Two slots behind the travel direction (or the hull when standing still). */
-function escortAngle(world: GameWorld, index: number, spec: FunnelSpec) {
+/** Behind the player's movement (or facing), split left/right. */
+function escortAngle(world: GameWorld, index: number) {
   const player = world.player;
   const moving = Math.hypot(player.vx, player.vy) > 40;
   const base = moving ? Math.atan2(player.vy, player.vx) : player.angle;
   const offset =
-    spec.count > 1
-      ? (index / (spec.count - 1) - 0.5) * 2 * spec.escortSpread
+    FUNNEL.count > 1
+      ? (index / (FUNNEL.count - 1) - 0.5) * 2 * FUNNEL.followSpread
       : 0;
   return base + Math.PI + offset;
+}
+
+/**
+ * Pick a slot near the player. If the preferred spot is outside the room (or
+ * inside cover) the search fans out around the player until it finds an open
+ * one. When the player is engaging, prefer a slot with a clean line to the
+ * shared target.
+ */
+function findFollowSlot(
+  world: GameWorld,
+  index: number,
+  target: Enemy | null,
+  claimed: { x: number; y: number }[],
+): { x: number; y: number } {
+  const base = escortAngle(world, index);
+  if (target) {
+    const withShot = searchSlot(world, base, target, claimed, true);
+    if (withShot) return withShot;
+  }
+  const any = searchSlot(world, base, target, claimed, false);
+  if (any) return any;
+  return fallbackSlot(world);
+}
+
+function searchSlot(
+  world: GameWorld,
+  base: number,
+  target: Enemy | null,
+  claimed: { x: number; y: number }[],
+  needShot: boolean,
+): { x: number; y: number } | null {
+  const player = world.player;
+  for (const radius of SLOT_RADII) {
+    if (radius > FUNNEL.followMaxRadius) break;
+    for (let i = 0; i <= 18; i++) {
+      const offset =
+        i === 0 ? 0 : (i % 2 === 1 ? 1 : -1) * Math.ceil(i / 2) * SLOT_STEP;
+      const angle = base + offset;
+      const x = player.x + Math.cos(angle) * radius;
+      const y = player.y + Math.sin(angle) * radius;
+      if (!isOpenSlot(world, x, y)) continue;
+      if (
+        claimed.some(
+          (slot) => dist(slot.x, slot.y, x, y) < FUNNEL.followSeparation,
+        )
+      ) {
+        continue;
+      }
+      if (needShot && target && !hasClearShotAt(world, x, y, target.x, target.y)) {
+        continue;
+      }
+      return { x, y };
+    }
+  }
+  return null;
+}
+
+function fallbackSlot(world: GameWorld): { x: number; y: number } {
+  const player = world.player;
+  const bounds = roomBounds(world);
+  const centerX = (bounds.left + bounds.right) / 2;
+  const centerY = (bounds.top + bounds.bottom) / 2;
+  const angle = Math.atan2(centerY - player.y, centerX - player.x);
+  return {
+    x: clamp(
+      player.x + Math.cos(angle) * FUNNEL.followRadius,
+      bounds.left + SLOT_MARGIN,
+      bounds.right - SLOT_MARGIN,
+    ),
+    y: clamp(
+      player.y + Math.sin(angle) * FUNNEL.followRadius,
+      bounds.top + SLOT_MARGIN,
+      bounds.bottom - SLOT_MARGIN,
+    ),
+  };
 }
 
 function updateFunnel(
   world: GameWorld,
   funnel: Funnel,
   target: Enemy | null,
-  index: number,
+  slot: { x: number; y: number },
   dt: number,
-  weapon: WeaponSpec,
-  spec: FunnelSpec,
 ) {
-  const player = world.player;
   funnel.cooldown = Math.max(0, funnel.cooldown - dt);
   funnel.muzzle = Math.max(0, funnel.muzzle - dt);
-  funnel.timer = Math.max(0, funnel.timer - dt);
-
   const bounds = roomBounds(world);
-  const targetDistance = target
-    ? dist(funnel.x, funnel.y, target.x, target.y)
-    : Infinity;
-  const clear = target ? hasClearShot(world, funnel, target) : false;
-  // Hysteresis: commit to a wind-up only well inside the band, then hold
-  // through a wider band. Without this the target drifting over the edge makes
-  // the drone alternate between walking and winding up without firing.
-  const settleMin = spec.minStandoff + 10;
-  const settleMax = spec.standoff + 20;
-  const stayMin = spec.minStandoff - 30;
-  const stayMax = spec.maxStandoff + 80;
+  const desiredX = clamp(
+    slot.x,
+    bounds.left + SLOT_MARGIN,
+    bounds.right - SLOT_MARGIN,
+  );
+  const desiredY = clamp(
+    slot.y,
+    bounds.top + SLOT_MARGIN,
+    bounds.bottom - SLOT_MARGIN,
+  );
+  steerTo(funnel, desiredX, desiredY, dt);
+  funnel.x += funnel.vx * dt;
+  funnel.y += funnel.vy * dt;
+  confineFunnel(funnel, bounds);
 
-  let desiredX = funnel.x;
-  let desiredY = funnel.y;
-  let moving = false;
-
-  if (!target) {
-    // A kill does not cut the post-shot hold short; finish the window, then
-    // return to the player.
-    if (
-      (funnel.phase === 'brace' || funnel.phase === 'recover') &&
-      funnel.timer > 0
-    ) {
-      // Stay planted.
-    } else {
-      funnel.phase = 'chase';
-      const angle = escortAngle(world, index, spec);
-      desiredX = player.x + Math.cos(angle) * spec.escortRadius;
-      desiredY = player.y + Math.sin(angle) * spec.escortRadius;
-      moving = true;
-    }
-  } else if (funnel.phase === 'chase') {
-    if (clear && targetDistance >= settleMin && targetDistance <= settleMax) {
-      // Close enough and stable: commit to the wind-up. Nothing below this
-      // point cancels the brace, even if the target drifts away.
-      funnel.phase = 'brace';
-      funnel.timer = spec.braceTime;
-    } else {
-      const angle = firingAngle(world, funnel, target, index, spec);
-      desiredX = target.x + Math.cos(angle) * spec.standoff;
-      desiredY = target.y + Math.sin(angle) * spec.standoff;
-      moving = true;
-    }
-  } else if (funnel.phase === 'recover') {
-    if (funnel.timer <= 0) funnel.phase = 'ready';
-  } else if (funnel.phase === 'ready') {
-    if (clear && targetDistance >= stayMin && targetDistance <= stayMax) {
-      // Stay put and keep shooting; do not walk between shots.
-    } else {
-      funnel.phase = 'chase';
-      const angle = firingAngle(world, funnel, target, index, spec);
-      desiredX = target.x + Math.cos(angle) * spec.standoff;
-      desiredY = target.y + Math.sin(angle) * spec.standoff;
-      moving = true;
-    }
-  }
-
-  if (moving) {
-    desiredX = clamp(desiredX, bounds.left + 18, bounds.right - 18);
-    desiredY = clamp(desiredY, bounds.top + 18, bounds.bottom - 18);
-
-    if (target) {
-      // A slot clamped against a wall can end up on top of the target. If that
-      // happened, take the same standoff on the room-centre side instead, so
-      // the drone always has a real firing spot to reach rather than parking
-      // too close and never shooting.
-      const fromTarget = Math.hypot(desiredX - target.x, desiredY - target.y);
-      if (fromTarget < spec.minStandoff) {
-        const centerX = (bounds.left + bounds.right) / 2;
-        const centerY = (bounds.top + bounds.bottom) / 2;
-        const away = Math.atan2(centerY - target.y, centerX - target.x);
-        desiredX = clamp(
-          target.x + Math.cos(away) * spec.standoff,
-          bounds.left + 18,
-          bounds.right - 18,
-        );
-        desiredY = clamp(
-          target.y + Math.sin(away) * spec.standoff,
-          bounds.top + 18,
-          bounds.bottom - 18,
-        );
-      }
-    }
-
-    steerTo(funnel, desiredX, desiredY, spec, dt);
-    funnel.x += funnel.vx * dt;
-    funnel.y += funnel.vy * dt;
-    confineFunnel(funnel, bounds);
-  } else {
-    funnel.vx = 0;
-    funnel.vy = 0;
-  }
-
-  aimFunnel(world, funnel, target, dt, weapon, spec);
-
-  if (target) {
-    if (funnel.phase === 'brace' && funnel.timer <= 0) {
-      if (fireFunnel(world, funnel, target, weapon, spec)) {
-        funnel.phase = 'recover';
-        funnel.timer = spec.recoverTime;
-      }
-    } else if (funnel.phase === 'ready') {
-      if (fireFunnel(world, funnel, target, weapon, spec)) {
-        funnel.phase = 'recover';
-        funnel.timer = spec.recoverTime;
-      }
-    }
-  }
+  aimFunnel(world, funnel, target, dt);
+  if (target) fireFunnel(world, funnel, target);
 }
 
-/** Fan the slots out on the player's side of the target. */
-function firingAngle(
-  world: GameWorld,
-  funnel: Funnel,
-  target: Enemy,
-  index: number,
-  spec: FunnelSpec,
-) {
-  const player = world.player;
-  const offset = (index - (spec.count - 1) / 2) * spec.slotArc;
-  if (dist(player.x, player.y, target.x, target.y) < 32) {
-    return Math.atan2(funnel.y - target.y, funnel.x - target.x) + offset;
-  }
-  const toPlayer = Math.atan2(player.y - target.y, player.x - target.x);
-  return toPlayer + offset;
-}
-
-function currentTarget(world: GameWorld, funnel: Funnel) {
-  if (funnel.targetId === null) return null;
-  const enemy = findEnemy(world, funnel.targetId);
-  return enemy && isTargetable(world, enemy) ? enemy : null;
-}
-
-function findEnemy(world: GameWorld, id: number) {
-  for (const enemy of world.enemies) {
-    if (enemy.id === id) return enemy;
-  }
-  return null;
-}
-
-/**
- * Every enemy in the room is fair game, including the training dummy, so the
- * start room doubles as a live target for checking the drone output.
- */
-function isTargetable(world: GameWorld, enemy: Enemy) {
-  if (enemy.dead) return false;
-  return inRoom(world, enemy.x, enemy.y);
-}
-
-/** Nearest valid enemy to this drone, with no coordination with the other. */
-function pickTarget(world: GameWorld, funnel: Funnel): Enemy | null {
-  let best: Enemy | null = null;
-  let bestDistance = Infinity;
-  for (const enemy of world.enemies) {
-    if (!isTargetable(world, enemy)) continue;
-    const distance = dist(funnel.x, funnel.y, enemy.x, enemy.y);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = enemy;
-    }
-  }
-  return best;
-}
-
-function inRoom(world: GameWorld, x: number, y: number) {
-  const bounds = roomBounds(world);
-  return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
-}
-
-/**
- * The arena is one convex room with no interior cover, so two points inside
- * the current room always see each other. The check still keeps a drone from
- * firing through a wall into a different room.
- */
-function hasClearShot(
-  world: GameWorld,
-  funnel: Funnel,
-  target: Enemy,
-) {
-  return inRoom(world, funnel.x, funnel.y) && inRoom(world, target.x, target.y);
-}
-
-function steerTo(
-  funnel: Funnel,
-  tx: number,
-  ty: number,
-  spec: FunnelSpec,
-  dt: number,
-) {
-  const dx = tx - funnel.x;
-  const dy = ty - funnel.y;
+/** No inertia: fly straight at the slot and stop dead when it is reached. */
+function steerTo(funnel: Funnel, x: number, y: number, dt: number) {
+  const dx = x - funnel.x;
+  const dy = y - funnel.y;
   const distance = Math.hypot(dx, dy);
   if (distance < 0.001) {
     funnel.vx = 0;
     funnel.vy = 0;
     return;
   }
-  // No inertia: velocity points straight at the slot at a fixed cruise speed,
-  // and is capped so the last step lands exactly on the slot. There is no
-  // acceleration or residual drift, so a stopped drone stops immediately.
-  const speed = Math.min(spec.droneSpeed, distance / Math.max(dt, 0.001));
+  const speed = Math.min(FUNNEL.moveSpeed, distance / Math.max(dt, 0.001));
   funnel.vx = (dx / distance) * speed;
   funnel.vy = (dy / distance) * speed;
 }
@@ -314,19 +208,18 @@ function confineFunnel(
   funnel: Funnel,
   bounds: ReturnType<typeof roomBounds>,
 ) {
-  const margin = 18;
-  if (funnel.x < bounds.left + margin) {
-    funnel.x = bounds.left + margin;
+  if (funnel.x < bounds.left + SLOT_MARGIN) {
+    funnel.x = bounds.left + SLOT_MARGIN;
     funnel.vx = Math.max(0, funnel.vx);
-  } else if (funnel.x > bounds.right - margin) {
-    funnel.x = bounds.right - margin;
+  } else if (funnel.x > bounds.right - SLOT_MARGIN) {
+    funnel.x = bounds.right - SLOT_MARGIN;
     funnel.vx = Math.min(0, funnel.vx);
   }
-  if (funnel.y < bounds.top + margin) {
-    funnel.y = bounds.top + margin;
+  if (funnel.y < bounds.top + SLOT_MARGIN) {
+    funnel.y = bounds.top + SLOT_MARGIN;
     funnel.vy = Math.max(0, funnel.vy);
-  } else if (funnel.y > bounds.bottom - margin) {
-    funnel.y = bounds.bottom - margin;
+  } else if (funnel.y > bounds.bottom - SLOT_MARGIN) {
+    funnel.y = bounds.bottom - SLOT_MARGIN;
     funnel.vy = Math.min(0, funnel.vy);
   }
 }
@@ -336,15 +229,11 @@ function aimFunnel(
   funnel: Funnel,
   target: Enemy | null,
   dt: number,
-  weapon: WeaponSpec,
-  spec: FunnelSpec,
 ) {
   let want = funnel.angle;
   if (target) {
-    const lead = Math.min(
-      spec.leadTime,
-      dist(funnel.x, funnel.y, target.x, target.y) / weapon.speed,
-    );
+    const distance = dist(funnel.x, funnel.y, target.x, target.y);
+    const lead = Math.min(FUNNEL.leadTime, distance / FUNNEL.bulletSpeed);
     want = Math.atan2(
       target.y + target.vy * lead - funnel.y,
       target.x + target.vx * lead - funnel.x,
@@ -358,29 +247,23 @@ function aimFunnel(
       want = world.player.angle;
     }
   }
-  const maxTurn = spec.turnRate * dt;
+  const maxTurn = FUNNEL.turnRate * dt;
   funnel.angle += clamp(angleDelta(funnel.angle, want), -maxTurn, maxTurn);
 }
 
-function fireFunnel(
-  world: GameWorld,
-  funnel: Funnel,
-  target: Enemy | null,
-  weapon: WeaponSpec,
-  spec: FunnelSpec,
-): boolean {
-  if (!target || funnel.cooldown > 0) return false;
-  if (!hasClearShot(world, funnel, target)) return false;
+function fireFunnel(world: GameWorld, funnel: Funnel, target: Enemy) {
+  if (funnel.cooldown > 0) return;
+  if (!hasClearShotAt(world, funnel.x, funnel.y, target.x, target.y)) return;
 
   const distance = dist(funnel.x, funnel.y, target.x, target.y);
-  const lead = Math.min(spec.leadTime, distance / weapon.speed);
+  const lead = Math.min(FUNNEL.leadTime, distance / FUNNEL.bulletSpeed);
   const aimX = target.x + target.vx * lead;
   const aimY = target.y + target.vy * lead;
   const want = Math.atan2(aimY - funnel.y, aimX - funnel.x);
   // Wait for the hull to finish turning instead of snapping the shot.
-  if (Math.abs(angleDelta(funnel.angle, want)) > 0.2) return false;
+  if (Math.abs(angleDelta(funnel.angle, want)) > 0.2) return;
 
-  funnel.cooldown = weapon.cooldown;
+  funnel.cooldown = FUNNEL.cooldown;
   funnel.muzzle = 0.08;
   const x = funnel.x + Math.cos(funnel.angle) * 12;
   const y = funnel.y + Math.sin(funnel.angle) * 12;
@@ -389,18 +272,42 @@ function fireFunnel(
     y,
     prevX: x,
     prevY: y,
-    vx: Math.cos(want) * weapon.speed,
-    vy: Math.sin(want) * weapon.speed,
-    radius: weapon.radius,
-    damage: weapon.damage,
+    vx: Math.cos(want) * FUNNEL.bulletSpeed,
+    vy: Math.sin(want) * FUNNEL.bulletSpeed,
+    radius: FUNNEL.bulletRadius,
+    damage: FUNNEL.damage,
     // No range expiry: the shot flies until it hits something or leaves the
     // room. A long sight line is still a valid firing line.
     life: Infinity,
-    color: weapon.color,
+    color: FUNNEL.color,
     pierce: 0,
     hitIds: [],
   });
   world.sfx.play('funnel');
-  spawnBurst(world, x, y, weapon.color, 2, 55, 0.16);
-  return true;
+  spawnBurst(world, x, y, FUNNEL.color, 2, 55, 0.16);
+}
+
+/** Both endpoints are in the current room. No interior cover exists yet. */
+function hasClearShotAt(
+  world: GameWorld,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+) {
+  return inRoom(world, x1, y1, 0) && inRoom(world, x2, y2, 0);
+}
+
+function isOpenSlot(world: GameWorld, x: number, y: number) {
+  return inRoom(world, x, y, SLOT_MARGIN);
+}
+
+function inRoom(world: GameWorld, x: number, y: number, margin: number) {
+  const bounds = roomBounds(world);
+  return (
+    x >= bounds.left + margin &&
+    x <= bounds.right - margin &&
+    y >= bounds.top + margin &&
+    y <= bounds.bottom - margin
+  );
 }

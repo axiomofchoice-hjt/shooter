@@ -3,7 +3,6 @@
 import { PLAYER_COLOR } from '../core/config';
 import { TAU, clamp, withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';
-import { WEAPONS } from '../weapons';
 
 export function drawParticles(world: GameWorld) {
   const ctx = world.ctx;
@@ -37,9 +36,6 @@ export function drawFloaters(world: GameWorld) {
 }
 
 export function drawAutoTarget(world: GameWorld) {
-  // The funnel gun's drones acquire their own targets; drawing the hull's
-  // reticle would imply a shared lock that does not exist.
-  if (WEAPONS[world.player.weapon].funnel) return;
   if (!world.autoTarget || world.autoTarget.dead) return;
   const ctx = world.ctx;
   const target = world.autoTarget;
