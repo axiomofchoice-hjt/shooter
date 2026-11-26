@@ -11,6 +11,7 @@ import {
   DUNGEON_ROOMS,
   PLAYER_COLOR,
   ROOM_SIZE,
+  WALL_PAD,
 } from '../core/config';
 import type { Enemy, Player } from '../core/entities';
 import { angleDelta, clamp, rand } from '../core/math';
@@ -100,26 +101,39 @@ function confinePlayer(world: GameWorld) {
 
   // Allow crossing only through an open doorway, judged at the seam between
   // the current room and its neighbour.
-  const boundary = player.x < left ? world.roomIndex : world.roomIndex + 1;
+  const movingRight = player.x > right;
+  const boundary = movingRight ? world.roomIndex + 1 : world.roomIndex;
   const inDoorway = Math.abs(player.y - DOOR_Y) <= DOOR_HALF - player.radius;
   if (inDoorway && isDoorOpen(world, boundary)) {
-    const nextRoom = clamp(Math.floor(player.x / ROOM_SIZE), 0, DUNGEON_ROOMS - 1);
-    if (nextRoom !== world.roomIndex) {
-      world.roomIndex = nextRoom;
-      // The dummy belongs to the start room; it is rebuilt on the way back.
-      removeDummy(world);
-      // Turrets and dropped items belong to the room they were left in.
-      world.turrets = [];
-      world.lobItems = [];
-      // Funnels reform around the player in the new room instead of flying
-      // through the wall.
-      clearFunnels(world);
-      resetCameraBias(world);
-      clampCamera(world);
-    }
+    // The room only counts as entered once the hull has fully cleared the
+    // doorway and its wall: until then the player is still on the threshold
+    // and stays in the previous room. Sealing the doors on entry therefore
+    // never shoves anyone through a wall.
+    const far = movingRight
+      ? boundary * ROOM_SIZE + WALL_PAD + player.radius
+      : boundary * ROOM_SIZE - WALL_PAD - player.radius;
+    const passed = movingRight ? player.x >= far : player.x <= far;
+    if (passed) enterRoom(world, movingRight ? boundary : boundary - 1);
     return;
   }
   player.x = clamp(player.x, left, right);
+}
+
+/** Move the run into a neighbouring room and drop what belonged to the old one. */
+function enterRoom(world: GameWorld, room: number) {
+  const next = clamp(room, 0, DUNGEON_ROOMS - 1);
+  if (next === world.roomIndex) return;
+  world.roomIndex = next;
+  // The dummy belongs to the start room; it is rebuilt on the way back.
+  removeDummy(world);
+  // Turrets and dropped items belong to the room they were left in.
+  world.turrets = [];
+  world.lobItems = [];
+  // Funnels reform around the player in the new room instead of flying
+  // through the wall.
+  clearFunnels(world);
+  resetCameraBias(world);
+  clampCamera(world);
 }
 
 // ------------------------------------------------------------------- player
