@@ -76,6 +76,8 @@ function ensureFunnels(world: GameWorld, weapon: WeaponSpec, spec: FunnelSpec) {
       cooldown: 0.25,
       muzzle: 0,
       targetId: null,
+      holdTimer: 0,
+      settled: false,
       seed: rand(0, TAU),
     });
     spawnBurst(world, x, y, weapon.color, 6, 100, 0.28);
@@ -106,11 +108,12 @@ function updateFunnel(
   const player = world.player;
   funnel.cooldown = Math.max(0, funnel.cooldown - dt);
   funnel.muzzle = Math.max(0, funnel.muzzle - dt);
+  funnel.holdTimer = Math.max(0, funnel.holdTimer - dt);
 
   const bounds = roomBounds(world);
   let desiredX = funnel.x;
   let desiredY = funnel.y;
-  let holding = false;
+  let canShoot = false;
 
   if (target) {
     const targetDistance = dist(funnel.x, funnel.y, target.x, target.y);
@@ -120,8 +123,8 @@ function updateFunnel(
     const nearPlayer =
       dist(funnel.x, funnel.y, player.x, player.y) <= spec.leash;
     if (clear && inBand && nearPlayer) {
-      // Already close enough with a clean line: hold this spot and shoot.
-      holding = true;
+      // Already close enough with a clean line: this is a firing spot.
+      canShoot = true;
     } else {
       const angle = firingAngle(world, funnel, target, index, spec);
       desiredX = target.x + Math.cos(angle) * spec.standoff;
@@ -143,12 +146,20 @@ function updateFunnel(
   desiredX = clamp(desiredX, bounds.left + 18, bounds.right - 18);
   desiredY = clamp(desiredY, bounds.top + 18, bounds.bottom - 18);
 
-  if (holding) {
-    // No inertia: the moment it is in position, it stops dead instead of
-    // gliding past the slot.
+  if (funnel.holdTimer > 0) {
+    // Brace before a shot or recover after one: stay planted for the window.
+    funnel.vx = 0;
+    funnel.vy = 0;
+  } else if (canShoot) {
+    // First frame on a firing spot: stop and settle before the first shot.
+    if (!funnel.settled) {
+      funnel.settled = true;
+      funnel.holdTimer = spec.braceTime;
+    }
     funnel.vx = 0;
     funnel.vy = 0;
   } else {
+    funnel.settled = false;
     steerTo(funnel, desiredX, desiredY, spec, dt);
   }
 
@@ -190,11 +201,11 @@ function findEnemy(world: GameWorld, id: number) {
 }
 
 /**
- * The training dummy is deliberately excluded: the funnels would otherwise
- * camp the start room and plink it forever. Test their output in the test room.
+ * Every enemy in the room is fair game, including the training dummy, so the
+ * start room doubles as a live target for checking the drone output.
  */
 function isTargetable(world: GameWorld, enemy: Enemy) {
-  if (enemy.dead || enemy.dummy) return false;
+  if (enemy.dead) return false;
   return inRoom(world, enemy.x, enemy.y);
 }
 
@@ -318,9 +329,8 @@ function aimFunnel(
     if (speed > 30) {
       want = Math.atan2(funnel.vy, funnel.vx);
     } else {
-      // Idle and parked: face outward from the player, like a sentry.
-      const player = world.player;
-      want = Math.atan2(funnel.y - player.y, funnel.x - player.x);
+      // Parked with nobody to shoot: face the same way as the player's hull.
+      want = world.player.angle;
     }
   }
   const maxTurn = spec.turnRate * dt;
@@ -335,6 +345,9 @@ function fireFunnel(
   spec: FunnelSpec,
 ) {
   if (!target || funnel.cooldown > 0) return;
+  // Once it has committed to a spot it stays put through the brace window;
+  // the recovery window after each shot keeps it planted too.
+  if (!funnel.settled || funnel.holdTimer > 0) return;
   if (!hasClearShot(world, funnel, target)) return;
 
   const distance = dist(funnel.x, funnel.y, target.x, target.y);
@@ -347,6 +360,7 @@ function fireFunnel(
 
   funnel.cooldown = weapon.cooldown;
   funnel.muzzle = 0.08;
+  funnel.holdTimer = spec.recoverTime;
   const x = funnel.x + Math.cos(funnel.angle) * 12;
   const y = funnel.y + Math.sin(funnel.angle) * 12;
   world.bullets.push({

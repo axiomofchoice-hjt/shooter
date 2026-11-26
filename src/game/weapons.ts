@@ -221,6 +221,10 @@ export interface WeaponSpec {
     /** Inside this band a drone with a clear shot stops and holds. */
     minStandoff: number;
     maxStandoff: number;
+    /** Seconds it holds still before the first shot from a new firing spot. */
+    braceTime: number;
+    /** Seconds it holds still after every shot. */
+    recoverTime: number;
     /** Maximum distance from the player a drone will chase. */
     leash: number;
     /** Drone flight speed, in px/s. */
@@ -679,6 +683,8 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       standoff: 210,
       minStandoff: 120,
       maxStandoff: 260,
+      braceTime: 0.2,
+      recoverTime: 0.28,
       leash: 460,
       droneSpeed: 380,
       turnRate: 11,
