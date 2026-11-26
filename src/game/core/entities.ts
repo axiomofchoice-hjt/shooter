@@ -297,6 +297,12 @@ export interface Funnel {
   angle: number;
   cooldown: number;
   muzzle: number;
+  /** Live target, or null while escorting the player. */
+  targetId: number | null;
+  /** Fly to a spot, wind up, fire, recover, or hold ready at the spot. */
+  phase: 'chase' | 'brace' | 'recover' | 'ready';
+  /** Seconds left in the brace or recover phase. */
+  timer: number;
   seed: number;
 }
 

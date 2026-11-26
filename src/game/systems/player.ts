@@ -150,7 +150,7 @@ export function updatePlayer(world: GameWorld, dt: number) {
   player.muzzle = Math.max(0, player.muzzle - dt);
 
   updateAim(world, player, move, dt);
-  // Companions trail the player; their trigger check is inside updateFunnels.
+  // Funnels are autonomous: they update even when the trigger is released.
   updateFunnels(world, dt);
   updateTrigger(world, player, dt);
 }
@@ -326,6 +326,12 @@ function updateTrigger(world: GameWorld, player: Player, dt: number) {
   // Leaving the orbit weapon drops whatever spin-up was left.
   world.orbitActive = 0;
   world.orbitExpand = Math.max(0, world.orbitExpand - dt * 4);
+  if (activeWeapon.funnel || activeWeapon.coopFunnel) {
+    // The drones read the trigger inside updateFunnels; the hull itself has no
+    // gun while one of these weapons is equipped.
+    world.flameTick = 0;
+    return;
+  }
   if (!firing) {
     // Let the next held burst start on a fresh tick instead of waiting out
     // the remainder of the last one.
@@ -418,6 +424,9 @@ export function switchWeapon(world: GameWorld, direction: 1 | -1 = 1) {
   world.player.weapon = next;
   world.volleyShots = 0;
   world.volleyFiring = false;
+  // Drones belong to the gun that launched them; the next frame spawns a
+  // fresh pair if the new weapon is the funnel gun.
+  clearFunnels(world);
   const spec = WEAPONS[next];
   world.floaters.push({
     x: world.player.x,

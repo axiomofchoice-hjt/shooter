@@ -1,14 +1,21 @@
 /** Escort funnel visuals: link tether, hover body and muzzle flash. */
 
-import { FUNNEL } from '../core/config';
 import { TAU, withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';
+import { WEAPONS } from '../weapons';
 
 export function drawFunnels(world: GameWorld) {
-  if (world.player.dead || world.funnels.length === 0) return;
+  const weapon = WEAPONS[world.player.weapon];
+  if (
+    (!weapon.funnel && !weapon.coopFunnel) ||
+    world.player.dead ||
+    world.funnels.length === 0
+  ) {
+    return;
+  }
   const ctx = world.ctx;
   const player = world.player;
-  const color = FUNNEL.color;
+  const color = weapon.color;
   const time = world.ambientTime;
 
   for (const funnel of world.funnels) {
