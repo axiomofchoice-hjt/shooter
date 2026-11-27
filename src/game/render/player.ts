@@ -187,6 +187,7 @@ export function drawPlayer(world: GameWorld) {
   ctx.fill();
 
   drawSlowField(world, player);
+  drawOverhealHalo(world, player);
   if (player.dashTime > 0) drawDashWake(world, player);
 
   if (player.invuln > 0) {
@@ -266,6 +267,47 @@ function drawSlowField(world: GameWorld, player: Player) {
     }
     ctx.stroke();
   }
+  ctx.restore();
+}
+
+/**
+ * Overflow armor: once it has banked extra max HP, a mint halo grows out of
+ * the hull with a few small plus marks. The ring scales with the banked HP,
+ * so the player can read how far the armor has run at a glance.
+ */
+function drawOverhealHalo(world: GameWorld, player: Player) {
+  const armor = armorOf(player.armor);
+  if (!armor.overheal || player.healBonus <= 0) return;
+  const ctx = world.ctx;
+  const time = world.ambientTime;
+  const radius = 28 + Math.min(30, player.healBonus * 0.18);
+  const breathe = 0.5 + 0.5 * Math.sin(time * 2.2);
+
+  ctx.save();
+  ctx.strokeStyle = withAlpha(armor.color, 0.16 + breathe * 0.08);
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([6, 8]);
+  ctx.lineDashOffset = time * 12;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // One little "+" per 10 banked HP, up to four around the hull.
+  const marks = Math.min(4, 1 + Math.floor(player.healBonus / 10));
+  ctx.strokeStyle = withAlpha(armor.color, 0.55 + breathe * 0.2);
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  for (let i = 0; i < marks; i++) {
+    const angle = time * 0.55 + (TAU * i) / marks;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    ctx.moveTo(x - 3.2, y);
+    ctx.lineTo(x + 3.2, y);
+    ctx.moveTo(x, y - 3.2);
+    ctx.lineTo(x, y + 3.2);
+  }
+  ctx.stroke();
   ctx.restore();
 }
 

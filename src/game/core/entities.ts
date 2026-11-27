@@ -29,6 +29,8 @@ export interface Player {
   armorFlash: number;
   /** Slow field: how many hostile projectiles are inside it right now. */
   fieldCount: number;
+  /** Extra max HP banked by the overflow armor (starts at 0 each run). */
+  healBonus: number;
   speed: number;
   angle: number;
   /** Unit vector of the last actual travel direction; dodges follow it. */

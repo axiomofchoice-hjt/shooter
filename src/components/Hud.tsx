@@ -19,17 +19,22 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
       : 0;
   const shieldUp = hud.shieldMax > 0 && hud.shield >= hud.shieldMax;
   const armor = ARMORS[hud.armor];
-  // Orbit and field armors have no shield bar; their HUD line reports what
-  // they are doing instead (turn lock, or how many shots are crawling).
-  const showArmorLine = armor.orb !== undefined || armor.field !== undefined;
+  // Orbit, field and overflow armors have no shield bar; their HUD line
+  // reports what they are doing instead (turn lock, slowed shots, banked HP).
+  const showArmorLine =
+    armor.orb !== undefined || armor.field !== undefined || armor.overheal !== undefined;
   const armorLocked = hud.armorLock > 0;
   const armorStatus = armor.orb
     ? armorLocked
       ? `过载 ${hud.armorLock.toFixed(1)}s`
       : '就绪'
-    : hud.slowCount > 0
-      ? `${hud.slowCount} 发减速`
-      : '待机';
+    : armor.field
+      ? hud.slowCount > 0
+        ? `${hud.slowCount} 发减速`
+        : '待机'
+      : hud.maxHpBonus > 0
+        ? `MAX +${hud.maxHpBonus}`
+        : '待机';
   const multiplier = 1 + Math.min(20, Math.max(0, hud.combo - 1)) * 0.1;
   const isTest = hud.mode === 'boss';
   const weapon = WEAPONS[hud.weapon];

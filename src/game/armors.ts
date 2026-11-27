@@ -44,6 +44,15 @@ export interface ArmorSpec {
     /** Speed a projectile keeps inside the field, as a 0..1 fraction. */
     factor: number;
   };
+  /**
+   * Overflow healing. A heal that would spill past the current max HP is
+   * normally wasted; this armor banks part of the spill as extra max HP, so
+   * a pickup grabbed at full health still makes the hull permanently bigger.
+   */
+  overheal?: {
+    /** Share of the overflow that becomes extra max HP (0..1). */
+    ratio: number;
+  };
 }
 
 /**
@@ -96,9 +105,23 @@ export const ARMORS: Record<ArmorId, ArmorSpec> = {
       factor: 0.35,
     },
   },
+  // No shield pool: every pickup at full health grows the hull instead. Slow
+  // to come online, but the extra max HP is permanent for the run.
+  overheal: {
+    id: 'overheal',
+    name: '溢流装甲',
+    tag: 'OVERFLOW',
+    color: '#8dffc0',
+    shield: 0,
+    regenDelay: 0,
+    regenRate: 0,
+    overheal: {
+      ratio: 0.5,
+    },
+  },
 };
 
-export const ALL_ARMORS: ArmorId[] = ['shield', 'deflector', 'slowfield'];
+export const ALL_ARMORS: ArmorId[] = ['shield', 'deflector', 'slowfield', 'overheal'];
 
 /** What a dungeon run wears. There is no armor cycle: one slot, one pick. */
 export const DUNGEON_ARMOR: ArmorId = 'shield';

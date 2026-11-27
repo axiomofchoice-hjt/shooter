@@ -37,7 +37,7 @@ export type WeaponId =
   | 'minefield';
 
 /** Armor slot. The player carries exactly one of these at a time. */
-export type ArmorId = 'shield' | 'deflector' | 'slowfield';
+export type ArmorId = 'shield' | 'deflector' | 'slowfield' | 'overheal';
 
 /** Everything the test room can spawn; the dungeon boss stays out of it. */
 export type TestEnemyKind = Exclude<EnemyKind, 'boss'>;
@@ -94,6 +94,8 @@ export interface HudSnapshot {
   armorLock: number;
   /** Hostile projectiles currently crawling inside the slow field. */
   slowCount: number;
+  /** Extra max HP the overflow armor has banked this run. */
+  maxHpBonus: number;
   score: number;
   combo: number;
   comboTime: number;
@@ -146,6 +148,7 @@ export const INITIAL_HUD: HudSnapshot = {
   armor: 'shield',
   armorLock: 0,
   slowCount: 0,
+  maxHpBonus: 0,
   score: 0,
   combo: 0,
   comboTime: 0,
