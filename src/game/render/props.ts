@@ -3,6 +3,7 @@
 import { DUNGEON_ROOMS, PORTAL_RADIUS, PORTAL_X, PORTAL_Y } from '../core/config';
 import { ENEMY_DEFS } from '../core/enemyDefs';
 import { TAU, clamp, withAlpha } from '../core/math';
+import type { Mine } from '../core/entities';
 import type { GameWorld } from '../core/world';
 import { countCleared } from '../systems/world';
 import { WEAPONS } from '../weapons';
@@ -93,67 +94,112 @@ export function drawBomberShadows(world: GameWorld) {
 
 /** Burning rings left by airstrike bombs: floor layer, under the enemies. */
 /**
- * Mine layer: each mine is a small buried disc with a line back to the impact
- * that planted it. Until the arm time passes the mine is dim and its line is
- * faint, so the player can see when it becomes live; armed mines pulse and
- * show their trigger circle. The line is a hint only and never collides.
+ * Mine layer: before a mine surfaces its spot is marked by a short line that
+ * slides from the impact point to where the mine will appear — a moving hint,
+ * not a collision surface. Once the mine surfaces the line is gone for good;
+ * only the mine body and its trigger circle remain.
  */
 export function drawMines(world: GameWorld) {
   if (!world.mines.length) return;
   const ctx = world.ctx;
-  const time = world.ambientTime;
   ctx.save();
   ctx.lineCap = 'round';
   for (const mine of world.mines) {
-    const armed = mine.age >= mine.armTime;
-    const fade = clamp(mine.life - mine.age, 0, 0.4) / 0.4;
-    const armT = clamp(mine.age / Math.max(0.001, mine.armTime), 0, 1);
-    const pulse = armed ? 0.5 + Math.sin(time * 6 + mine.seed) * 0.5 : 0;
-
-    // The hint line from the impact point to the mine.
-    ctx.strokeStyle = withAlpha(
-      mine.color,
-      (armed ? 0.2 + pulse * 0.12 : 0.1 * armT) * fade,
-    );
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 6]);
-    ctx.lineDashOffset = -time * (armed ? 8 : 2);
-    ctx.beginPath();
-    ctx.moveTo(mine.originX, mine.originY);
-    ctx.lineTo(mine.x, mine.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Trigger circle while armed, so the danger zone is readable.
-    if (armed) {
-      ctx.strokeStyle = withAlpha(mine.color, 0.16 + pulse * 0.12);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(mine.x, mine.y, mine.triggerRadius, 0, TAU);
-      ctx.stroke();
+    if (!mine.surfaced) {
+      drawMineWindup(world, mine);
+      continue;
     }
-
-    // The mine body rises out of the floor as it arms.
-    const rise = armed ? 1 : armT;
-    ctx.save();
-    ctx.translate(mine.x, mine.y);
-    ctx.fillStyle = `rgba(8, 20, 14, ${0.75 * fade})`;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, mine.radius * 1.15, mine.radius * 0.8, 0, 0, TAU);
-    ctx.fill();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = withAlpha(mine.color, (armed ? 0.55 + pulse * 0.3 : 0.4) * fade);
-    ctx.beginPath();
-    ctx.arc(0, -2 * rise, mine.radius * (0.55 + rise * 0.45), 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = withAlpha('#ffffff', (armed ? 0.7 : 0.35) * fade);
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(0, -2 * rise, mine.radius * 1.1, 0, TAU);
-    ctx.stroke();
-    ctx.restore();
+    const remaining = mine.delay + mine.life - mine.age;
+    drawMineBody(world, mine, clamp(remaining, 0, 0.4) / 0.4);
   }
   ctx.restore();
+}
+
+/** Moving hint while the mine has not surfaced yet: no mine, just a line. */
+function drawMineWindup(world: GameWorld, mine: Mine) {
+  const ctx = world.ctx;
+  const dx = mine.x - mine.originX;
+  const dy = mine.y - mine.originY;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1) return;
+  const dirX = dx / distance;
+  const dirY = dy / distance;
+  // Each spot gets its own phase, so the five lines do not slide in lockstep.
+  const phase = (mine.age / Math.max(0.001, mine.delay) + (mine.seed % 1)) % 1;
+  const headX = mine.originX + dirX * distance * phase;
+  const headY = mine.originY + dirY * distance * phase;
+  const tailLength = 22;
+  const tailX = headX - dirX * tailLength;
+  const tailY = headY - dirY * tailLength;
+  const alpha = 0.2 + 0.65 * Math.sin(Math.PI * phase);
+
+  const grad = ctx.createLinearGradient(tailX, tailY, headX, headY);
+  grad.addColorStop(0, withAlpha(mine.color, 0));
+  grad.addColorStop(1, withAlpha(mine.color, alpha));
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 2.6;
+  ctx.beginPath();
+  ctx.moveTo(tailX, tailY);
+  ctx.lineTo(headX, headY);
+  ctx.stroke();
+  ctx.fillStyle = withAlpha('#ffffff', alpha);
+  ctx.beginPath();
+  ctx.arc(headX, headY, 2, 0, TAU);
+  ctx.fill();
+
+  // Faint target dot at the spot the line is heading for.
+  const breathe = 0.5 + Math.sin(world.ambientTime * 10 + mine.seed) * 0.5;
+  const targetAlpha = (0.2 + breathe * 0.35) * clamp(mine.age / 0.15, 0, 1);
+  ctx.strokeStyle = withAlpha(mine.color, targetAlpha);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(mine.x, mine.y, 3 + breathe * 1.5, 0, TAU);
+  ctx.stroke();
+}
+
+/** Surfaced mine: body, trigger circle and the one-shot pop-out ring. */
+function drawMineBody(world: GameWorld, mine: Mine, fade: number) {
+  const ctx = world.ctx;
+  const time = world.ambientTime;
+  const since = mine.age - mine.delay;
+  const rise = clamp(since / 0.16, 0, 1);
+  const pulse = 0.5 + Math.sin(time * 6 + mine.seed) * 0.5;
+
+  // Trigger circle: the only ring left once the mine is on the ground.
+  ctx.strokeStyle = withAlpha(mine.color, 0.16 + pulse * 0.12);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(mine.x, mine.y, mine.triggerRadius, 0, TAU);
+  ctx.stroke();
+
+  const lift = 2 * rise;
+  ctx.save();
+  ctx.translate(mine.x, mine.y);
+  ctx.fillStyle = `rgba(8, 20, 14, ${0.75 * fade})`;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, mine.radius * 1.15, mine.radius * 0.8, 0, 0, TAU);
+  ctx.fill();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = withAlpha(mine.color, (0.55 + pulse * 0.3) * fade);
+  ctx.beginPath();
+  ctx.arc(0, -lift, mine.radius * (0.55 + rise * 0.45), 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = withAlpha('#ffffff', 0.7 * fade);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(0, -lift, mine.radius * 1.1, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+
+  // One-shot surfacing ring as the mine pops out of the floor.
+  if (since < 0.3) {
+    const t = clamp(since / 0.3, 0, 1);
+    ctx.strokeStyle = withAlpha(mine.color, (1 - t) * 0.7);
+    ctx.lineWidth = 2 * (1 - t) + 0.5;
+    ctx.beginPath();
+    ctx.arc(mine.x, mine.y, mine.radius + t * 18, 0, TAU);
+    ctx.stroke();
+  }
 }
 
 export function drawFireRings(world: GameWorld) {

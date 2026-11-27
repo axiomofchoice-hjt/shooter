@@ -148,20 +148,20 @@ export interface WeaponSpec {
     tickDamage: number;
   };
   /**
-   * Mine layer: a plain bullet that, on the first enemy it hits, scatters a
-   * ring of mines around the impact point. Each mine stays inert for
-   * `armTime`, then arms, explodes on the first enemy that steps inside its
-   * trigger radius, and is cleared after `life` seconds at the latest. The
-   * line from the impact point to each mine is purely a visual hint.
+   * Mine layer: a plain bullet that, on the first enemy it hits, marks a ring
+   * of mine spots around the impact point. Each mine surfaces after
+   * `spawnDelay` seconds — a short moving line marks its spot in the meantime —
+   * then explodes on the first enemy that steps inside its trigger radius, and
+   * is cleared `life` seconds after it surfaces.
    */
   minefield?: {
     /** Mines dropped around the impact point, evenly spaced. */
     count: number;
     /** Distance from the impact point to each mine, in world px. */
     ringRadius: number;
-    /** Seconds a mine stays inert after it is planted. */
-    armTime: number;
-    /** Seconds a mine lives after being planted, arming time included. */
+    /** Seconds between the hit and the mine surfacing. */
+    spawnDelay: number;
+    /** Seconds a surfaced mine lives before it expires. */
     life: number;
     /** Enemy contact radius that sets a mine off. */
     triggerRadius: number;
@@ -902,11 +902,10 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       tickDamage: 1.3,
     },
   },
-  // Mine layer: a heavy, slow slug. On the first enemy it hits it leaves a
-  // ring of five mines around that spot. Every mine arms after 0.3s, explodes
-  // for 18 at 52px on the first enemy that touches its 26px trigger, and is
-  // swept away 7s after it was planted. The lines back to the impact point
-  // are only a hint of where the ring came from.
+  // Mine layer: a heavy, slow slug. On the first enemy it hits it marks a
+  // ring of five mine spots around that point; each mine surfaces one second
+  // later, explodes for 18 at 52px on the first enemy that touches its 26px
+  // trigger, and is swept away 7s after it surfaces.
   minefield: {
     id: 'minefield',
     name: '雷区枪',
@@ -923,7 +922,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     minefield: {
       count: 5,
       ringRadius: 120,
-      armTime: 0.3,
+      spawnDelay: 1,
       life: 7,
       triggerRadius: 26,
       blastRadius: 52,

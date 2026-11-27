@@ -226,13 +226,14 @@ export interface Bullet {
     hold: number;
   };
   /**
-   * Mine-layer shot: on the first enemy it hits it plants a ring of mines
-   * around that impact point. The bullet itself is then spent.
+   * Mine-layer shot: on the first enemy it hits it marks a ring of mine spots
+   * around that impact point, and each mine surfaces one `spawnDelay` later.
+   * The bullet itself is then spent.
    */
   minefield?: {
     count: number;
     ringRadius: number;
-    armTime: number;
+    spawnDelay: number;
     life: number;
     triggerRadius: number;
     blastRadius: number;
@@ -381,19 +382,24 @@ export interface StormDart {
   seed: number;
 }
 
-// Mine planted by the mine-layer gun. It is inert until `age` reaches
-// `armTime`, then explodes when an enemy touches its trigger radius. The line
-// back to `originX`/`originY` is a visual link to the impact that spawned it.
+// Mine spot marked by the mine-layer gun. The mine is not there yet until
+// `age` reaches `delay`; in the meantime the renderer draws a moving short
+// line from `originX`/`originY` to the spot. Once it surfaces it explodes when
+// an enemy touches its trigger radius and expires `life` seconds later.
 export interface Mine {
   id: number;
   x: number;
   y: number;
   originX: number;
   originY: number;
-  /** Seconds since planting. */
+  /** Seconds since the shot landed. */
   age: number;
-  armTime: number;
+  /** Seconds until the mine surfaces. */
+  delay: number;
+  /** Seconds the surfaced mine lives. */
   life: number;
+  /** True once the mine has surfaced and can be triggered. */
+  surfaced: boolean;
   triggerRadius: number;
   blastRadius: number;
   blastDamage: number;

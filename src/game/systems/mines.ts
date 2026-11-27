@@ -39,13 +39,14 @@ export function plantMineRing(
       id: world.nextMineId++,
       x: px,
       y: py,
-      // The visual line always starts from the actual impact point, so a
+      // The wind-up line always starts from the actual impact point, so a
       // mine pulled back inside the room still reads as part of the ring.
       originX: x,
       originY: y,
       age: 0,
-      armTime: spec.armTime,
+      delay: spec.spawnDelay,
       life: spec.life,
+      surfaced: false,
       triggerRadius: spec.triggerRadius,
       blastRadius: spec.blastRadius,
       blastDamage: spec.blastDamage,
@@ -59,20 +60,26 @@ export function plantMineRing(
 }
 
 /**
- * Ages the mines, sets off any armed mine an enemy has stepped on, and clears
- * the ones whose lifetime is over. A mine can only be set off after its arm
- * time, so a ring planted on top of a crowd still takes a moment to bite.
+ * Ages the mines, surfaces them one `delay` after the shot, sets off any
+ * surfaced mine an enemy has stepped on, and clears the ones whose lifetime is
+ * over. The delay is a real wind-up: nothing is there to touch yet, which is
+ * why the renderer shows a moving line instead of the mine itself.
  */
 export function updateMines(world: GameWorld, dt: number) {
   for (let i = world.mines.length - 1; i >= 0; i--) {
     const mine = world.mines[i];
     mine.age += dt;
-    if (mine.age >= mine.life) {
+    if (!mine.surfaced) {
+      if (mine.age < mine.delay) continue;
+      mine.surfaced = true;
+      // Surface with a short puff so the pop is readable.
+      spawnBurst(world, mine.x, mine.y, mine.color, 6, 90, 0.28);
+    }
+    if (mine.age >= mine.delay + mine.life) {
       spawnBurst(world, mine.x, mine.y, mine.color, 3, 70, 0.2);
       world.mines.splice(i, 1);
       continue;
     }
-    if (mine.age < mine.armTime) continue;
     const trigger = findTrigger(world, mine);
     if (!trigger) continue;
     detonateMine(world, mine, trigger);
