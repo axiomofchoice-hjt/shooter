@@ -206,6 +206,65 @@ svg {
   color: rgba(151, 209, 222, 0.45);
 }
 
+/* Armor shield: a thinner blue bar under the hull bar. */
+.shield-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shield-track {
+  position: relative;
+  width: clamp(92px, 17vw, 244px);
+  height: 7px;
+  transform: skewX(-14deg);
+  overflow: hidden;
+  background: rgba(3, 12, 22, 0.8);
+  border: 1px solid rgba(127, 216, 255, 0.26);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.45);
+}
+
+.shield-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3f8dff, #7fd8ff);
+  box-shadow: 0 0 12px rgba(127, 216, 255, 0.6);
+  transition: width 0.14s linear;
+  position: relative;
+  z-index: 1;
+}
+
+.shield-segments {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 12px,
+    rgba(2, 9, 14, 0.72) 12px,
+    rgba(2, 9, 14, 0.72) 14px
+  );
+}
+
+.shield-row.is-full .shield-fill {
+  animation: shieldBreathe 2.6s ease-in-out infinite;
+}
+
+.shield-value {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: #cfefff;
+  flex-shrink: 0;
+}
+
+.shield-value em {
+  font-style: normal;
+  font-size: 8px;
+  color: rgba(151, 209, 222, 0.45);
+}
+
 .score-row strong {
   font-family: var(--mono);
   font-size: 13px;
@@ -2219,6 +2278,11 @@ kbd.accent,
     height: 8px;
   }
 
+  .shield-track {
+    width: clamp(82px, 24vw, 168px);
+    height: 6px;
+  }
+
   .hud-left {
     gap: 7px;
   }
@@ -2234,6 +2298,10 @@ kbd.accent,
 
   .hp-value {
     font-size: 10px;
+  }
+
+  .shield-value {
+    font-size: 9px;
   }
 
   .combo-tag {
@@ -2362,8 +2430,13 @@ kbd.accent,
     display: none;
   }
 
-  .hp-track {
+  .hp-track,
+  .shield-track {
     width: clamp(76px, 23vw, 120px);
+  }
+
+  .shield-value em {
+    display: none;
   }
 }
 
@@ -2585,6 +2658,16 @@ kbd.accent,
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes shieldBreathe {
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(127, 216, 255, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(127, 216, 255, 0.75);
   }
 }
 

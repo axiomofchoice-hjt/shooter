@@ -36,6 +36,9 @@ export type WeaponId =
   | 'dart'
   | 'minefield';
 
+/** Armor slot. The player carries exactly one of these at a time. */
+export type ArmorId = 'shield';
+
 /** Everything the test room can spawn; the dungeon boss stays out of it. */
 export type TestEnemyKind = Exclude<EnemyKind, 'boss'>;
 
@@ -59,10 +62,12 @@ export const ENEMY_LABELS: Record<EnemyKind, string> = {
   boss: '压制核心',
 };
 
-/** What a test-room run carries: which weapons and which enemy kinds. */
+/** What a test-room run carries: weapons, enemies and the single armor. */
 export interface TestRoomConfig {
   weapons: WeaponId[];
   enemies: TestEnemyKind[];
+  /** One armor slot; omitted means the default shield. */
+  armor?: ArmorId;
 }
 
 export type RoomKind = 'start' | 'combat' | 'portal';
@@ -80,6 +85,9 @@ export interface HudSnapshot {
   weapon: WeaponId;
   hp: number;
   maxHp: number;
+  /** Shield points left; `shieldMax` is 0 when no armor is equipped. */
+  shield: number;
+  shieldMax: number;
   score: number;
   combo: number;
   comboTime: number;
@@ -127,6 +135,8 @@ export const INITIAL_HUD: HudSnapshot = {
   weapon: 'pulse',
   hp: 100,
   maxHp: 100,
+  shield: 0,
+  shieldMax: 0,
   score: 0,
   combo: 0,
   comboTime: 0,

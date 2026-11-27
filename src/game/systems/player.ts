@@ -17,6 +17,7 @@ import {
 import type { Enemy, Player } from '../core/entities';
 import { angleDelta, clamp, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
+import { armorOf } from '../armors';
 import { WEAPONS, nextWeapon, previousWeapon } from '../weapons';
 import { updateFlamer } from './flamer';
 import { spawnBurst } from './fx';
@@ -164,12 +165,30 @@ export function updatePlayer(world: GameWorld, dt: number) {
   world.bomberCooldown = Math.max(0, world.bomberCooldown - dt);
   player.invuln = Math.max(0, player.invuln - dt);
   player.muzzle = Math.max(0, player.muzzle - dt);
+  player.shieldFlash = Math.max(0, player.shieldFlash - dt * 3.2);
+  updateShield(player, dt);
 
   updateAim(world, player, move, dt);
   // Escorts are autonomous: they update even when the trigger is released.
   updateFunnels(world, dt);
   updatePartner(world, dt);
   updateTrigger(world, player, dt);
+}
+
+/**
+ * Shield recharge: nothing happens for the armor's delay after a hit, then
+ * the pool refills at its own rate. The bar stays put at full so the player
+ * can see exactly when the armor is back up.
+ */
+function updateShield(player: Player, dt: number) {
+  if (player.shieldMax <= 0) return;
+  if (player.shieldRegenTimer > 0) {
+    player.shieldRegenTimer = Math.max(0, player.shieldRegenTimer - dt);
+    return;
+  }
+  if (player.shield >= player.shieldMax) return;
+  const armor = armorOf(player.armor);
+  player.shield = Math.min(player.shieldMax, player.shield + armor.regenRate * dt);
 }
 
 /**

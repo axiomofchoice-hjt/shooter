@@ -31,6 +31,8 @@ export function emitHud(world: GameWorld, force = false) {
     weapon: world.player.weapon,
     hp: Math.ceil(world.player.hp),
     maxHp: world.player.maxHp,
+    shield: Math.ceil(world.player.shield),
+    shieldMax: world.player.shieldMax,
     score: world.score,
     floor: world.floor,
     room: world.roomIndex,

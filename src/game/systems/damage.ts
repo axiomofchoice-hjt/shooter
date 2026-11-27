@@ -1,5 +1,6 @@
 /** Damage application, deaths, pickups and player hits. */
 
+import { armorOf } from '../armors';
 import { PLAYER_COLOR } from '../core/config';
 import type { Enemy, Turret } from '../core/entities';
 import { rand } from '../core/math';
@@ -13,13 +14,45 @@ import { maybeDropPickup } from './pickups';
 import { WEAPONS } from '../weapons';
 import { countCleared } from './world';
 
+/**
+ * Incoming player damage: the armor shield eats it first, and only the
+ * overflow reaches the hull. Any hit (even a fully absorbed one) restarts the
+ * shield recharge delay, so hiding behind the bubble is not free.
+ */
 export function playerHit(world: GameWorld, damage: number) {
   const player = world.player;
   if (player.dead || player.invuln > 0) return;
-  player.hp -= damage;
+  const armor = armorOf(player.armor);
+  const absorbed = Math.min(player.shield, damage);
+  if (absorbed > 0) {
+    player.shield -= absorbed;
+    player.shieldFlash = 1;
+    spawnBurst(world, player.x, player.y, armor.color, 14, 200, 0.4);
+    world.floaters.push({
+      x: player.x,
+      y: player.y - 46,
+      text: `-${Math.round(absorbed * 10) / 10}`,
+      color: armor.color,
+      life: 0.8,
+      maxLife: 0.8,
+      size: 15,
+    });
+    world.sfx.play('shield');
+  }
+  damage = Math.max(0, damage - absorbed);
+  player.shieldRegenTimer = armor.regenDelay;
   player.invuln = 0.95;
   world.combo = 0;
   world.comboTimer = 0;
+
+  if (damage <= 0) {
+    // The bubble took all of it: no hull flash, just a lighter shake.
+    world.shake = Math.max(world.shake, 5);
+    emitHud(world, true);
+    return;
+  }
+
+  player.hp -= damage;
   world.hurtFlash = 1;
   world.shake = Math.max(world.shake, 12);
   world.sfx.play('hurt');

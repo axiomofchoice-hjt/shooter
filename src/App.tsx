@@ -9,6 +9,7 @@ import { createGamepadPoller, PAD_BUTTON } from './game/gamepad';
 import {
   TEST_ENEMY_KINDS,
   INITIAL_HUD,
+  type ArmorId,
   type GameStats,
   type HudSnapshot,
   type TestEnemyKind,
@@ -55,6 +56,7 @@ export default function App() {
   const [testConfig, setTestConfig] = useState<TestRoomConfig>(() => ({
     weapons: ['pulse'],
     enemies: ['grunt'],
+    armor: 'shield',
   }));
   const [testSetupOpen, setTestSetupOpen] = useState(false);
   const [fullscreenSupported] = useState(() => {
@@ -133,6 +135,11 @@ export default function App() {
         ),
       };
     });
+  }, []);
+
+  const selectTestArmor = useCallback((id: ArmorId) => {
+    // One slot: picking an armor replaces the previous one.
+    setTestConfig((prev) => ({ ...prev, armor: id }));
   }, []);
 
   const toggleTestEnemy = useCallback((kind: TestEnemyKind) => {
@@ -506,6 +513,7 @@ export default function App() {
           config={testConfig}
           onToggleWeapon={toggleTestWeapon}
           onToggleEnemy={toggleTestEnemy}
+          onSelectArmor={selectTestArmor}
           onStart={startBossGame}
           onClose={closeTestSetup}
         />

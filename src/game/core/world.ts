@@ -1,5 +1,6 @@
 import { SoundFX } from '../audio';
-import type { EnemyKind, GameCallbacks, GameMode, TestEnemyKind, WeaponId } from '../types';
+import type { ArmorId, EnemyKind, GameCallbacks, GameMode, TestEnemyKind, WeaponId } from '../types';
+import { DUNGEON_ARMOR } from '../armors';
 import { DUNGEON_LOADOUT } from '../weapons';
 import { DUNGEON_WIDTH, PLAYER_START_ANGLE, ROOM_SIZE } from './config';
 import type {
@@ -107,6 +108,8 @@ export class GameWorld {
   testWaveTimer = 0;
   testEnemies: TestEnemyKind[] = ['grunt'];
   weaponPool: WeaponId[] = DUNGEON_LOADOUT;
+  /** The single armor slot; a run only ever wears one. */
+  armor: ArmorId = DUNGEON_ARMOR;
 
   readonly input: InputState = {
     keys: new Set(),

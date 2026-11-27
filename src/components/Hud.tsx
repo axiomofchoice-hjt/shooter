@@ -12,6 +12,11 @@ interface HudProps {
 export function Hud({ hud, onPause, onMute }: HudProps) {
   const hpPercent = Math.max(0, Math.min(100, (hud.hp / hud.maxHp) * 100));
   const critical = hpPercent <= 30;
+  const shieldPercent =
+    hud.shieldMax > 0
+      ? Math.max(0, Math.min(100, (hud.shield / hud.shieldMax) * 100))
+      : 0;
+  const shieldUp = hud.shieldMax > 0 && hud.shield >= hud.shieldMax;
   const multiplier = 1 + Math.min(20, Math.max(0, hud.combo - 1)) * 0.1;
   const isTest = hud.mode === 'boss';
   const weapon = WEAPONS[hud.weapon];
@@ -63,6 +68,19 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
               <em>/{hud.maxHp}</em>
             </span>
           </div>
+          {hud.shieldMax > 0 && (
+            <div className={`shield-row ${shieldUp ? 'is-full' : ''}`}>
+              <span className="hud-label">SHIELD</span>
+              <div className="shield-track">
+                <div className="shield-fill" style={{ width: `${shieldPercent}%` }} />
+                <div className="shield-segments" />
+              </div>
+              <span className="shield-value">
+                {Math.ceil(hud.shield)}
+                <em>/{hud.shieldMax}</em>
+              </span>
+            </div>
+          )}
           <div className="score-row">
             <span className="hud-label">SCORE</span>
             <strong>{String(hud.score).padStart(6, '0')}</strong>

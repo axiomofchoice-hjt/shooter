@@ -1,6 +1,6 @@
 /** Data shapes for the entities, projectiles and effects in GameWorld. */
 
-import type { EnemyKind, WeaponId } from '../types';
+import type { ArmorId, EnemyKind, WeaponId } from '../types';
 import type { WeaponSpec } from '../weapons';
 import type { AttackPhase, EnemyAction } from './enemyDefs';
 
@@ -14,6 +14,15 @@ export interface Player {
   radius: number;
   hp: number;
   maxHp: number;
+  /** Single armor slot; only one armor can be worn at a time. */
+  armor: ArmorId;
+  /** Shield pool granted by the armor. */
+  shield: number;
+  shieldMax: number;
+  /** Seconds of not being hit before the shield starts recharging. */
+  shieldRegenTimer: number;
+  /** Brief visual flash when the shield eats a hit. */
+  shieldFlash: number;
   speed: number;
   angle: number;
   /** Unit vector of the last actual travel direction; dodges follow it. */

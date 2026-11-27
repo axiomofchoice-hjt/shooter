@@ -1,5 +1,6 @@
 /** The player ship, its dodge wake and afterimages. */
 
+import { armorOf } from '../armors';
 import { DASH_TIME, PLAYER_COLOR } from '../core/config';
 import type { DashGhost, Player } from '../core/entities';
 import { TAU, clamp, withAlpha } from '../core/math';
@@ -197,11 +198,55 @@ export function drawPlayer(world: GameWorld) {
     ctx.setLineDash([]);
   }
 
+  drawShieldBubble(world, player);
+
   ctx.rotate(player.angle);
   ctx.globalAlpha = blink ? 0.55 : 1;
   drawPlayerHull(world, player, pulse);
 
   ctx.restore();
+}
+
+/**
+ * Armor shield: a faint bubble around the hull while it has charge, and a
+ * bright expanding ring each time it eats a hit.
+ */
+function drawShieldBubble(world: GameWorld, player: Player) {
+  if (player.shieldMax <= 0) return;
+  const ctx = world.ctx;
+  const armor = armorOf(player.armor);
+  const ratio = clamp(player.shield / player.shieldMax, 0, 1);
+  const flash = clamp(player.shieldFlash, 0, 1);
+  if (ratio > 0 || flash > 0) {
+    const breathe = 1 + Math.sin(world.ambientTime * 2.6) * 0.03;
+    const radius = 25 * breathe + flash * 4;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const glow = ctx.createRadialGradient(0, 0, radius * 0.55, 0, 0, radius);
+    glow.addColorStop(0, withAlpha(armor.color, 0));
+    glow.addColorStop(0.82, withAlpha(armor.color, 0.05 + flash * 0.12));
+    glow.addColorStop(1, withAlpha(armor.color, 0.16 * ratio + flash * 0.2));
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = withAlpha(armor.color, 0.14 * ratio + flash * 0.5);
+    ctx.lineWidth = 1 + flash * 1.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (flash > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = withAlpha(armor.color, flash * 0.7);
+    ctx.lineWidth = 2.4 * flash + 0.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, 25 + (1 - flash) * 26, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 /**

@@ -1,6 +1,13 @@
 import type { CSSProperties } from 'react';
-import type { GameStats, TestEnemyKind, TestRoomConfig, WeaponId } from '../game/types';
+import type {
+  ArmorId,
+  GameStats,
+  TestEnemyKind,
+  TestRoomConfig,
+  WeaponId,
+} from '../game/types';
 import { ENEMY_LABELS, TEST_ENEMY_KINDS } from '../game/types';
+import { ALL_ARMORS, ARMORS } from '../game/armors';
 import { ALL_WEAPONS, WEAPONS } from '../game/weapons';
 import {
   ArrowIcon,
@@ -219,6 +226,7 @@ interface TestRoomSetupProps {
   config: TestRoomConfig;
   onToggleWeapon: (id: WeaponId) => void;
   onToggleEnemy: (kind: TestEnemyKind) => void;
+  onSelectArmor: (id: ArmorId) => void;
   onStart: () => void;
   onClose: () => void;
 }
@@ -227,6 +235,7 @@ export function TestRoomSetup({
   config,
   onToggleWeapon,
   onToggleEnemy,
+  onSelectArmor,
   onStart,
   onClose,
 }: TestRoomSetupProps) {
@@ -244,7 +253,7 @@ export function TestRoomSetup({
         </h2>
         <p className="modal-copy">
           勾选要带进测试房的武器和要刷新的敌人；清空一波后 1.6 秒自动续波。
-          所有武器都在这里，勾上就会带进去。
+          所有武器都在这里，勾上就会带进去；装甲只有一个槽位，只能选一件。
         </p>
 
         <div className="setup-group">
@@ -267,6 +276,35 @@ export function TestRoomSetup({
                   className={`setup-chip ${selected ? 'is-on' : ''}`}
                   style={{ '--chip-color': spec.color } as CSSProperties}
                   onClick={() => onToggleWeapon(id)}
+                >
+                  <span className="setup-chip-copy">
+                    <strong>{spec.name}</strong>
+                    <em>{spec.tag}</em>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="setup-group">
+          <div className="setup-group-head">
+            <h3>装甲 <span>1 件</span></h3>
+            <span>单选 · 同一时间只能装备一件</span>
+          </div>
+          <div className="setup-chips">
+            {ALL_ARMORS.map((id) => {
+              const spec = ARMORS[id];
+              const selected = (config.armor ?? 'shield') === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  tabIndex={0}
+                  aria-pressed={selected}
+                  className={`setup-chip ${selected ? 'is-on' : ''}`}
+                  style={{ '--chip-color': spec.color } as CSSProperties}
+                  onClick={() => onSelectArmor(id)}
                 >
                   <span className="setup-chip-copy">
                     <strong>{spec.name}</strong>

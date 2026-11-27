@@ -1,10 +1,15 @@
 /** Starting a run and returning to the menu. */
 
 import { BOSS_SIZE, DUNGEON_WIDTH, ROOM_SIZE } from '../core/config';
-import { pickTestEnemies, pickTestWeapons } from '../core/testRoom';
+import {
+  pickTestArmor,
+  pickTestEnemies,
+  pickTestWeapons,
+} from '../core/testRoom';
 import type { GameWorld } from '../core/world';
 import { warmArcStroke } from '../render/weapons';
 import type { GameMode, TestRoomConfig } from '../types';
+import { DUNGEON_ARMOR } from '../armors';
 import { DUNGEON_LOADOUT } from '../weapons';
 import { emitHud } from './hud';
 import { beginRun, beginTestRoom, resetWorld } from './rooms';
@@ -22,6 +27,7 @@ export function startRun(
   world.weaponPool =
     mode === 'boss' ? pickTestWeapons(config?.weapons) : DUNGEON_LOADOUT;
   world.testEnemies = mode === 'boss' ? pickTestEnemies(config?.enemies) : ['grunt'];
+  world.armor = mode === 'boss' ? pickTestArmor(config?.armor) : DUNGEON_ARMOR;
   world.worldW = mode === 'boss' ? BOSS_SIZE : DUNGEON_WIDTH;
   world.worldH = mode === 'boss' ? BOSS_SIZE : ROOM_SIZE;
   updateZoom(world);
@@ -45,6 +51,7 @@ export function resetToMenu(world: GameWorld) {
   world.mode = 'dungeon';
   world.weaponPool = DUNGEON_LOADOUT;
   world.testEnemies = ['grunt'];
+  world.armor = DUNGEON_ARMOR;
   world.worldW = DUNGEON_WIDTH;
   world.worldH = ROOM_SIZE;
   updateZoom(world);

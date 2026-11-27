@@ -18,6 +18,7 @@ type SoundName =
   | 'rail'
   | 'dart'
   | 'mine'
+  | 'shield'
   | 'flame'
   | 'arc'
   | 'laser'
@@ -160,6 +161,11 @@ export class SoundFX {
         this.tone(360, 90, 0.18, 'sawtooth', 0.09, 0);
         this.tone(150, 55, 0.28, 'triangle', 0.06, 0.05);
         this.hiss(0.09, 0.03);
+        break;
+      case 'shield':
+        // Deflected hit: a bright, short ring rather than a hull thud.
+        this.tone(880, 1320, 0.07, 'sine', 0.05, 0);
+        this.tone(1760, 900, 0.12, 'triangle', 0.035, 0.02);
         break;
       case 'flame':
         // Throttled hiss: the flamer asks every damage tick, but a puff ten

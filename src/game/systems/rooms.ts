@@ -13,6 +13,7 @@ import {
   ROOM_SIZE,
   TEST_COLOR,
 } from '../core/config';
+import { armorOf } from '../armors';
 import type { Player } from '../core/entities';
 import { TAU, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
@@ -44,6 +45,7 @@ export function resetWorld(world: GameWorld) {
 }
 
 function createPlayer(world: GameWorld): Player {
+  const armor = armorOf(world.armor);
   return {
     x: world.mode === 'boss' ? world.worldW / 2 : ROOM_SIZE / 2,
     y: world.worldH / 2,
@@ -54,6 +56,11 @@ function createPlayer(world: GameWorld): Player {
     radius: 17,
     hp: 100,
     maxHp: 100,
+    armor: armor.id,
+    shield: armor.shield,
+    shieldMax: armor.shield,
+    shieldRegenTimer: 0,
+    shieldFlash: 0,
     speed: PLAYER_SPEED,
     angle: PLAYER_START_ANGLE,
     // A dodge before the player ever moves follows the starting facing (up).
