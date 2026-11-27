@@ -322,16 +322,7 @@ export const ALL_WEAPONS: WeaponId[] = [
  * it can be tried in the dungeon; when the player asks to carry only the first
  * gun again, trim the list back to ['pulse'].
  */
-export const DUNGEON_LOADOUT: WeaponId[] = [
-  'pulse',
-  'ortho',
-  'volley',
-  'funnel',
-  'coop',
-  'partner',
-  'ram',
-  'bubble',
-];
+export const DUNGEON_LOADOUT: WeaponId[] = ['pulse'];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pulse: {
