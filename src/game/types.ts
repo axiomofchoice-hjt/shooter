@@ -37,7 +37,7 @@ export type WeaponId =
   | 'minefield';
 
 /** Armor slot. The player carries exactly one of these at a time. */
-export type ArmorId = 'shield';
+export type ArmorId = 'shield' | 'deflector';
 
 /** Everything the test room can spawn; the dungeon boss stays out of it. */
 export type TestEnemyKind = Exclude<EnemyKind, 'boss'>;
@@ -88,6 +88,10 @@ export interface HudSnapshot {
   /** Shield points left; `shieldMax` is 0 when no armor is equipped. */
   shield: number;
   shieldMax: number;
+  /** Armor in the single slot, so the HUD can name it. */
+  armor: ArmorId;
+  /** Seconds the deflector arc still cannot turn (0 when ready). */
+  armorLock: number;
   score: number;
   combo: number;
   comboTime: number;
@@ -137,6 +141,8 @@ export const INITIAL_HUD: HudSnapshot = {
   maxHp: 100,
   shield: 0,
   shieldMax: 0,
+  armor: 'shield',
+  armorLock: 0,
   score: 0,
   combo: 0,
   comboTime: 0,

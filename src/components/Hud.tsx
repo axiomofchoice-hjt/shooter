@@ -1,3 +1,4 @@
+import { ARMORS } from '../game/armors';
 import { ENEMY_LABELS, type HudSnapshot } from '../game/types';
 import { WEAPONS } from '../game/weapons';
 import { PauseIcon, SoundOffIcon, SoundOnIcon } from './Icons';
@@ -17,6 +18,10 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
       ? Math.max(0, Math.min(100, (hud.shield / hud.shieldMax) * 100))
       : 0;
   const shieldUp = hud.shieldMax > 0 && hud.shield >= hud.shieldMax;
+  const armor = ARMORS[hud.armor];
+  // The deflector has no shield bar; its HUD line reports the turn lock.
+  const showArmorLine = armor.orb !== undefined;
+  const armorLocked = hud.armorLock > 0;
   const multiplier = 1 + Math.min(20, Math.max(0, hud.combo - 1)) * 0.1;
   const isTest = hud.mode === 'boss';
   const weapon = WEAPONS[hud.weapon];
@@ -68,6 +73,15 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
               <em>/{hud.maxHp}</em>
             </span>
           </div>
+          {showArmorLine && (
+            <div className="armor-row">
+              <span className="hud-label">ARMOR</span>
+              <strong style={{ color: armor.color }}>{armor.name}</strong>
+              <em className={armorLocked ? 'is-locked' : ''}>
+                {armorLocked ? `过载 ${hud.armorLock.toFixed(1)}s` : '就绪'}
+              </em>
+            </div>
+          )}
           {hud.shieldMax > 0 && (
             <div className={`shield-row ${shieldUp ? 'is-full' : ''}`}>
               <span className="hud-label">SHIELD</span>

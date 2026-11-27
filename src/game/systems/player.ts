@@ -19,6 +19,7 @@ import { angleDelta, clamp, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 import { armorOf } from '../armors';
 import { WEAPONS, nextWeapon, previousWeapon } from '../weapons';
+import { updateArmor } from './armor';
 import { updateFlamer } from './flamer';
 import { spawnBurst } from './fx';
 import { clearFunnels, updateFunnels } from './funnels';
@@ -160,6 +161,7 @@ export function updatePlayer(world: GameWorld, dt: number) {
   player.x += (player.vx + player.knockX) * dt;
   player.y += (player.vy + player.knockY) * dt;
   confinePlayer(world);
+  updateArmor(world, dt);
 
   player.fireCooldown -= dt;
   world.bomberCooldown = Math.max(0, world.bomberCooldown - dt);

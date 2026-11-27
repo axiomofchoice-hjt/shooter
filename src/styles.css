@@ -265,6 +265,34 @@ svg {
   color: rgba(151, 209, 222, 0.45);
 }
 
+/* Deflector now has no shield bar; this row is its status line. */
+.armor-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.armor-row strong {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.armor-row em {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: rgba(151, 209, 222, 0.6);
+  white-space: nowrap;
+}
+
+.armor-row em.is-locked {
+  color: #ffb020;
+}
+
 .score-row strong {
   font-family: var(--mono);
   font-size: 13px;

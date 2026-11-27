@@ -199,6 +199,7 @@ export function drawPlayer(world: GameWorld) {
   }
 
   drawShieldBubble(world, player);
+  drawArmorArc(world, player);
 
   ctx.rotate(player.angle);
   ctx.globalAlpha = blink ? 0.55 : 1;
@@ -247,6 +248,75 @@ function drawShieldBubble(world: GameWorld, player: Player) {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+/**
+ * Deflector armor: an arc that turns to face the nearest bullet. It glows
+ * icy while it can track, turns amber while the 2s steering lock is running,
+ * and flashes white on every break.
+ */
+function drawArmorArc(world: GameWorld, player: Player) {
+  const orb = armorOf(player.armor).orb;
+  if (!orb) return;
+  const ctx = world.ctx;
+  const spec = armorOf(player.armor);
+  const locked = player.armorLock > 0;
+  const flash = clamp(player.armorFlash, 0, 1);
+  const color = locked ? '#ff9f43' : spec.color;
+  const angle = player.armorAngle;
+  const bounce =
+    1 + Math.sin(world.ambientTime * (locked ? 11 : 3.4)) * (locked ? 0.02 : 0.012);
+
+  // drawPlayer already translated to the hull, so everything here is local.
+  ctx.save();
+
+  // Faint full orbit so the shield's reach is readable even while it aims.
+  ctx.strokeStyle = withAlpha(spec.color, 0.1);
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 9]);
+  ctx.beginPath();
+  ctx.arc(0, 0, orb.orbitRadius, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const radius = orb.orbitRadius * bounce;
+  const from = angle - orb.halfAngle;
+  const to = angle + orb.halfAngle;
+
+  ctx.globalCompositeOperation = 'lighter';
+  // Wide soft band.
+  ctx.strokeStyle = withAlpha(color, 0.16 + flash * 0.25);
+  ctx.lineWidth = orb.width + 10;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, from, to);
+  ctx.stroke();
+
+  // Solid core.
+  ctx.strokeStyle = withAlpha(color, 0.7 + flash * 0.3);
+  ctx.lineWidth = orb.width * 0.55;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, from, to);
+  ctx.stroke();
+
+  // Bright rail along the outer edge.
+  ctx.strokeStyle = withAlpha('#ffffff', 0.35 + flash * 0.5);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius + orb.width * 0.22, from, to);
+  ctx.stroke();
+
+  // End caps: a frozen arc shows two amber nubs, a tracking one glows.
+  ctx.globalCompositeOperation = 'source-over';
+  for (const end of [from, to]) {
+    const ex = Math.cos(end) * radius;
+    const ey = Math.sin(end) * radius;
+    ctx.fillStyle = withAlpha(color, 0.85);
+    ctx.beginPath();
+    ctx.arc(ex, ey, 2.6, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 /**

@@ -23,6 +23,10 @@ export interface Player {
   shieldRegenTimer: number;
   /** Brief visual flash when the shield eats a hit. */
   shieldFlash: number;
+  /** Deflector arc: current facing, turn lock and break flash. */
+  armorAngle: number;
+  armorLock: number;
+  armorFlash: number;
   speed: number;
   angle: number;
   /** Unit vector of the last actual travel direction; dodges follow it. */
