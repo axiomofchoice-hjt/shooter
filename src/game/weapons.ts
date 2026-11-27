@@ -124,9 +124,9 @@ export interface WeaponSpec {
    * Grinding dart: a straight, non-homing blade with no range cap. It flies at
    * `fastSpeed` while it touches nothing, drops to `slowSpeed` the moment an
    * enemy is caught in its cutting area, and deals `damage` once plus
-   * `tickDamage` every `tickInterval` for as long as the contact lasts. When it
-   * reaches a wall it stays embedded for `stickLife` seconds and keeps cutting
-   * anything that touches it there.
+   * `tickDamage` every `tickInterval` for as long as the contact lasts. It is
+   * destroyed by the first wall it reaches; the room wall is the only limit on
+   * its reach.
    */
   dart?: {
     /** Flight speed in open space, in px/s. */
@@ -146,8 +146,6 @@ export interface WeaponSpec {
     tickInterval: number;
     /** Damage of each grind tick. The first tick also carries `damage`. */
     tickDamage: number;
-    /** Seconds the dart stays embedded after reaching a wall. */
-    stickLife: number;
   };
   /**
    * Mine layer: a plain bullet that, on the first enemy it hits, scatters a
@@ -902,7 +900,6 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       bladeRadius: 18,
       tickInterval: 0.13,
       tickDamage: 1.3,
-      stickLife: 3.5,
     },
   },
   // Mine layer: a heavy, slow slug. On the first enemy it hits it leaves a

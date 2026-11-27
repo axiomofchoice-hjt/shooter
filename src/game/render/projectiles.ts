@@ -72,7 +72,7 @@ function drawDart(world: GameWorld, bullet: Bullet) {
   const speed = Math.hypot(bullet.vx, bullet.vy);
   const angle = speed > 1 ? Math.atan2(bullet.vy, bullet.vx) : 0;
   const fade = clamp(bullet.life / 0.3, 0, 1);
-  const hot = dart.cutting || dart.stuck;
+  const hot = dart.cutting;
 
   if (speed > 120) {
     const streak = 18 + Math.min(1, speed / 1400) * 66;

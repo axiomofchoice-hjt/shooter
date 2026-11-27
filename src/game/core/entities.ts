@@ -203,9 +203,8 @@ export interface Bullet {
   /**
    * Grinding dart: the blade keeps a `tick` timer that pays `tickDamage` to
    * every enemy touching its cutting area. It travels at `speed` — its launch
-   * speed while free, `slowSpeed` while `cutting`. Reaching a wall sets
-   * `stuck`, pins the dart and counts `life` down from `stickLife` instead of
-   * letting the shot leave the room.
+   * speed while free, `slowSpeed` while `cutting`. It is removed by the first
+   * wall it touches.
    */
   dart?: {
     slowSpeed: number;
@@ -225,10 +224,6 @@ export interface Bullet {
     /** Seconds the crawl is held after the last contact, so the blade does
      * not snap back to full speed between two ticks of a moving target. */
     hold: number;
-    stuck: boolean;
-    /** Seconds spent embedded in the wall. */
-    stuckAge: number;
-    stickLife: number;
   };
   /**
    * Mine-layer shot: on the first enemy it hits it plants a ring of mines

@@ -93,9 +93,6 @@ function spawnDart(world: GameWorld, weapon: WeaponSpec, offset: number) {
       grindSpin: spec.grindSpin,
       cutting: false,
       hold: 0,
-      stuck: false,
-      stuckAge: 0,
-      stickLife: spec.stickLife,
     },
   });
 }

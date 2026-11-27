@@ -105,41 +105,29 @@ function updateBullet(world: GameWorld, bullet: Bullet, dt: number) {
 /**
  * Grinding dart: flies straight at full speed until something gets in the
  * blade's way. Contact with an enemy drops it to a crawl and starts a tick
- * timer that damages everything still touching the blade; contact with a wall
- * pins it there for its short stick life. The shot never leaves the room, and
- * its long `life` is only a safety net for a dart that never hits anything.
+ * timer that damages everything still touching the blade. The first wall it
+ * touches destroys it; its long `life` is only a safety net for a dart that
+ * never hits anything.
  */
 function updateDartBullet(world: GameWorld, bullet: Bullet, dt: number) {
   const dart = bullet.dart;
   if (!dart) return false;
-  // `bullet.life` is the safety net for a dart that never lands, and is
-  // shortened to the remaining stick time once the blade pins to a wall.
+  // `bullet.life` is the safety net for a dart that never lands.
   bullet.life -= dt;
 
-  const wall = wallContact(world, bullet);
-  if (wall && !dart.stuck) {
-    dart.stuck = true;
-    dart.stuckAge = 0;
-    bullet.vx = 0;
-    bullet.vy = 0;
+  // The first wall ends the throw: the blade shatters on contact.
+  if (wallContact(world, bullet)) {
+    spawnBurst(world, bullet.x, bullet.y, bullet.color, 7, 150, 0.28);
+    return true;
   }
-  if (dart.stuck) {
-    dart.stuckAge += dt;
-    // Fade the blade out over its last 0.3s so the pop is not abrupt.
-    bullet.life = Math.max(0, Math.min(bullet.life, dart.stickLife - dart.stuckAge));
-    if (dart.stuckAge >= dart.stickLife || bullet.life <= 0) {
-      spawnBurst(world, bullet.x, bullet.y, bullet.color, 8, 150, 0.3);
-      return true;
-    }
-  } else {
-    dart.cutting = bladeContacts(world, bullet);
-    // Keep crawling for a moment past the last contact, so a target that
-    // wiggles in and out of the blade does not make the dart stutter
-    // between full speed and a crawl.
-    if (dart.cutting) dart.hold = 0.2;
-    else dart.hold = Math.max(0, dart.hold - dt);
-    dart.speed = dart.hold > 0 ? dart.slowSpeed : dart.fastSpeed;
-  }
+
+  dart.cutting = bladeContacts(world, bullet);
+  // Keep crawling for a moment past the last contact, so a target that
+  // wiggles in and out of the blade does not make the dart stutter
+  // between full speed and a crawl.
+  if (dart.cutting) dart.hold = 0.2;
+  else dart.hold = Math.max(0, dart.hold - dt);
+  dart.speed = dart.hold > 0 ? dart.slowSpeed : dart.fastSpeed;
 
   dart.spin += (dart.cutting ? dart.grindSpin : dart.freeSpin) * dt;
   const speed = Math.hypot(bullet.vx, bullet.vy);
@@ -150,14 +138,6 @@ function updateDartBullet(world: GameWorld, bullet: Bullet, dt: number) {
   }
   bullet.x += bullet.vx * dt;
   bullet.y += bullet.vy * dt;
-
-  if (dart.stuck) {
-    // Clamp the centre inside the room so the blade sits half-buried in the
-    // wall instead of drifting along outside it.
-    const bounds = roomBounds(world);
-    bullet.x = clamp(bullet.x, bounds.left, bounds.right);
-    bullet.y = clamp(bullet.y, bounds.top, bounds.bottom);
-  }
 
   // Grind ticks pay every enemy that is touching the blade right now, so a
   // slow blade parked in a crowd damages the whole crowd.
