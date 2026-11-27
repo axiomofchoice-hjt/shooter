@@ -19,6 +19,7 @@ import {
 import {
   drawBomberShadows,
   drawFireRings,
+  drawMines,
   drawPickups,
   drawPortal,
   drawTelegraphs,
@@ -60,6 +61,7 @@ export function render(world: GameWorld) {
   drawPortal(world);
   drawTelegraphs(world);
   drawFireRings(world);
+  drawMines(world);
   drawPickups(world);
   drawTurrets(world);
   drawEnemyBullets(world);

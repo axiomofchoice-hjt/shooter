@@ -230,6 +230,20 @@ export interface Bullet {
     stuckAge: number;
     stickLife: number;
   };
+  /**
+   * Mine-layer shot: on the first enemy it hits it plants a ring of mines
+   * around that impact point. The bullet itself is then spent.
+   */
+  minefield?: {
+    count: number;
+    ringRadius: number;
+    armTime: number;
+    life: number;
+    triggerRadius: number;
+    blastRadius: number;
+    blastDamage: number;
+    radius: number;
+  };
 }
 
 export interface EnemyBullet {
@@ -369,6 +383,27 @@ export interface StormDart {
   color: string;
   dirX: number;
   dirY: number;
+  seed: number;
+}
+
+// Mine planted by the mine-layer gun. It is inert until `age` reaches
+// `armTime`, then explodes when an enemy touches its trigger radius. The line
+// back to `originX`/`originY` is a visual link to the impact that spawned it.
+export interface Mine {
+  id: number;
+  x: number;
+  y: number;
+  originX: number;
+  originY: number;
+  /** Seconds since planting. */
+  age: number;
+  armTime: number;
+  life: number;
+  triggerRadius: number;
+  blastRadius: number;
+  blastDamage: number;
+  radius: number;
+  color: string;
   seed: number;
 }
 

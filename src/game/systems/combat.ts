@@ -6,6 +6,7 @@ import type { GameWorld } from '../core/world';
 import { TURRET } from '../weapons';
 import { damageEnemy, damageTurret, playerHit } from './damage';
 import { spawnBurst } from './fx';
+import { plantMineRing } from './mines';
 import { registerSummonHit } from './turrets';
 import { outOfRoom, roomBounds } from './world';
 
@@ -362,6 +363,12 @@ function collideWithEnemies(world: GameWorld, bullet: Bullet) {
     }
 
     damageEnemy(world, enemy, bullet.damage, bullet.x, bullet.y);
+    if (bullet.minefield) {
+      // The ring goes down at the impact point, not on the enemy's centre,
+      // so a shot that clips an edge still leaves the mines where it landed.
+      plantMineRing(world, bullet.x, bullet.y, bullet);
+      return true;
+    }
     if (bullet.blast) {
       // The direct target already took the hit; the blast only spreads
       // to the neighbours.

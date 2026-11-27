@@ -22,6 +22,7 @@ import type {
   Funnel,
   InputState,
   LaserBeam,
+  Mine,
   Mote,
   Particle,
   Phase,
@@ -69,6 +70,8 @@ export class GameWorld {
   shockwaves: Shockwave[] = [];
   ramBlasts: RamBlast[] = [];
   stormDarts: StormDart[] = [];
+  mines: Mine[] = [];
+  nextMineId = 1;
   bombers: Bomber[] = [];
   bombs: Bomb[] = [];
   fireRings: FireRing[] = [];

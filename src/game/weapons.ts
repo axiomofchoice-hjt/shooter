@@ -149,6 +149,31 @@ export interface WeaponSpec {
     /** Seconds the dart stays embedded after reaching a wall. */
     stickLife: number;
   };
+  /**
+   * Mine layer: a plain bullet that, on the first enemy it hits, scatters a
+   * ring of mines around the impact point. Each mine stays inert for
+   * `armTime`, then arms, explodes on the first enemy that steps inside its
+   * trigger radius, and is cleared after `life` seconds at the latest. The
+   * line from the impact point to each mine is purely a visual hint.
+   */
+  minefield?: {
+    /** Mines dropped around the impact point, evenly spaced. */
+    count: number;
+    /** Distance from the impact point to each mine, in world px. */
+    ringRadius: number;
+    /** Seconds a mine stays inert after it is planted. */
+    armTime: number;
+    /** Seconds a mine lives after being planted, arming time included. */
+    life: number;
+    /** Enemy contact radius that sets a mine off. */
+    triggerRadius: number;
+    /** Blast radius when it goes off. */
+    blastRadius: number;
+    /** Damage at the centre of the blast. */
+    blastDamage: number;
+    /** Drawn body radius of the mine. */
+    radius: number;
+  };
   /** Projectile that detonates on an enemy or wall. */
   shock?: {
     /** Damage radius of the blast. */
@@ -341,6 +366,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'ram',
   'bubble',
   'dart',
+  'minefield',
 ];
 
 /**
@@ -352,7 +378,7 @@ export const ALL_WEAPONS: WeaponId[] = [
  * it can be tried in the dungeon; when the player asks to carry only the first
  * gun again, trim the list back to ['pulse'].
  */
-export const DUNGEON_LOADOUT: WeaponId[] = ['pulse', 'dart'];
+export const DUNGEON_LOADOUT: WeaponId[] = ['pulse', 'dart', 'minefield'];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pulse: {
@@ -877,6 +903,35 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
       tickInterval: 0.13,
       tickDamage: 1.3,
       stickLife: 3.5,
+    },
+  },
+  // Mine layer: a heavy, slow slug. On the first enemy it hits it leaves a
+  // ring of five mines around that spot. Every mine arms after 0.3s, explodes
+  // for 18 at 52px on the first enemy that touches its 26px trigger, and is
+  // swept away 7s after it was planted. The lines back to the impact point
+  // are only a hint of where the ring came from.
+  minefield: {
+    id: 'minefield',
+    name: '雷区枪',
+    tag: 'MINES',
+    color: '#8affc1',
+    damage: 8,
+    cooldown: 4.8,
+    speed: 950,
+    radius: 6,
+    life: 0.6,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    minefield: {
+      count: 5,
+      ringRadius: 120,
+      armTime: 0.3,
+      life: 7,
+      triggerRadius: 26,
+      blastRadius: 52,
+      blastDamage: 18,
+      radius: 5,
     },
   },
 };

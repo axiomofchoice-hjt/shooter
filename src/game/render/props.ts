@@ -2,7 +2,7 @@
 
 import { DUNGEON_ROOMS, PORTAL_RADIUS, PORTAL_X, PORTAL_Y } from '../core/config';
 import { ENEMY_DEFS } from '../core/enemyDefs';
-import { TAU, withAlpha } from '../core/math';
+import { TAU, clamp, withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';
 import { countCleared } from '../systems/world';
 import { WEAPONS } from '../weapons';
@@ -92,6 +92,70 @@ export function drawBomberShadows(world: GameWorld) {
 }
 
 /** Burning rings left by airstrike bombs: floor layer, under the enemies. */
+/**
+ * Mine layer: each mine is a small buried disc with a line back to the impact
+ * that planted it. Until the arm time passes the mine is dim and its line is
+ * faint, so the player can see when it becomes live; armed mines pulse and
+ * show their trigger circle. The line is a hint only and never collides.
+ */
+export function drawMines(world: GameWorld) {
+  if (!world.mines.length) return;
+  const ctx = world.ctx;
+  const time = world.ambientTime;
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (const mine of world.mines) {
+    const armed = mine.age >= mine.armTime;
+    const fade = clamp(mine.life - mine.age, 0, 0.4) / 0.4;
+    const armT = clamp(mine.age / Math.max(0.001, mine.armTime), 0, 1);
+    const pulse = armed ? 0.5 + Math.sin(time * 6 + mine.seed) * 0.5 : 0;
+
+    // The hint line from the impact point to the mine.
+    ctx.strokeStyle = withAlpha(
+      mine.color,
+      (armed ? 0.2 + pulse * 0.12 : 0.1 * armT) * fade,
+    );
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 6]);
+    ctx.lineDashOffset = -time * (armed ? 8 : 2);
+    ctx.beginPath();
+    ctx.moveTo(mine.originX, mine.originY);
+    ctx.lineTo(mine.x, mine.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Trigger circle while armed, so the danger zone is readable.
+    if (armed) {
+      ctx.strokeStyle = withAlpha(mine.color, 0.16 + pulse * 0.12);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(mine.x, mine.y, mine.triggerRadius, 0, TAU);
+      ctx.stroke();
+    }
+
+    // The mine body rises out of the floor as it arms.
+    const rise = armed ? 1 : armT;
+    ctx.save();
+    ctx.translate(mine.x, mine.y);
+    ctx.fillStyle = `rgba(8, 20, 14, ${0.75 * fade})`;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, mine.radius * 1.15, mine.radius * 0.8, 0, 0, TAU);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = withAlpha(mine.color, (armed ? 0.55 + pulse * 0.3 : 0.4) * fade);
+    ctx.beginPath();
+    ctx.arc(0, -2 * rise, mine.radius * (0.55 + rise * 0.45), 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = withAlpha('#ffffff', (armed ? 0.7 : 0.35) * fade);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(0, -2 * rise, mine.radius * 1.1, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 export function drawFireRings(world: GameWorld) {
   if (!world.fireRings.length) return;
   const ctx = world.ctx;

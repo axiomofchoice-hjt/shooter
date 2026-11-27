@@ -17,6 +17,7 @@ type SoundName =
   | 'scatter'
   | 'rail'
   | 'dart'
+  | 'mine'
   | 'flame'
   | 'arc'
   | 'laser'
@@ -153,6 +154,12 @@ export class SoundFX {
         // Short metallic throw: a bright ping that drops away fast.
         this.tone(1750, 640, 0.09, 'square', 0.06, 0);
         this.tone(820, 240, 0.14, 'triangle', 0.045, 0.01);
+        break;
+      case 'mine':
+        // Heavy slug plus a low ground thud as the ring plants.
+        this.tone(360, 90, 0.18, 'sawtooth', 0.09, 0);
+        this.tone(150, 55, 0.28, 'triangle', 0.06, 0.05);
+        this.hiss(0.09, 0.03);
         break;
       case 'flame':
         // Throttled hiss: the flamer asks every damage tick, but a puff ten

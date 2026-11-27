@@ -169,6 +169,9 @@ function spawnStandardBullets(
       bubble: bubble
         ? { drag: bubble.drag, seed: rand(0, 100) }
         : undefined,
+      minefield: weapon.minefield
+        ? { ...weapon.minefield }
+        : undefined,
     });
   }
 }
@@ -189,11 +192,13 @@ function spawnMuzzleParticles(
           ? 8
           : weapon.dart
             ? 5
-            : weapon.pellets > 1
-              ? 10
-              : weapon.id === 'rail'
-                ? 12
-                : 4;
+            : weapon.minefield
+              ? 7
+              : weapon.pellets > 1
+                ? 10
+                : weapon.id === 'rail'
+                  ? 12
+                  : 4;
   for (let i = 0; i < muzzleCount; i++) {
     const spread = player.angle + Math.PI + rand(-0.6, 0.6);
     const velocity = rand(40, weapon.id === 'rail' ? 320 : 150);
@@ -227,6 +232,7 @@ function shotSound(weapon: WeaponSpec) {
   if (weapon.laser) return 'laser';
   if (weapon.storm || weapon.chain) return 'arc';
   if (weapon.dart) return 'dart';
+  if (weapon.minefield) return 'mine';
   if (weapon.id === 'rail') return 'rail';
   if (weapon.id === 'scatter') return 'scatter';
   return 'shoot';

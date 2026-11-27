@@ -9,6 +9,7 @@ import { updateHomings, updateShells } from './enemyProjectiles';
 import { updateFloaters, updateFx, updateParticles } from './fx';
 import { emitHud } from './hud';
 import { updatePickups } from './pickups';
+import { updateMines } from './mines';
 import { updatePlayer } from './player';
 import { updateDungeon, updateTestRoom } from './rooms';
 import { updateTurrets } from './turrets';
@@ -41,6 +42,7 @@ export function update(world: GameWorld, dt: number) {
   updatePlayer(world, dt);
   updateBullets(world, dt);
   updateStormDarts(world, dt);
+  updateMines(world, dt);
   updateBombers(world, dt);
   updateEnemies(world, dt);
   updateTurrets(world, dt);

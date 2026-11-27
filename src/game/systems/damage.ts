@@ -50,6 +50,7 @@ export function playerHit(world: GameWorld, damage: number) {
     world.shockwaves = [];
     world.ramBlasts = [];
     world.stormDarts = [];
+    world.mines = [];
     world.bombers = [];
     world.bombs = [];
     world.fireRings = [];
