@@ -12,10 +12,11 @@ export interface ArmorSpec {
   /** Shield points restored per second once the delay is over. */
   regenRate: number;
   /**
-   * Orbiting deflector arc. It turns to face the nearest enemy bullet and
-   * erases any bullet it touches. Every break freezes its steering for
-   * `lockTime` seconds; the arc still blocks while frozen, it just cannot
-   * turn.
+   * Orbiting deflector arc. It turns to face the nearest hostile projectile —
+   * enemy bullet, homing missile or lobbed shell — and erases anything it
+   * touches. The first break freezes its steering for `lockTime` seconds;
+   * continued breaks while frozen do not extend that window. The arc still
+   * erases shots while frozen, it just cannot turn.
    */
   orb?: {
     /** Distance of the arc from the hull centre, in world px. */
