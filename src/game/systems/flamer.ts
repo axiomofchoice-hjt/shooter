@@ -14,7 +14,9 @@ import { damageEnemy } from './damage';
 export function updateFlamer(world: GameWorld, dt: number) {
   const player = world.player;
   const spec = WEAPONS[player.weapon];
-  const range = spec.range ?? 240;
+  // The cone has no shared fallback: its reach comes from this gun only.
+  const range = spec.range;
+  if (range === undefined) return;
   const half = spec.cone ?? 0.4;
   player.muzzle = 0.1;
   player.muzzleColor = spec.color;

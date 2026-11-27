@@ -253,7 +253,9 @@ export function drawFlamer(world: GameWorld) {
   const player = world.player;
   const spec = WEAPONS[player.weapon];
   if (!spec.flame || player.dead || player.muzzle <= 0) return;
-  const range = spec.range ?? 240;
+  // Reach comes from this weapon's own spec; no fallback to a shared value.
+  const range = spec.range;
+  if (range === undefined) return;
   const half = spec.cone ?? 0.4;
   const ctx = world.ctx;
   const time = world.ambientTime;

@@ -9,7 +9,7 @@ import { WEAPONS } from '../weapons';
 
 /**
  * Faint ring for the equipped weapon's maximum range. Range-limited weapons
- * (seeker, flamer) draw it; the rest draw nothing.
+ * (seeker, flamer, bubble) draw it; the rest draw nothing.
  */
 export function drawWeaponRange(world: GameWorld) {
   const spec = WEAPONS[world.player.weapon];

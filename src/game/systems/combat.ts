@@ -35,6 +35,14 @@ function updateBullet(world: GameWorld, bullet: Bullet, dt: number) {
   const returning = bullet.recycle === true && bullet.returning === true;
   steerBullet(world, bullet, dt, speed, missile, returning);
 
+  // Bubbles shed speed exponentially: they leave fast, then hang almost
+  // still for the rest of their long life instead of stopping abruptly.
+  if (bullet.bubble) {
+    const decay = Math.exp(-bullet.bubble.drag * dt);
+    bullet.vx *= decay;
+    bullet.vy *= decay;
+  }
+
   bullet.x += bullet.vx * dt;
   bullet.y += bullet.vy * dt;
   bullet.life -= dt;
@@ -48,6 +56,10 @@ function updateBullet(world: GameWorld, bullet: Bullet, dt: number) {
   }
 
   let consumed = collideWithEnemies(world, bullet);
+  if (consumed && bullet.bubble) {
+    // Soap film pops on contact, so a bubble never reads as a solid bullet.
+    spawnBurst(world, bullet.x, bullet.y, bullet.color, 4, 80, 0.2);
+  }
   if (!consumed) {
     consumed = resolveWallContacts(world, bullet, missile, speed * dt);
   }

@@ -74,15 +74,24 @@ function spawnStandardBullets(
     const angle = weapon.ring
       ? player.angle + (i / weapon.pellets) * TAU
       : player.angle + fan + rand(-jitter, jitter);
-    const x = player.x + Math.cos(angle) * offset;
-    const y = player.y + Math.sin(angle) * offset;
+    // Bubbles fan out irregularly: every pellet gets its own extra angle
+    // offset and speed, so the cloud does not read as a rigid line.
+    const bubble = weapon.bubble;
+    const launch = bubble
+      ? angle + rand(-bubble.angleJitter, bubble.angleJitter)
+      : angle;
+    const speed = bubble
+      ? weapon.speed * rand(1 - bubble.speedJitter, 1 + bubble.speedJitter)
+      : weapon.speed;
+    const x = player.x + Math.cos(launch) * offset;
+    const y = player.y + Math.sin(launch) * offset;
     world.bullets.push({
       x,
       y,
       prevX: x,
       prevY: y,
-      vx: Math.cos(angle) * weapon.speed,
-      vy: Math.sin(angle) * weapon.speed,
+      vx: Math.cos(launch) * speed,
+      vy: Math.sin(launch) * speed,
       radius: weapon.radius,
       damage: weapon.damage,
       life: weapon.life,
@@ -107,6 +116,9 @@ function spawnStandardBullets(
           }
         : undefined,
       summonEvery: weapon.summon ? TURRET.hitsPerSummon : undefined,
+      bubble: bubble
+        ? { drag: bubble.drag, seed: rand(0, 100) }
+        : undefined,
     });
   }
 }
@@ -357,7 +369,10 @@ function pickChainTarget(
  */
 function spawnMissile(world: GameWorld, weapon: WeaponSpec, offset: number) {
   const player = world.player;
-  const range = weapon.range ?? 240;
+  // A homing gun must declare its lock range; there is no shared fallback,
+  // so one weapon's tuning can never silently become another's.
+  const range = weapon.range;
+  if (range === undefined) return;
   const target = findNearestEnemy(world, player.x, player.y, range, false);
   const side = Math.random() < 0.5 ? -1 : 1;
   const lateral = 15 * side;

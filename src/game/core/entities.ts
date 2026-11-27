@@ -192,6 +192,14 @@ export interface Bullet {
   ignoreId?: number;
   /** Hive shot: hits per turret summon, carried so mid-flight swaps are safe. */
   summonEvery?: number;
+  /**
+   * Bubble shot: `drag` bleeds speed exponentially every frame, and `seed`
+   * drives the gentle visual wobble of the soap film.
+   */
+  bubble?: {
+    drag: number;
+    seed: number;
+  };
 }
 
 export interface EnemyBullet {

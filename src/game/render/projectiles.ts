@@ -17,6 +17,10 @@ export function drawBullets(world: GameWorld) {
       drawShockShot(world, bullet);
       continue;
     }
+    if (bullet.bubble) {
+      drawBubble(world, bullet);
+      continue;
+    }
     const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
     const tailLength = bullet.split
       ? 42
@@ -50,6 +54,58 @@ export function drawBullets(world: GameWorld) {
     }
   }
   ctx.restore();
+}
+
+/** Soap bubble: translucent film, bright rim and a faint motion streak. */
+function drawBubble(world: GameWorld, bullet: Bullet) {
+  const film = bullet.bubble;
+  if (!film) return;
+  const ctx = world.ctx;
+  const fade = clamp(bullet.life / 0.7, 0, 1);
+  const speed = Math.hypot(bullet.vx, bullet.vy);
+  const wobble = 1 + Math.sin(world.ambientTime * 4.5 + film.seed) * 0.08;
+  const radius = bullet.radius * wobble;
+
+  if (speed > 80) {
+    const dirX = bullet.vx / speed;
+    const dirY = bullet.vy / speed;
+    const tail = 10 + Math.min(24, speed * 0.03);
+    ctx.strokeStyle = withAlpha(bullet.color, 0.2 * fade);
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(bullet.x - dirX * tail, bullet.y - dirY * tail);
+    ctx.lineTo(bullet.x, bullet.y);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = withAlpha(bullet.color, 0.09 * fade);
+  ctx.beginPath();
+  ctx.arc(bullet.x, bullet.y, radius, 0, TAU);
+  ctx.fill();
+
+  // Soap-film rim: a thin white ring plus a colored lower edge.
+  ctx.strokeStyle = withAlpha('#eafcff', 0.55 * fade);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(bullet.x, bullet.y, radius, 0, TAU);
+  ctx.stroke();
+  ctx.strokeStyle = withAlpha(bullet.color, 0.8 * fade);
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.arc(bullet.x, bullet.y, radius, -0.35, 1.35);
+  ctx.stroke();
+
+  // Specular dot offset from the centre, so it reads as a bubble not a dot.
+  ctx.fillStyle = withAlpha('#ffffff', 0.8 * fade);
+  ctx.beginPath();
+  ctx.arc(
+    bullet.x - radius * 0.34,
+    bullet.y - radius * 0.34,
+    radius * 0.2,
+    0,
+    TAU,
+  );
+  ctx.fill();
 }
 
 /** Lightning dart: fast trailing shard that hovers after its glide. */

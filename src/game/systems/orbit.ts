@@ -8,7 +8,7 @@ import { spawnBurst } from './fx';
 
 /**
  * Orbit weapon: the balls circle the player at a body's width, spinning out
- * to the seeker's 240px reach while the trigger is held. A single press
+ * to their own 240px reach while the trigger is held. A single press
  * refills a one-second spin-up, so holding and tapping every second
  * play the same. In both states a ball hurts any enemy it touches (with a
  * per-enemy interval) and erases enemy bullets.

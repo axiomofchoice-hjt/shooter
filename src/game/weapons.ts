@@ -1,8 +1,5 @@
 import type { WeaponId } from './types';
 
-// Shared by the close-range weapons so the range circle and lock distance agree.
-const SHORT_RANGE = 240;
-
 /**
  * Sentry turrets dropped by the hive gun. One turret per three hits on the
  * same enemy (or one kill), placed about one body away from that enemy.
@@ -108,6 +105,20 @@ export interface WeaponSpec {
     halfWidth: number;
     /** Outward shove imparted to every enemy caught in the rectangle. */
     knockback: number;
+  };
+  /**
+   * Bubble gun: every pellet launches at its own speed and angle, then loses
+   * speed exponentially and hangs almost still for the rest of its long life.
+   * `drag` is the decay constant in 1/s, so a shot's total travel is roughly
+   * `speed / drag`.
+   */
+  bubble?: {
+    /** Per-bubble random speed multiplier range, e.g. 0.85–1.15. */
+    speedJitter: number;
+    /** Extra per-bubble launch angle jitter, in radians. */
+    angleJitter: number;
+    /** Exponential speed decay constant, per second. */
+    drag: number;
   };
   /** Projectile that detonates on an enemy or wall. */
   shock?: {
@@ -299,6 +310,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'coop',
   'partner',
   'ram',
+  'bubble',
 ];
 
 /**
@@ -318,6 +330,7 @@ export const DUNGEON_LOADOUT: WeaponId[] = [
   'coop',
   'partner',
   'ram',
+  'bubble',
 ];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
@@ -393,13 +406,15 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pellets: 1,
     spread: 0,
     pierce: 0,
-    range: SHORT_RANGE,
+    // Each short-range gun owns its reach. They happen to match, but they
+    // are independent numbers so tuning one never drags the others along.
+    range: 240,
     homing: true,
     turnRate: 9,
   },
   // Short-range plasma projector: holds a cone of damage in front of the
-  // player. Same reach as the seeker, but it hits everything in the fan
-  // instead of locking one target.
+  // player. It happens to share the seeker's reach, but its value is its own
+  // tuning knob; it hits everything in the fan instead of locking one target.
   flamer: {
     id: 'flamer',
     name: '等离子喷火器',
@@ -413,7 +428,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pellets: 1,
     spread: 0,
     pierce: 0,
-    range: SHORT_RANGE,
+    range: 240,
     flame: true,
     cone: 0.4,
   },
@@ -498,7 +513,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     bounces: 5,
   },
   // Orbiting guards: three balls circle the player at about one body's width,
-  // then spin out to the seeker's 240px reach while the trigger is held (or for
+  // then spin out to their own 240px reach while the trigger is held (or for
   // one second after a tap). They hit enemies and erase enemy bullets.
   orbit: {
     id: 'orbit',
@@ -516,7 +531,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     orbit: {
       count: 3,
       idleRadius: 60,
-      maxRadius: SHORT_RANGE,
+      maxRadius: 240,
       idleSpeed: 1.1,
       activeSpeed: 4.2,
       ballRadius: 10,
@@ -792,6 +807,27 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pierce: 0,
     range: 240,
     ram: { length: 230, halfWidth: 70, knockback: 620 },
+  },
+  // Bubble gun: a drifting fan of soft bubbles. Each one launches fast at a
+  // slightly different speed and angle, sheds speed exponentially, and then
+  // hangs almost still for the rest of its 5s life. The cloud settles around
+  // a 240px reach (its own value) so the gun trades burst damage for a
+  // lingering field that enemies have to walk through.
+  bubble: {
+    id: 'bubble',
+    name: '泡泡枪',
+    tag: 'BUBBLE',
+    color: '#8fe3ff',
+    damage: 2.5,
+    cooldown: 0.5,
+    speed: 700,
+    radius: 8,
+    life: 5,
+    pellets: 8,
+    spread: 0.6,
+    pierce: 0,
+    range: 240,
+    bubble: { speedJitter: 0.18, angleJitter: 0.09, drag: 3.2 },
   },
 };
 
