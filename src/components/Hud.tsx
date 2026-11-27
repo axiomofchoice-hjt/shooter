@@ -19,9 +19,17 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
       : 0;
   const shieldUp = hud.shieldMax > 0 && hud.shield >= hud.shieldMax;
   const armor = ARMORS[hud.armor];
-  // The deflector has no shield bar; its HUD line reports the turn lock.
-  const showArmorLine = armor.orb !== undefined;
+  // Orbit and field armors have no shield bar; their HUD line reports what
+  // they are doing instead (turn lock, or how many shots are crawling).
+  const showArmorLine = armor.orb !== undefined || armor.field !== undefined;
   const armorLocked = hud.armorLock > 0;
+  const armorStatus = armor.orb
+    ? armorLocked
+      ? `过载 ${hud.armorLock.toFixed(1)}s`
+      : '就绪'
+    : hud.slowCount > 0
+      ? `${hud.slowCount} 发减速`
+      : '待机';
   const multiplier = 1 + Math.min(20, Math.max(0, hud.combo - 1)) * 0.1;
   const isTest = hud.mode === 'boss';
   const weapon = WEAPONS[hud.weapon];
@@ -77,9 +85,7 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
             <div className="armor-row">
               <span className="hud-label">ARMOR</span>
               <strong style={{ color: armor.color }}>{armor.name}</strong>
-              <em className={armorLocked ? 'is-locked' : ''}>
-                {armorLocked ? `过载 ${hud.armorLock.toFixed(1)}s` : '就绪'}
-              </em>
+              <em className={armorLocked ? 'is-locked' : ''}>{armorStatus}</em>
             </div>
           )}
           {hud.shieldMax > 0 && (

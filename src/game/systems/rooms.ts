@@ -64,6 +64,7 @@ function createPlayer(world: GameWorld): Player {
     armorAngle: PLAYER_START_ANGLE,
     armorLock: 0,
     armorFlash: 0,
+    fieldCount: 0,
     speed: PLAYER_SPEED,
     angle: PLAYER_START_ANGLE,
     // A dodge before the player ever moves follows the starting facing (up).

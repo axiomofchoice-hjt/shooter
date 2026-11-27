@@ -10,6 +10,7 @@ import { updateFloaters, updateFx, updateParticles } from './fx';
 import { emitHud } from './hud';
 import { updatePickups } from './pickups';
 import { updateMines } from './mines';
+import { updateSlowField } from './armor';
 import { updatePlayer } from './player';
 import { updateDungeon, updateTestRoom } from './rooms';
 import { updateTurrets } from './turrets';
@@ -49,6 +50,9 @@ export function update(world: GameWorld, dt: number) {
   updateEnemyBullets(world, dt);
   updateShells(world, dt);
   updateHomings(world, dt);
+  // Runs after the projectiles moved: it rewrites their displacement, so it
+  // has to see this frame's motion.
+  updateSlowField(world);
   updatePickups(world, dt);
   if (world.mode === 'dungeon') updateDungeon(world, dt);
   else updateTestRoom(world, dt);

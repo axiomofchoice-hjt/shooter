@@ -1,5 +1,6 @@
 /** Bullets, missiles and shockwaves. */
 
+import { armorOf } from '../armors';
 import type { Bullet } from '../core/entities';
 import { TAU, clamp, withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';
@@ -397,6 +398,29 @@ function drawMissile(world: GameWorld, bullet: Bullet) {
   ctx.restore();
 }
 
+/**
+ * Ring that marks a hostile shot crawling through the slow field. Anything
+ * inside the aura gets it, so the player can see which shots just got slowed
+ * and which are still coming in at full speed.
+ */
+function drawSlowFieldRing(world: GameWorld, x: number, y: number, radius: number) {
+  const player = world.player;
+  const armor = armorOf(player.armor);
+  const field = armor.field;
+  if (!field || player.dead) return;
+  const dx = x - player.x;
+  const dy = y - player.y;
+  if (dx * dx + dy * dy > field.radius * field.radius) return;
+  const ctx = world.ctx;
+  ctx.save();
+  ctx.strokeStyle = withAlpha(armor.color, 0.55);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(x, y, radius + 4, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function drawEnemyBullets(world: GameWorld) {
   const ctx = world.ctx;
   for (const bullet of world.enemyBullets) {
@@ -420,6 +444,7 @@ export function drawEnemyBullets(world: GameWorld) {
     ctx.arc(bullet.x, bullet.y, bullet.radius * 0.45, 0, TAU);
     ctx.fill();
     ctx.restore();
+    drawSlowFieldRing(world, bullet.x, bullet.y, bullet.radius);
   }
 }
 
@@ -427,6 +452,7 @@ export function drawShells(world: GameWorld) {
   const ctx = world.ctx;
   if (!world.shells.length) return;
   for (const shell of world.shells) {
+    drawSlowFieldRing(world, shell.x, shell.y, shell.radius + 2);
     // Target reticle stays at the aim point, so moving away visibly dodges it.
     const t = clamp(shell.traveled / Math.max(1, shell.total), 0, 1);
     ctx.save();
@@ -560,6 +586,8 @@ export function drawHomings(world: GameWorld) {
     ctx.arc(0, 0, missile.radius * 0.38, 0, TAU);
     ctx.fill();
     ctx.restore();
+
+    drawSlowFieldRing(world, missile.x, missile.y, missile.radius + 2);
 
     if (seeking) {
       // Dashed seeker ring spins only while the missile still has a lock.

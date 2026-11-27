@@ -186,6 +186,7 @@ export function drawPlayer(world: GameWorld) {
   ctx.arc(0, 0, 46, 0, TAU);
   ctx.fill();
 
+  drawSlowField(world, player);
   if (player.dashTime > 0) drawDashWake(world, player);
 
   if (player.invuln > 0) {
@@ -205,6 +206,66 @@ export function drawPlayer(world: GameWorld) {
   ctx.globalAlpha = blink ? 0.55 : 1;
   drawPlayerHull(world, player, pulse);
 
+  ctx.restore();
+}
+
+/**
+ * Slow-field aura: a violet ring that drifts around the hull, with a faint
+ * wash that thickens toward the rim. It brightens and grows inward ticks
+ * whenever something is actually crawling inside it.
+ */
+function drawSlowField(world: GameWorld, player: Player) {
+  const armor = armorOf(player.armor);
+  const field = armor.field;
+  if (!field) return;
+  const ctx = world.ctx;
+  const active = player.fieldCount > 0;
+  const time = world.ambientTime;
+  const breath = 0.5 + 0.5 * Math.sin(time * 1.7);
+  const alpha = (active ? 0.5 : 0.26) + breath * 0.1;
+
+  ctx.save();
+  const wash = ctx.createRadialGradient(0, 0, field.radius * 0.3, 0, 0, field.radius);
+  wash.addColorStop(0, withAlpha(armor.color, 0));
+  wash.addColorStop(0.7, withAlpha(armor.color, active ? 0.07 : 0.04));
+  wash.addColorStop(1, withAlpha(armor.color, active ? 0.2 : 0.11));
+  ctx.fillStyle = wash;
+  ctx.beginPath();
+  ctx.arc(0, 0, field.radius, 0, TAU);
+  ctx.fill();
+
+  // Counter-rotating dashed rings: a field, not a solid bubble.
+  ctx.strokeStyle = withAlpha(armor.color, alpha);
+  ctx.lineWidth = 1.3;
+  ctx.setLineDash([18, 22]);
+  ctx.lineDashOffset = -time * 26;
+  ctx.beginPath();
+  ctx.arc(0, 0, field.radius, 0, TAU);
+  ctx.stroke();
+
+  ctx.strokeStyle = withAlpha(armor.color, alpha * 0.45);
+  ctx.lineWidth = 1;
+  ctx.setLineDash([5, 11]);
+  ctx.lineDashOffset = time * 40;
+  ctx.beginPath();
+  ctx.arc(0, 0, field.radius - 10, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Inward ticks that only appear while the field is dragging something down.
+  if (active) {
+    ctx.strokeStyle = withAlpha('#e6e0ff', 0.5);
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const angle = time * 0.8 + (TAU * i) / 8;
+      const outer = field.radius - 2;
+      const inner = field.radius - 14;
+      ctx.moveTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+      ctx.lineTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+    }
+    ctx.stroke();
+  }
   ctx.restore();
 }
 

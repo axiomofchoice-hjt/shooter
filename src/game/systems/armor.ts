@@ -1,4 +1,4 @@
-/** Armor behaviours that live outside the hull: the orbiting deflector. */
+/** Armor behaviours that live outside the hull: the deflector and the slow field. */
 
 import { armorOf } from '../armors';
 import type { ArmorSpec } from '../armors';
@@ -134,4 +134,56 @@ function nearestThreat(world: GameWorld, range: number): Threat | null {
   consider('shell', world.shells);
   consider('homing', world.homings);
   return best;
+}
+
+/**
+ * Slow-field armor: nothing is erased, incoming fire just crawls. It scales
+ * the distance each hostile projectile actually travelled this frame, which
+ * covers bullets, lobbed shells and homing missiles alike — homings rebuild
+ * vx/vy from HOMING_SPEED every frame, so editing their velocity would be
+ * undone on the next tick. Projectiles are slowed while their centre is
+ * inside the ring and return to full speed once they leave it.
+ */
+export function updateSlowField(world: GameWorld) {
+  const player = world.player;
+  const field = armorOf(player.armor).field;
+  if (!field || player.dead) {
+    player.fieldCount = 0;
+    return;
+  }
+  const radiusSq = field.radius * field.radius;
+  const inside = (shot: { x: number; y: number }) => {
+    const dx = shot.x - player.x;
+    const dy = shot.y - player.y;
+    return dx * dx + dy * dy <= radiusSq;
+  };
+  // Returns how many px of motion the field took away, so the shell travel
+  // counter can stay honest.
+  const slow = (shot: { x: number; y: number; prevX: number; prevY: number }) => {
+    const mx = shot.x - shot.prevX;
+    const my = shot.y - shot.prevY;
+    shot.x = shot.prevX + mx * field.factor;
+    shot.y = shot.prevY + my * field.factor;
+    return Math.hypot(mx, my) * (1 - field.factor);
+  };
+
+  let count = 0;
+  for (const bullet of world.enemyBullets) {
+    if (!inside(bullet)) continue;
+    slow(bullet);
+    count += 1;
+  }
+  for (const shell of world.shells) {
+    if (!inside(shell)) continue;
+    // travelled decides when the shell bursts; keep it in step with the
+    // motion it actually made, or a slowed shell would split early.
+    shell.traveled = Math.max(0, shell.traveled - slow(shell));
+    count += 1;
+  }
+  for (const missile of world.homings) {
+    if (!inside(missile)) continue;
+    slow(missile);
+    count += 1;
+  }
+  player.fieldCount = count;
 }

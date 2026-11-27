@@ -32,6 +32,18 @@ export interface ArmorSpec {
     /** How far away the nearest bullet is still worth tracking. */
     scanRadius: number;
   };
+  /**
+   * Slow-field aura. It never erases anything: every hostile projectile
+   * inside the radius keeps only `factor` of its normal speed, so incoming
+   * fire crawls through the ring and gives the player time to step aside.
+   * The field is centred on the hull and moves with it.
+   */
+  field?: {
+    /** Radius of the aura, in world px. */
+    radius: number;
+    /** Speed a projectile keeps inside the field, as a 0..1 fraction. */
+    factor: number;
+  };
 }
 
 /**
@@ -69,9 +81,24 @@ export const ARMORS: Record<ArmorId, ArmorSpec> = {
       scanRadius: 320,
     },
   },
+  // No shield pool at all: the field only buys time. Melee enemies ignore it,
+  // so it trades raw defence for reaction time against shooters.
+  slowfield: {
+    id: 'slowfield',
+    name: '减速场装甲',
+    tag: 'SLOWFIELD',
+    color: '#b0a4ff',
+    shield: 0,
+    regenDelay: 0,
+    regenRate: 0,
+    field: {
+      radius: 150,
+      factor: 0.35,
+    },
+  },
 };
 
-export const ALL_ARMORS: ArmorId[] = ['shield', 'deflector'];
+export const ALL_ARMORS: ArmorId[] = ['shield', 'deflector', 'slowfield'];
 
 /** What a dungeon run wears. There is no armor cycle: one slot, one pick. */
 export const DUNGEON_ARMOR: ArmorId = 'shield';
