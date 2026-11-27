@@ -120,6 +120,35 @@ export interface WeaponSpec {
     /** Exponential speed decay constant, per second. */
     drag: number;
   };
+  /**
+   * Grinding dart: a straight, non-homing blade with no range cap. It flies at
+   * `fastSpeed` while it touches nothing, drops to `slowSpeed` the moment an
+   * enemy is caught in its cutting area, and deals `damage` once plus
+   * `tickDamage` every `tickInterval` for as long as the contact lasts. When it
+   * reaches a wall it stays embedded for `stickLife` seconds and keeps cutting
+   * anything that touches it there.
+   */
+  dart?: {
+    /** Flight speed in open space, in px/s. */
+    fastSpeed: number;
+    /** Speed while cutting into an enemy, in px/s. */
+    slowSpeed: number;
+    /** Blade spin while free and while cutting, in rad/s. */
+    spin: number;
+    grindSpin: number;
+    /**
+     * Cutting radius measured from the dart's centre, on top of the enemy's
+     * own radius. This is the "area" the blade covers. The blade is drawn at
+     * 0.72 of this value so the actual reach is a little forgiving.
+     */
+    bladeRadius: number;
+    /** Seconds between two grind ticks on everything touching the blade. */
+    tickInterval: number;
+    /** Damage of each grind tick. The first tick also carries `damage`. */
+    tickDamage: number;
+    /** Seconds the dart stays embedded after reaching a wall. */
+    stickLife: number;
+  };
   /** Projectile that detonates on an enemy or wall. */
   shock?: {
     /** Damage radius of the blast. */
@@ -311,6 +340,7 @@ export const ALL_WEAPONS: WeaponId[] = [
   'partner',
   'ram',
   'bubble',
+  'dart',
 ];
 
 /**
@@ -322,7 +352,7 @@ export const ALL_WEAPONS: WeaponId[] = [
  * it can be tried in the dungeon; when the player asks to carry only the first
  * gun again, trim the list back to ['pulse'].
  */
-export const DUNGEON_LOADOUT: WeaponId[] = ['pulse'];
+export const DUNGEON_LOADOUT: WeaponId[] = ['pulse', 'dart'];
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pulse: {
@@ -819,6 +849,35 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     pierce: 0,
     range: 240,
     bubble: { speedJitter: 0.18, angleJitter: 0.09, drag: 3.2 },
+  },
+  // Grinding dart: one straight blade with no lock and no range cap. It
+  // crosses the room at 1400px/s while it touches nothing, then crawls at
+  // 125px/s as soon as it bites, ticking damage into everything inside its
+  // 18px cutting area. Reaching a wall pins it there for 3.5s, so a thrown
+  // blade can keep chewing on whatever walks into it.
+  dart: {
+    id: 'dart',
+    name: '锯齿飞镖',
+    tag: 'DART',
+    color: '#d6ff3d',
+    damage: 12,
+    cooldown: 1.1,
+    speed: 1400,
+    radius: 12,
+    life: 12,
+    pellets: 1,
+    spread: 0,
+    pierce: 0,
+    dart: {
+      fastSpeed: 1400,
+      slowSpeed: 125,
+      spin: 17,
+      grindSpin: 4,
+      bladeRadius: 18,
+      tickInterval: 0.13,
+      tickDamage: 1.3,
+      stickLife: 3.5,
+    },
   },
 };
 

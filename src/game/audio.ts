@@ -16,6 +16,7 @@ type SoundName =
   | 'volley'
   | 'scatter'
   | 'rail'
+  | 'dart'
   | 'flame'
   | 'arc'
   | 'laser'
@@ -147,6 +148,11 @@ export class SoundFX {
         this.tone(1500, 120, 0.24, 'sawtooth', 0.12, 0);
         this.tone(78, 30, 0.4, 'sine', 0.16, 0);
         this.tone(940, 280, 0.14, 'square', 0.05, 0.02);
+        break;
+      case 'dart':
+        // Short metallic throw: a bright ping that drops away fast.
+        this.tone(1750, 640, 0.09, 'square', 0.06, 0);
+        this.tone(820, 240, 0.14, 'triangle', 0.045, 0.01);
         break;
       case 'flame':
         // Throttled hiss: the flamer asks every damage tick, but a puff ten

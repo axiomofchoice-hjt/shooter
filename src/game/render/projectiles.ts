@@ -9,6 +9,10 @@ export function drawBullets(world: GameWorld) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const bullet of world.bullets) {
+    if (bullet.dart) {
+      drawDart(world, bullet);
+      continue;
+    }
     if (bullet.missile || bullet.recycle) {
       drawMissile(world, bullet);
       continue;
@@ -53,6 +57,79 @@ export function drawBullets(world: GameWorld) {
       ctx.stroke();
     }
   }
+  ctx.restore();
+}
+
+/**
+ * Grinding dart: a four-blade shuriken inside its cutting ring. A free dart
+ * spins fast and draws a long streak; a cutting dart turns slowly and its
+ * ring glows; an embedded dart sits on the wall with a pulse.
+ */
+function drawDart(world: GameWorld, bullet: Bullet) {
+  const dart = bullet.dart;
+  if (!dart) return;
+  const ctx = world.ctx;
+  const speed = Math.hypot(bullet.vx, bullet.vy);
+  const angle = speed > 1 ? Math.atan2(bullet.vy, bullet.vx) : 0;
+  const fade = clamp(bullet.life / 0.3, 0, 1);
+  const hot = dart.cutting || dart.stuck;
+
+  if (speed > 120) {
+    const streak = 18 + Math.min(1, speed / 1400) * 66;
+    const tailX = bullet.x - Math.cos(angle) * streak;
+    const tailY = bullet.y - Math.sin(angle) * streak;
+    const grad = ctx.createLinearGradient(tailX, tailY, bullet.x, bullet.y);
+    grad.addColorStop(0, withAlpha(bullet.color, 0));
+    grad.addColorStop(1, withAlpha(bullet.color, 0.5 * fade));
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 3.4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    ctx.lineTo(bullet.x, bullet.y);
+    ctx.stroke();
+  }
+
+  ctx.save();
+  ctx.translate(bullet.x, bullet.y);
+
+  // Cutting area: a faint disc with a dashed ring, brighter while grinding.
+  const pulse = hot ? 0.5 + Math.sin(world.ambientTime * 18) * 0.5 : 0;
+  ctx.strokeStyle = withAlpha(bullet.color, (hot ? 0.5 : 0.24) + pulse * 0.2);
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([6, 7]);
+  ctx.lineDashOffset = -world.ambientTime * (hot ? 40 : 14);
+  ctx.beginPath();
+  ctx.arc(0, 0, dart.bladeRadius, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = withAlpha(bullet.color, 0.05 + (hot ? 0.05 : 0));
+  ctx.beginPath();
+  ctx.arc(0, 0, dart.bladeRadius, 0, TAU);
+  ctx.fill();
+
+  // Four-blade shuriken.
+  ctx.rotate(dart.spin);
+  const blade = dart.bladeRadius * 0.72;
+  ctx.fillStyle = hot ? '#ffffff' : bullet.color;
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * TAU;
+    const next = a + TAU / 8;
+    ctx.lineTo(Math.cos(a) * blade, Math.sin(a) * blade);
+    ctx.lineTo(Math.cos(next) * blade * 0.34, Math.sin(next) * blade * 0.34);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = withAlpha(bullet.color, 0.9);
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+
+  // Hub.
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(0, 0, 2.6, 0, TAU);
+  ctx.fill();
   ctx.restore();
 }
 

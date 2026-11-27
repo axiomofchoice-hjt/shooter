@@ -30,6 +30,10 @@ function updateBullet(world: GameWorld, bullet: Bullet, dt: number) {
   bullet.prevX = bullet.x;
   bullet.prevY = bullet.y;
 
+  // The grinding dart has its own movement and contact rules: normal bullets
+  // are consumed on first contact, while the dart is meant to linger.
+  if (bullet.dart) return updateDartBullet(world, bullet, dt);
+
   const missile = bullet.missile;
   const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
   const returning = bullet.recycle === true && bullet.returning === true;
@@ -95,6 +99,132 @@ function updateBullet(world: GameWorld, bullet: Bullet, dt: number) {
     detonateBlast(world, bullet.x, bullet.y, bullet.blast, bullet.color);
   }
   return leaving;
+}
+
+/**
+ * Grinding dart: flies straight at full speed until something gets in the
+ * blade's way. Contact with an enemy drops it to a crawl and starts a tick
+ * timer that damages everything still touching the blade; contact with a wall
+ * pins it there for its short stick life. The shot never leaves the room, and
+ * its long `life` is only a safety net for a dart that never hits anything.
+ */
+function updateDartBullet(world: GameWorld, bullet: Bullet, dt: number) {
+  const dart = bullet.dart;
+  if (!dart) return false;
+  // `bullet.life` is the safety net for a dart that never lands, and is
+  // shortened to the remaining stick time once the blade pins to a wall.
+  bullet.life -= dt;
+
+  const wall = wallContact(world, bullet);
+  if (wall && !dart.stuck) {
+    dart.stuck = true;
+    dart.stuckAge = 0;
+    bullet.vx = 0;
+    bullet.vy = 0;
+  }
+  if (dart.stuck) {
+    dart.stuckAge += dt;
+    // Fade the blade out over its last 0.3s so the pop is not abrupt.
+    bullet.life = Math.max(0, Math.min(bullet.life, dart.stickLife - dart.stuckAge));
+    if (dart.stuckAge >= dart.stickLife || bullet.life <= 0) {
+      spawnBurst(world, bullet.x, bullet.y, bullet.color, 8, 150, 0.3);
+      return true;
+    }
+  } else {
+    dart.cutting = bladeContacts(world, bullet);
+    // Keep crawling for a moment past the last contact, so a target that
+    // wiggles in and out of the blade does not make the dart stutter
+    // between full speed and a crawl.
+    if (dart.cutting) dart.hold = 0.2;
+    else dart.hold = Math.max(0, dart.hold - dt);
+    dart.speed = dart.hold > 0 ? dart.slowSpeed : dart.fastSpeed;
+  }
+
+  dart.spin += (dart.cutting ? dart.grindSpin : dart.freeSpin) * dt;
+  const speed = Math.hypot(bullet.vx, bullet.vy);
+  if (speed > 0.001) {
+    const scale = dart.speed / speed;
+    bullet.vx *= scale;
+    bullet.vy *= scale;
+  }
+  bullet.x += bullet.vx * dt;
+  bullet.y += bullet.vy * dt;
+
+  if (dart.stuck) {
+    // Clamp the centre inside the room so the blade sits half-buried in the
+    // wall instead of drifting along outside it.
+    const bounds = roomBounds(world);
+    bullet.x = clamp(bullet.x, bounds.left, bounds.right);
+    bullet.y = clamp(bullet.y, bounds.top, bounds.bottom);
+  }
+
+  // Grind ticks pay every enemy that is touching the blade right now, so a
+  // slow blade parked in a crowd damages the whole crowd.
+  if (dart.tick > 0) dart.tick -= dt;
+  if (dart.tick <= 0) {
+    dart.tick += dart.tickInterval;
+    let hit = false;
+    for (const enemy of world.enemies) {
+      if (enemy.dead) continue;
+      if (dist(bullet.x, bullet.y, enemy.x, enemy.y) >
+          enemy.radius + dart.bladeRadius) {
+        continue;
+      }
+      const first = !bullet.hitIds.includes(enemy.id);
+      if (first) bullet.hitIds.push(enemy.id);
+      damageEnemy(
+        world,
+        enemy,
+        dart.tickDamage + (first ? bullet.damage : 0),
+        bullet.x,
+        bullet.y,
+        true,
+      );
+      spawnBurst(world, bullet.x, bullet.y, bullet.color, 2, 90, 0.18);
+      hit = true;
+    }
+    if (hit) world.sfx.play('hit');
+  }
+  return false;
+}
+
+/**
+ * Blade sweep: returns true when any enemy is caught in the cutting area.
+ * The sweep is a segment-circle test from the previous position, so neither
+ * a fast dart nor a fast enemy can tunnel through the blade.
+ */
+function bladeContacts(world: GameWorld, bullet: Bullet) {
+  const dart = bullet.dart;
+  if (!dart) return false;
+  for (const enemy of world.enemies) {
+    if (enemy.dead) continue;
+    if (
+      segmentCircleHit(
+        bullet.prevX,
+        bullet.prevY,
+        bullet.x,
+        bullet.y,
+        enemy.x,
+        enemy.y,
+        enemy.radius + dart.bladeRadius,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True when the dart is overlapping a room wall. */
+function wallContact(world: GameWorld, bullet: Bullet) {
+  const bounds = roomBounds(world);
+  const r = Math.max(2, (bullet.dart?.bladeRadius ?? bullet.radius) * 0.5);
+  return (
+    bullet.x <= bounds.left + r ||
+    bullet.x >= bounds.right - r ||
+    bullet.y <= bounds.top + r ||
+    bullet.y >= bounds.bottom - r
+  );
 }
 
 /** Room-edge reactions: recall, shock burst, fission burst and ricochet. */

@@ -200,6 +200,36 @@ export interface Bullet {
     drag: number;
     seed: number;
   };
+  /**
+   * Grinding dart: the blade keeps a `tick` timer that pays `tickDamage` to
+   * every enemy touching its cutting area. It travels at `speed` — its launch
+   * speed while free, `slowSpeed` while `cutting`. Reaching a wall sets
+   * `stuck`, pins the dart and counts `life` down from `stickLife` instead of
+   * letting the shot leave the room.
+   */
+  dart?: {
+    slowSpeed: number;
+    tickInterval: number;
+    tickDamage: number;
+    bladeRadius: number;
+    /** Seconds until the next grind tick; starts partly charged. */
+    tick: number;
+    /** Blade rotation in radians, and its spin rate in rad/s. */
+    spin: number;
+    /** Current travel speed; also the speed it returns to after a cut. */
+    speed: number;
+    fastSpeed: number;
+    freeSpin: number;
+    grindSpin: number;
+    cutting: boolean;
+    /** Seconds the crawl is held after the last contact, so the blade does
+     * not snap back to full speed between two ticks of a moving target. */
+    hold: number;
+    stuck: boolean;
+    /** Seconds spent embedded in the wall. */
+    stuckAge: number;
+    stickLife: number;
+  };
 }
 
 export interface EnemyBullet {

@@ -38,6 +38,14 @@ export class ShooterGame {
     startRun(this.world, mode, config);
   }
 
+  /**
+   * Dev-only handle on the live world, for driving the game from the console
+   * or an automated browser check. Not part of the game API.
+   */
+  get debugWorld(): GameWorld | null {
+    return import.meta.env.DEV ? this.world : null;
+  }
+
   toMenu() {
     resetToMenu(this.world);
   }

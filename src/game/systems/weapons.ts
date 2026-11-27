@@ -45,9 +45,59 @@ function fireWeapon(world: GameWorld, weapon: WeaponSpec, offset: number) {
     spawnStormDart(world, weapon);
   } else if (weapon.chain) {
     fireArc(world, weapon);
+  } else if (weapon.dart) {
+    // A dart is a plain straight shot: no lead, no lock, no fan.
+    spawnDart(world, weapon, offset);
   } else {
     spawnStandardBullets(world, weapon, offset);
   }
+}
+
+/**
+ * Grinding dart: thrown straight down the aim heading. Its heading is fixed
+ * at launch and its life is only a safety net — the blade is meant to cross
+ * the whole room, slow down when it bites, and stay pinned to the first wall
+ * it reaches. Contact damage is resolved in `combat.ts`.
+ */
+function spawnDart(world: GameWorld, weapon: WeaponSpec, offset: number) {
+  const spec = weapon.dart;
+  if (!spec) return;
+  const player = world.player;
+  const angle = player.angle;
+  const x = player.x + Math.cos(angle) * offset;
+  const y = player.y + Math.sin(angle) * offset;
+  const speed = spec.fastSpeed;
+  world.bullets.push({
+    x,
+    y,
+    prevX: x,
+    prevY: y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    radius: weapon.radius,
+    damage: weapon.damage,
+    life: weapon.life,
+    color: weapon.color,
+    pierce: 0,
+    hitIds: [],
+    dart: {
+      slowSpeed: spec.slowSpeed,
+      tickInterval: spec.tickInterval,
+      tickDamage: spec.tickDamage,
+      bladeRadius: spec.bladeRadius,
+      tick: spec.tickInterval * 0.35,
+      spin: rand(0, TAU),
+      speed: spec.fastSpeed,
+      fastSpeed: spec.fastSpeed,
+      freeSpin: spec.spin,
+      grindSpin: spec.grindSpin,
+      cutting: false,
+      hold: 0,
+      stuck: false,
+      stuckAge: 0,
+      stickLife: spec.stickLife,
+    },
+  });
 }
 
 function spawnStandardBullets(
@@ -137,11 +187,13 @@ function spawnMuzzleParticles(
         ? 6
         : weapon.chain
           ? 8
-          : weapon.pellets > 1
-            ? 10
-            : weapon.id === 'rail'
-              ? 12
-              : 4;
+          : weapon.dart
+            ? 5
+            : weapon.pellets > 1
+              ? 10
+              : weapon.id === 'rail'
+                ? 12
+                : 4;
   for (let i = 0; i < muzzleCount; i++) {
     const spread = player.angle + Math.PI + rand(-0.6, 0.6);
     const velocity = rand(40, weapon.id === 'rail' ? 320 : 150);
@@ -174,6 +226,7 @@ function shotSound(weapon: WeaponSpec) {
   if (weapon.bomber) return 'airstrike';
   if (weapon.laser) return 'laser';
   if (weapon.storm || weapon.chain) return 'arc';
+  if (weapon.dart) return 'dart';
   if (weapon.id === 'rail') return 'rail';
   if (weapon.id === 'scatter') return 'scatter';
   return 'shoot';
