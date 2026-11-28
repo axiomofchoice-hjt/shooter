@@ -2,6 +2,7 @@
 
 import { withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';
+import { isArenaMode } from '../types';
 
 export function drawBanner(world: GameWorld) {
   const banner = world.banner;
@@ -12,7 +13,7 @@ export function drawBanner(world: GameWorld) {
   const alpha = Math.min(1, progress * 6, t * 2.2);
   const y =
     world.height *
-    (world.mode === 'boss'
+    (isArenaMode(world.mode)
       ? world.width < 620
         ? 0.38
         : 0.3

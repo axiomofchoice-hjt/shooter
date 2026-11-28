@@ -11,6 +11,7 @@ import {
 } from '../core/config';
 import { TAU, withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';
+import { isArenaMode } from '../types';
 import { isDoorOpen } from '../systems/world';
 import { glow, roomAccent, roomBaseColor } from './shared';
 
@@ -67,7 +68,7 @@ function roomTitleCn(room: number) {
 }
 
 function drawRoomLabel(world: GameWorld, room: number, accent: string) {
-  if (world.mode === 'boss') return;
+  if (isArenaMode(world.mode)) return;
   const ctx = world.ctx;
   const title = roomTitle(room);
   const cn = roomTitleCn(room);
@@ -114,7 +115,7 @@ export function drawFloor(world: GameWorld) {
   // No full-world backfill: the rooms and the wall strips between them cover
   // the world exactly, and repainting the whole dungeon every frame was a
   // wasted screen-sized fill.
-  const rooms = world.mode === 'boss' ? 1 : DUNGEON_ROOMS;
+  const rooms = isArenaMode(world.mode) ? 1 : DUNGEON_ROOMS;
   for (let room = 0; room < rooms; room++) {
     const roomLeft = room * ROOM_SIZE;
     const roomRight = roomLeft + ROOM_SIZE;
@@ -206,7 +207,7 @@ function drawRoomNumber(
   roomLeft: number,
   accent: string,
 ) {
-  if (world.mode === 'boss') return;
+  if (isArenaMode(world.mode)) return;
   const ctx = world.ctx;
   ctx.globalAlpha = 0.045;
   ctx.fillStyle = accent;

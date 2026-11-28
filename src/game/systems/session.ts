@@ -8,11 +8,11 @@ import {
 } from '../core/testRoom';
 import type { GameWorld } from '../core/world';
 import { warmArcStroke } from '../render/weapons';
-import type { GameMode, TestRoomConfig } from '../types';
+import { isArenaMode, type GameMode, type TestRoomConfig } from '../types';
 import { DUNGEON_ARMOR } from '../armors';
 import { DUNGEON_LOADOUT } from '../weapons';
 import { emitHud } from './hud';
-import { beginRun, beginTestRoom, resetWorld } from './rooms';
+import { beginBossRoom, beginRun, beginTestRoom, resetWorld } from './rooms';
 import { buildDecorations, updateZoom } from './world';
 
 // ---------------------------------------------------------------- public API
@@ -22,14 +22,16 @@ export function startRun(
   config?: TestRoomConfig,
 ) {
   world.mode = mode;
-  // The dungeon carries its loadout; the test room carries the weapons
-  // picked on the start screen. Neither list makes a weapon unavailable.
+  // The dungeon and the boss room carry the dungeon loadout; the test room
+  // carries the weapons picked on the start screen. Neither list makes a
+  // weapon unavailable.
   world.weaponPool =
-    mode === 'boss' ? pickTestWeapons(config?.weapons) : DUNGEON_LOADOUT;
-  world.testEnemies = mode === 'boss' ? pickTestEnemies(config?.enemies) : ['grunt'];
-  world.armor = mode === 'boss' ? pickTestArmor(config?.armor) : DUNGEON_ARMOR;
-  world.worldW = mode === 'boss' ? BOSS_SIZE : DUNGEON_WIDTH;
-  world.worldH = mode === 'boss' ? BOSS_SIZE : ROOM_SIZE;
+    mode === 'test' ? pickTestWeapons(config?.weapons) : DUNGEON_LOADOUT;
+  world.testEnemies = mode === 'test' ? pickTestEnemies(config?.enemies) : ['grunt'];
+  world.armor = mode === 'test' ? pickTestArmor(config?.armor) : DUNGEON_ARMOR;
+  const arena = isArenaMode(mode);
+  world.worldW = arena ? BOSS_SIZE : DUNGEON_WIDTH;
+  world.worldH = arena ? BOSS_SIZE : ROOM_SIZE;
   updateZoom(world);
   buildDecorations(world);
   world.sfx.unlock();
@@ -37,8 +39,10 @@ export function startRun(
   if (world.weaponPool.includes('arc')) warmArcStroke(world);
   world.phase = 'playing';
   world.paused = false;
-  if (mode === 'boss') {
+  if (mode === 'test') {
     beginTestRoom(world);
+  } else if (mode === 'boss') {
+    beginBossRoom(world);
   } else {
     beginRun(world);
   }

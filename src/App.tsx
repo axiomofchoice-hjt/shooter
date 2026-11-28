@@ -102,14 +102,23 @@ export default function App() {
     commitPhase('playing');
   }, [commitPhase]);
 
-  const startBossGame = useCallback(() => {
+  const startTestGame = useCallback(() => {
     if (phaseRef.current === 'playing' || phaseRef.current === 'paused') return;
     setStats(null);
     setVictory(false);
     setTestSetupOpen(false);
-    gameRef.current?.start('boss', testConfig);
+    gameRef.current?.start('test', testConfig);
     commitPhase('playing');
   }, [commitPhase, testConfig]);
+
+  const startBossRoom = useCallback(() => {
+    if (phaseRef.current === 'playing' || phaseRef.current === 'paused') return;
+    setStats(null);
+    setVictory(false);
+    setTestSetupOpen(false);
+    gameRef.current?.start('boss');
+    commitPhase('playing');
+  }, [commitPhase]);
 
   const openTestSetup = useCallback(() => {
     if (phaseRef.current !== 'menu') return;
@@ -158,9 +167,10 @@ export default function App() {
   }, []);
 
   const retryGame = useCallback(() => {
-    if (stats?.mode === 'boss') startBossGame();
+    if (stats?.mode === 'test') startTestGame();
+    else if (stats?.mode === 'boss') startBossRoom();
     else startGame();
-  }, [stats, startBossGame, startGame]);
+  }, [stats, startBossRoom, startTestGame, startGame]);
 
   const resumeGame = useCallback(() => {
     if (phaseRef.current !== 'paused') return;
@@ -327,18 +337,18 @@ export default function App() {
       }
 
       if (testSetupOpen) {
-        if (event.code === 'Escape') {
+        if (event.code === 'Escape' || event.code === 'KeyB') {
           event.preventDefault();
           closeTestSetup();
           return;
         }
-        if (event.code === 'Enter' || event.code === 'KeyB') {
+        if (event.code === 'Enter') {
           // A focused chip handles Enter itself; everything else confirms.
           const onControl =
             event.target instanceof Element && event.target.closest('button');
           if (!onControl) {
             event.preventDefault();
-            startBossGame();
+            startTestGame();
           }
           return;
         }
@@ -350,9 +360,15 @@ export default function App() {
         return;
       }
 
-      if (event.code === 'KeyB' && phaseRef.current === 'menu') {
+      if (event.code === 'KeyT' && phaseRef.current === 'menu') {
         event.preventDefault();
         openTestSetup();
+        return;
+      }
+
+      if (event.code === 'KeyB' && phaseRef.current === 'menu') {
+        event.preventDefault();
+        startBossRoom();
         return;
       }
 
@@ -383,7 +399,7 @@ export default function App() {
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
     };
-  }, [closeTestSetup, openTestSetup, retryGame, startBossGame, startGame, testSetupOpen, togglePause]);
+  }, [closeTestSetup, openTestSetup, retryGame, startTestGame, startBossRoom, startGame, testSetupOpen, togglePause]);
 
   useEffect(() => {
     let raf = 0;
@@ -415,7 +431,7 @@ export default function App() {
           pad.pressed.has(PAD_BUTTON.pause) ||
           pad.pressed.has(PAD_BUTTON.dodge)
         ) {
-          startBossGame();
+          startTestGame();
         }
         raf = requestAnimationFrame(tick);
         return;
@@ -431,8 +447,11 @@ export default function App() {
         else if (phase === 'paused') resumeGame();
         else if (phase === 'gameover') retryGame();
       }
+      if (pad.pressed.has(PAD_BUTTON.testRoom) && phase === 'menu') {
+        openTestSetup();
+      }
       if (pad.pressed.has(PAD_BUTTON.back)) {
-        if (phase === 'menu') openTestSetup();
+        if (phase === 'menu') startBossRoom();
         else if (phase === 'paused' || phase === 'gameover') returnToMenu();
       }
 
@@ -447,7 +466,8 @@ export default function App() {
     retryGame,
     resumeGame,
     returnToMenu,
-    startBossGame,
+    startBossRoom,
+    startTestGame,
     startGame,
     testSetupOpen,
     togglePause,
@@ -505,6 +525,7 @@ export default function App() {
           onToggleFullscreen={toggleFullscreen}
           onStart={startGame}
           onOpenTest={openTestSetup}
+          onStartBoss={startBossRoom}
         />
       )}
 
@@ -514,7 +535,7 @@ export default function App() {
           onToggleWeapon={toggleTestWeapon}
           onToggleEnemy={toggleTestEnemy}
           onSelectArmor={selectTestArmor}
-          onStart={startBossGame}
+          onStart={startTestGame}
           onClose={closeTestSetup}
         />
       )}

@@ -36,9 +36,10 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
         ? `MAX +${hud.maxHpBonus}`
         : '待机';
   const multiplier = 1 + Math.min(20, Math.max(0, hud.combo - 1)) * 0.1;
-  const isTest = hud.mode === 'boss';
+  const isTest = hud.mode === 'test';
+  const isBoss = hud.mode === 'boss';
   const weapon = WEAPONS[hud.weapon];
-  const bossDown = isTest && hud.bossMaxHp > 0 && hud.bossHp <= 0;
+  const bossDown = hud.bossMaxHp > 0 && hud.bossHp <= 0;
   const bossPercent =
     hud.bossMaxHp > 0
       ? Math.max(0, Math.min(100, (hud.bossHp / hud.bossMaxHp) * 100))
@@ -70,6 +71,33 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
             .map((entry) => `${ENEMY_LABELS[entry.kind]} ${entry.count}`)
             .join(' · ')
         : `敌人 ${testTotal} · ${ENEMY_LABELS[hud.testRoster[0].kind]} ${hud.testRoster[0].count} 等 ${hud.testRoster.length} 种`;
+
+  const bossStatus = bossDown
+    ? '压制核心已沉默'
+    : `压制核心 · 第 ${hud.bossPhase} 阶段`;
+
+  // The badge doubles as a mode readout: TEST shows the wave, BOSS the phase,
+  // the dungeon the floor plus the room pips.
+  const waveLabel = isTest ? 'TEST' : isBoss ? 'BOSS' : 'FLOOR';
+  const waveValue = isTest
+    ? String(hud.wave).padStart(2, '0')
+    : isBoss
+      ? `P${hud.bossPhase}`
+      : String(hud.floor).padStart(2, '0');
+  const waveStatus = isTest ? testStatus : isBoss ? bossStatus : status;
+  const waveStatusTone = isTest
+    ? hud.enemiesRemaining > 0
+      ? 'danger'
+      : 'waiting'
+    : isBoss
+      ? bossDown
+        ? 'waiting'
+        : 'danger'
+      : hud.encounterActive
+        ? 'danger'
+        : hud.roomKind === 'portal' && hud.portalActive
+          ? 'waiting'
+          : '';
 
   return (
     <>
@@ -122,29 +150,11 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
           </div>
         </div>
 
-        <div className={`wave-badge ${isTest ? 'is-test' : 'is-dungeon'}`}>
-          <span className="wave-label">{isTest ? 'TEST' : 'FLOOR'}</span>
-          <strong>
-            {isTest
-              ? String(hud.wave).padStart(2, '0')
-              : String(hud.floor).padStart(2, '0')}
-          </strong>
-          <span
-            className={`wave-status ${
-              isTest
-                ? hud.enemiesRemaining > 0
-                  ? 'danger'
-                  : 'waiting'
-                : hud.encounterActive
-                  ? 'danger'
-                  : hud.roomKind === 'portal' && hud.portalActive
-                    ? 'waiting'
-                    : ''
-            }`}
-          >
-            {isTest ? testStatus : status}
-          </span>
-          {!isTest && (
+        <div className={`wave-badge ${isTest ? 'is-test' : isBoss ? 'is-boss' : 'is-dungeon'}`}>
+          <span className="wave-label">{waveLabel}</span>
+          <strong>{waveValue}</strong>
+          <span className={`wave-status ${waveStatusTone}`}>{waveStatus}</span>
+          {!isTest && !isBoss && (
             <span className="room-pips" aria-hidden="true">
               {[1, 2, 3].map((room) => (
                 <i
@@ -198,7 +208,7 @@ export function Hud({ hud, onPause, onMute }: HudProps) {
         </div>
       </div>
 
-      {isTest && hud.bossMaxHp > 0 && (
+      {hud.bossMaxHp > 0 && (
         <div className={`boss-hud ${bossDown ? 'is-down' : ''}`}>
           <div className="boss-hud-head">
             <span className="boss-name">

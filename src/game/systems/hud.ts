@@ -15,7 +15,7 @@ export function emitHud(world: GameWorld, force = false) {
   // Test-room roster: one pass over the live enemies, then read the counts in
   // the configured order so the HUD names exactly what the player picked.
   const testRoster: { kind: TestEnemyKind; count: number }[] = [];
-  if (world.mode === 'boss') {
+  if (world.mode === 'test') {
     const counts = new Map<EnemyKind, number>();
     for (const enemy of world.enemies) {
       if (enemy.dead || enemy.kind === 'boss') continue;

@@ -55,7 +55,7 @@ export function update(world: GameWorld, dt: number) {
   updateSlowField(world);
   updatePickups(world, dt);
   if (world.mode === 'dungeon') updateDungeon(world, dt);
-  else updateTestRoom(world, dt);
+  else if (world.mode === 'test') updateTestRoom(world, dt);
   updateFx(world, dt);
   updateCamera(world, dt);
 

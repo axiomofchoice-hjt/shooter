@@ -1,18 +1,20 @@
 /** Cached glow and room palette helpers. */
 
-import { DUNGEON_ROOMS, TEST_COLOR } from '../core/config';
+import { BOSS_COLOR, DUNGEON_ROOMS, TEST_COLOR } from '../core/config';
 import { withAlpha } from '../core/math';
 import type { GameWorld } from '../core/world';
 
 export function roomAccent(world: GameWorld, room: number) {
-  if (world.mode === 'boss') return TEST_COLOR;
+  if (world.mode === 'test') return TEST_COLOR;
+  if (world.mode === 'boss') return BOSS_COLOR;
   if (room === 0) return '#5ff6ff';
   if (room === DUNGEON_ROOMS - 1) return '#c08bff';
   return world.roomCleared[room] ? '#7dff9b' : '#ff5f7d';
 }
 
 export function roomBaseColor(world: GameWorld, room: number) {
-  if (world.mode === 'boss') return '#140e07';
+  if (world.mode === 'test') return '#140e07';
+  if (world.mode === 'boss') return '#12060d';
   if (room === 0) return '#071119';
   if (room === DUNGEON_ROOMS - 1) return '#0c0817';
   return world.roomCleared[room] ? '#08140f' : '#0c0c17';

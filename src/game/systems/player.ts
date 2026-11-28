@@ -17,6 +17,7 @@ import {
 import type { Enemy, Player } from '../core/entities';
 import { angleDelta, clamp, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
+import { isArenaMode } from '../types';
 import { armorOf } from '../armors';
 import { WEAPONS, nextWeapon, previousWeapon } from '../weapons';
 import { updateArmor } from './armor';
@@ -93,7 +94,7 @@ function confinePlayer(world: GameWorld) {
   const bounds = roomBounds(world);
   player.y = clamp(player.y, bounds.top + 24, bounds.bottom - 24);
 
-  if (world.mode === 'boss') {
+  if (isArenaMode(world.mode)) {
     player.x = clamp(player.x, bounds.left + 24, bounds.right - 24);
     return;
   }

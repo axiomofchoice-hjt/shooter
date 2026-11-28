@@ -1,6 +1,8 @@
-/** Dungeon rooms, encounters, portal and test-room waves. */
+/** Dungeon rooms, encounters, portal, test-room waves and the boss room. */
 
 import {
+  BOSS_COLOR,
+  BOSS_HP,
   CLEAR_HEAL,
   DUNGEON_ROOMS,
   FLOOR_HEAL,
@@ -18,7 +20,7 @@ import type { Player } from '../core/entities';
 import { TAU, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
 import type { EnemyKind } from '../types';
-import { ENEMY_LABELS } from '../types';
+import { ENEMY_LABELS, isArenaMode } from '../types';
 import { spawnBurst } from './fx';
 import { clearFunnels } from './funnels';
 import { emitHud } from './hud';
@@ -46,8 +48,9 @@ export function resetWorld(world: GameWorld) {
 
 function createPlayer(world: GameWorld): Player {
   const armor = armorOf(world.armor);
+  const arena = isArenaMode(world.mode);
   return {
-    x: world.mode === 'boss' ? world.worldW / 2 : ROOM_SIZE / 2,
+    x: arena ? world.worldW / 2 : ROOM_SIZE / 2,
     y: world.worldH / 2,
     vx: 0,
     vy: 0,
@@ -79,7 +82,7 @@ function createPlayer(world: GameWorld): Player {
     dashTime: 0,
     dashDirX: 0,
     dashDirY: 0,
-    weapon: world.mode === 'boss' ? (world.weaponPool[0] ?? 'pulse') : 'pulse',
+    weapon: arena ? (world.weaponPool[0] ?? 'pulse') : 'pulse',
     dead: false,
   };
 }
@@ -151,6 +154,34 @@ function resetRunState(world: GameWorld) {
   world.dodgeCooldown = 0;
   world.bomberCooldown = 0;
   world.flameTick = 0;
+}
+
+export function beginBossRoom(world: GameWorld) {
+  world.spawnQueue = [];
+  world.spawnTimer = 0;
+  world.bossWindup = 0;
+  world.bossAttackKind = 'radial';
+
+  // Same opening as the original boss arena: the core waits just off centre
+  // and gives the player a moment before its first attack.
+  const x = world.worldW / 2 + 250;
+  const y = world.worldH / 2;
+  spawnEnemy(world, 'boss', x, y);
+  const boss = world.enemies[world.enemies.length - 1];
+  boss.hp = boss.maxHp = BOSS_HP;
+  boss.attackTimer = 2.2;
+  world.boss = boss;
+
+  world.banner = {
+    title: 'BOSS',
+    sub: '压制核心 · 击破威胁',
+    time: 2.2,
+    duration: 2.2,
+    color: BOSS_COLOR,
+  };
+  world.sfx.play('bossIntro');
+  spawnBurst(world, x, y, BOSS_COLOR, 40, 320, 0.9);
+  emitHud(world, true);
 }
 
 export function beginTestRoom(world: GameWorld) {

@@ -131,6 +131,28 @@ export function BossIcon() {
   );
 }
 
+export function TestIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M9 3h6M10 3v6.4L4.9 18a2.2 2.2 0 0 0 1.9 3.2h10.4a2.2 2.2 0 0 0 1.9-3.2L14 9.4V3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.5 14.6h9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function DashIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">

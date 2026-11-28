@@ -12,6 +12,7 @@ import {
 import type { Enemy, FloorMark } from '../core/entities';
 import { TAU, clamp, dist, rand } from '../core/math';
 import type { GameWorld } from '../core/world';
+import { isArenaMode } from '../types';
 
 export function resetCameraBias(world: GameWorld) {
   world.cameraBiasX = 0;
@@ -98,7 +99,7 @@ export function updateCamera(world: GameWorld, dt: number) {
 }
 
 export function updateZoom(world: GameWorld) {
-  const maxZoom = world.mode === 'boss' ? 1.08 : VIEW_MAX_ZOOM;
+  const maxZoom = isArenaMode(world.mode) ? 1.08 : VIEW_MAX_ZOOM;
   // Height sets the scale (same slice of world everywhere), the width term
   // keeps the whole room on screen on narrower viewports.
   world.zoom = clamp(
@@ -256,7 +257,8 @@ export function resize(world: GameWorld) {
 
 export function buildDecorations(world: GameWorld) {
   world.decorations = [];
-  const debris = world.mode === 'boss' ? 90 : 160;
+  const arena = isArenaMode(world.mode);
+  const debris = arena ? 90 : 160;
   for (let i = 0; i < debris; i++) {
     world.decorations.push({
       x: rand(70, world.worldW - 70),
@@ -269,7 +271,7 @@ export function buildDecorations(world: GameWorld) {
 
   world.floorMarks = [];
   const kinds: FloorMark['kind'][] = ['ring', 'cross', 'diamond'];
-  const rooms = world.mode === 'boss' ? 1 : DUNGEON_ROOMS;
+  const rooms = arena ? 1 : DUNGEON_ROOMS;
   for (let room = 0; room < rooms; room++) {
     for (let i = 0; i < 9; i++) {
       world.floorMarks.push({

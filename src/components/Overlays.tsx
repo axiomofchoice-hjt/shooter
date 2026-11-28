@@ -17,6 +17,7 @@ import {
   FullscreenIcon,
   KeyboardIcon,
   PlayIcon,
+  TestIcon,
   TouchIcon,
 } from './Icons';
 
@@ -29,6 +30,7 @@ interface StartScreenProps {
   onToggleFullscreen: () => void;
   onStart: () => void;
   onOpenTest: () => void;
+  onStartBoss: () => void;
 }
 
 export function StartScreen({
@@ -40,6 +42,7 @@ export function StartScreen({
   onToggleFullscreen,
   onStart,
   onOpenTest,
+  onStartBoss,
 }: StartScreenProps) {
   return (
     <div className="overlay menu-overlay">
@@ -74,7 +77,8 @@ export function StartScreen({
             <p className="hero-kicker">地牢 · 房间推进</p>
             <h1 className="menu-title">SHOOTER</h1>
             <p className="hero-lead">
-              禁区信号失控。从起始房出发，清空三个战斗房，踏入最右侧的传送门继续下潜。
+              禁区信号失控。从起始房出发，清空三个战斗房，踏入最右侧的传送门继续下潜；
+              也可以直接进入 BOSS 房单挑压制核心。
             </p>
 
             <button
@@ -99,20 +103,40 @@ export function StartScreen({
             <button
               type="button"
               tabIndex={-1}
-              className="boss-button"
+              className="mode-button test-button"
               onClick={onOpenTest}
               title="测试房设置（选择武器与敌人）"
             >
-              <span className="boss-button-icon">
-                <BossIcon />
+              <span className="mode-button-icon">
+                <TestIcon />
               </span>
-              <span className="boss-button-copy">
+              <span className="mode-button-copy">
                 <strong>进入测试房</strong>
                 <small>
                   TEST ROOM · 已选 {testWeaponCount} 把武器 / {testEnemyCount} 种敌人
                 </small>
               </span>
-              <span className="boss-button-key">
+              <span className="mode-button-key">
+                {isTouch ? 'TAP' : 'T'}
+                <ArrowIcon />
+              </span>
+            </button>
+
+            <button
+              type="button"
+              tabIndex={-1}
+              className="mode-button boss-button"
+              onClick={onStartBoss}
+              title="直接进入 BOSS 房，单挑压制核心"
+            >
+              <span className="mode-button-icon">
+                <BossIcon />
+              </span>
+              <span className="mode-button-copy">
+                <strong>进入 BOSS 房</strong>
+                <small>BOSS ARENA · 单房间决战</small>
+              </span>
+              <span className="mode-button-key">
                 {isTouch ? 'TAP' : 'B'}
                 <ArrowIcon />
               </span>
@@ -208,14 +232,14 @@ export function StartScreen({
             <div className="feature-tags">
               <span>地牢楼层</span>
               <span>3 个战斗房</span>
-              <span>传送门</span>
+              <span>BOSS 房</span>
             </div>
           </aside>
         </div>
 
         <footer className="menu-footer">
           <span>SECTOR 07 · SIGNAL LOST</span>
-          <span>WASD 移动 &nbsp;·&nbsp; J 开火 &nbsp;·&nbsp; L 闪避 &nbsp;·&nbsp; TAB 换武器 &nbsp;·&nbsp; B 测试房</span>
+          <span>WASD 移动 &nbsp;·&nbsp; J 开火 &nbsp;·&nbsp; L 闪避 &nbsp;·&nbsp; TAB 换武器 &nbsp;·&nbsp; T 测试房 &nbsp;·&nbsp; B BOSS 房</span>
         </footer>
       </main>
     </div>
@@ -432,14 +456,29 @@ export function GameOverOverlay({
           : stats.score >= 500
             ? 'C'
             : 'D';
-  const isTest = stats.mode === 'boss';
-  const eyebrow = victory ? 'THREAT NEUTRALIZED' : isTest ? 'TEST RUN OVER' : 'RUN TERMINATED';
-  const title = victory ? 'BOSS 已击破' : isTest ? '测试结束' : '探索终止';
+  const isTest = stats.mode === 'test';
+  const isBoss = stats.mode === 'boss';
+  const eyebrow = victory
+    ? 'THREAT NEUTRALIZED'
+    : isTest
+      ? 'TEST RUN OVER'
+      : isBoss
+        ? 'THREAT PERSISTS'
+        : 'RUN TERMINATED';
+  const title = victory
+    ? 'BOSS 已击破'
+    : isTest
+      ? '测试结束'
+      : isBoss
+        ? '挑战失败'
+        : '探索终止';
   const copy = victory
     ? '压制核心沉默，小房间里的威胁暂时清空。'
     : isTest
       ? `你倒在第 ${stats.wave} 波。追踪弹只在锁定期内咬人，锁一松就只走直线。`
-      : `你倒在了第 ${stats.floor} 层，传送门还在更深处。`;
+      : isBoss
+        ? '压制核心仍在运转。看清前摇，绕着它的弹幕再试一次。'
+        : `你倒在了第 ${stats.floor} 层，传送门还在更深处。`;
 
   return (
     <div className={`overlay modal-overlay ${victory ? 'is-victory' : ''}`}>
@@ -463,11 +502,13 @@ export function GameOverOverlay({
             <strong>{String(stats.score).padStart(6, '0')}</strong>
           </div>
           <div className="stat-block">
-            <span>{isTest ? '测试波次' : '抵达楼层'}</span>
+            <span>{isTest ? '测试波次' : isBoss ? '挑战目标' : '抵达楼层'}</span>
             <strong>
               {isTest
                 ? `WAVE ${String(stats.wave).padStart(2, '0')}`
-                : `FLOOR ${String(stats.floor).padStart(2, '0')}`}
+                : isBoss
+                  ? 'BOSS'
+                  : `FLOOR ${String(stats.floor).padStart(2, '0')}`}
             </strong>
           </div>
           <div className="stat-block">
@@ -488,7 +529,7 @@ export function GameOverOverlay({
             onClick={onRetry}
           >
             <PlayIcon />
-            {isTest ? (victory ? '再测一次' : '再来一轮') : '再次下潜'}
+            {isTest ? '再来一轮' : isBoss ? '再战 BOSS' : '再次下潜'}
           </button>
           <button type="button" tabIndex={-1} className="ghost-button" onClick={onMenu}>
             返回主界面

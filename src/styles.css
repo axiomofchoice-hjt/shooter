@@ -1114,7 +1114,8 @@ svg {
   color: var(--cyan);
 }
 
-.boss-button {
+/* Secondary start-screen buttons: shared layout, per-mode palette. */
+.mode-button {
   position: relative;
   display: flex;
   align-items: center;
@@ -1124,9 +1125,9 @@ svg {
   margin-top: 9px;
   padding: 8px 13px 8px 11px;
   text-align: left;
-  color: #ffe6eb;
-  background: linear-gradient(100deg, rgba(255, 56, 96, 0.15), rgba(255, 56, 96, 0.025));
-  border: 1px solid rgba(255, 77, 125, 0.48);
+  color: var(--mode-title);
+  background: linear-gradient(100deg, rgba(var(--mode-rgb), 0.15), rgba(var(--mode-rgb), 0.025));
+  border: 1px solid rgba(var(--mode-rgb), 0.48);
   cursor: pointer;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
   overflow: hidden;
@@ -1138,64 +1139,90 @@ svg {
     transform 0.12s ease;
 }
 
-.boss-button::before {
+.boss-button {
+  --mode-rgb: 255, 56, 96;
+  --mode-accent: var(--pink);
+  --mode-title: #ffe6eb;
+  --mode-icon: #ff8aa3;
+  --mode-copy: rgba(255, 176, 193, 0.64);
+  --mode-key: rgba(255, 200, 210, 0.66);
+  --mode-icon-border: rgba(255, 77, 125, 0.32);
+  --mode-icon-bg: rgba(255, 77, 125, 0.08);
+  --mode-hover-border: rgba(255, 150, 174, 0.85);
+  --mode-hover-glow: rgba(255, 56, 96, 0.13);
+}
+
+.test-button {
+  --mode-rgb: 255, 159, 67;
+  --mode-accent: #ff9f43;
+  --mode-title: #fff0dd;
+  --mode-icon: #ffc35f;
+  --mode-copy: rgba(255, 205, 150, 0.66);
+  --mode-key: rgba(255, 220, 180, 0.68);
+  --mode-icon-border: rgba(255, 159, 67, 0.34);
+  --mode-icon-bg: rgba(255, 159, 67, 0.09);
+  --mode-hover-border: rgba(255, 200, 120, 0.85);
+  --mode-hover-glow: rgba(255, 159, 67, 0.13);
+}
+
+.mode-button::before {
   content: "";
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
   width: 3px;
-  background: var(--pink);
-  box-shadow: 0 0 16px var(--pink);
+  background: var(--mode-accent);
+  box-shadow: 0 0 16px var(--mode-accent);
 }
 
-.boss-button:hover {
-  background: linear-gradient(100deg, rgba(255, 56, 96, 0.24), rgba(255, 56, 96, 0.05));
-  border-color: rgba(255, 150, 174, 0.85);
-  box-shadow: 0 0 30px rgba(255, 56, 96, 0.13);
+.mode-button:hover {
+  background: linear-gradient(100deg, rgba(var(--mode-rgb), 0.24), rgba(var(--mode-rgb), 0.05));
+  border-color: var(--mode-hover-border);
+  box-shadow: 0 0 30px var(--mode-hover-glow);
 }
 
-.boss-button:active {
+.mode-button:active {
   transform: scale(0.987);
 }
 
-.boss-button-icon {
+.mode-button-icon {
   flex-shrink: 0;
   width: 34px;
   height: 34px;
   display: grid;
   place-items: center;
-  color: #ff8aa3;
-  border: 1px solid rgba(255, 77, 125, 0.32);
-  background: rgba(255, 77, 125, 0.08);
+  color: var(--mode-icon);
+  border: 1px solid var(--mode-icon-border);
+  background: var(--mode-icon-bg);
 }
 
-.boss-button-icon svg {
+.mode-button-icon svg {
   width: 18px;
   height: 18px;
 }
 
-.boss-button-copy {
+.mode-button-copy {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
 }
 
-.boss-button-copy strong {
+.mode-button-copy strong {
   font-size: 13px;
   font-weight: 650;
   letter-spacing: 0.09em;
 }
 
-.boss-button-copy small {
+.mode-button-copy small {
   font-family: var(--mono);
   font-size: 8px;
   letter-spacing: 0.12em;
-  color: rgba(255, 176, 193, 0.64);
+  color: var(--mode-copy);
 }
 
-.boss-button-key {
+.mode-button-key {
   margin-left: auto;
   display: flex;
   align-items: center;
@@ -1203,13 +1230,13 @@ svg {
   font-family: var(--mono);
   font-size: 8px;
   letter-spacing: 0.12em;
-  color: rgba(255, 200, 210, 0.66);
+  color: var(--mode-key);
 }
 
-.boss-button-key svg {
+.mode-button-key svg {
   width: 14px;
   height: 14px;
-  color: var(--pink);
+  color: var(--mode-accent);
 }
 
 .hero-note {
@@ -2245,18 +2272,18 @@ kbd.accent,
     width: 100%;
   }
 
-  .boss-button {
+  .mode-button {
     margin-top: 7px;
     width: 100%;
     padding-top: 7px;
     padding-bottom: 7px;
   }
 
-  .boss-button-copy strong {
+  .mode-button-copy strong {
     font-size: 12px;
   }
 
-  .boss-button-icon {
+  .mode-button-icon {
     width: 30px;
     height: 30px;
   }
@@ -2547,18 +2574,18 @@ kbd.accent,
     height: 36px;
   }
 
-  .boss-button {
+  .mode-button {
     margin-top: 6px;
     padding-top: 5px;
     padding-bottom: 5px;
   }
 
-  .boss-button-icon {
+  .mode-button-icon {
     width: 27px;
     height: 27px;
   }
 
-  .boss-button-copy small {
+  .mode-button-copy small {
     display: none;
   }
 

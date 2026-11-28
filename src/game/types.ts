@@ -1,4 +1,9 @@
-export type GameMode = 'dungeon' | 'boss';
+export type GameMode = 'dungeon' | 'test' | 'boss';
+
+/** The test room and the boss room both run in the single-room arena. */
+export function isArenaMode(mode: GameMode) {
+  return mode !== 'dungeon';
+}
 
 export type EnemyKind =
   | 'grunt'
