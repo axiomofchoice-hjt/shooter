@@ -104,6 +104,8 @@ export default function App() {
 
   const startTestGame = useCallback(() => {
     if (phaseRef.current === 'playing' || phaseRef.current === 'paused') return;
+    // The picker may be left completely empty; starting needs one of each.
+    if (testConfig.weapons.length === 0 || testConfig.enemies.length === 0) return;
     setStats(null);
     setVictory(false);
     setTestSetupOpen(false);
@@ -132,8 +134,6 @@ export default function App() {
   const toggleTestWeapon = useCallback((id: WeaponId) => {
     setTestConfig((prev) => {
       if (prev.weapons.includes(id)) {
-        // Keep at least one gun in the loadout.
-        if (prev.weapons.length === 1) return prev;
         return { ...prev, weapons: prev.weapons.filter((weapon) => weapon !== id) };
       }
       return {
@@ -154,7 +154,6 @@ export default function App() {
   const toggleTestEnemy = useCallback((kind: TestEnemyKind) => {
     setTestConfig((prev) => {
       if (prev.enemies.includes(kind)) {
-        if (prev.enemies.length === 1) return prev;
         return { ...prev, enemies: prev.enemies.filter((enemy) => enemy !== kind) };
       }
       return {

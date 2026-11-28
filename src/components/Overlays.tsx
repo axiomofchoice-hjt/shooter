@@ -276,8 +276,8 @@ export function TestRoomSetup({
           测试房设置
         </h2>
         <p className="modal-copy">
-          勾选要带进测试房的武器和要刷新的敌人；清空一波后 1.6 秒自动续波。
-          所有武器都在这里，勾上就会带进去；装甲只有一个槽位，只能选一件。
+          勾选要带进测试房的武器和要刷新的敌人；可以全部取消，但各至少选一项才能开始。
+          清空一波后 1.6 秒自动续波；装甲只有一个槽位，只能选一件。
         </p>
 
         <div className="setup-group">
@@ -385,7 +385,7 @@ export function TestRoomSetup({
           </button>
         </div>
         <span className="modal-hint">
-          Enter / B 开始 · Esc 返回 · 手柄 A 开始 / B 返回 · 至少各选一项
+          Enter 开始 · Esc / B 返回 · 手柄 A 开始 / B 返回 · 武器和敌人各至少选一项
         </span>
       </section>
     </div>
